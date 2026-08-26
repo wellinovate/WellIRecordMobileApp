@@ -40,12 +40,37 @@ export interface Doctor {
   initials: string;
 }
 
-export interface Provider {
+export type FacilityType = 'Hospital' | 'Pharmacy' | 'Laboratory' | 'Private Practice';
+
+export interface CareFacility {
+  id: string;
   name: string;
+  type: FacilityType;
+  typeLabel: string;
+  leadName: string;
+  leadTitle: string;
+  address: string;
   specialty: string;
-  distance: string;
-  category: string;
+  acceptingPatients: boolean;
+  accredited: boolean;
+  verified: boolean;
+  instantBooking: boolean;
   emoji: string;
+  gradient: string;
+}
+
+export interface InvoiceLineItem {
+  label: string;
+  amount: number;
+}
+
+export interface Invoice {
+  id: string;
+  provider: string;
+  date: string;
+  items: InvoiceLineItem[];
+  hmoCovered: number;
+  status: 'unpaid' | 'paid';
 }
 
 export interface ActiveShare {

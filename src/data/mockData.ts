@@ -2,7 +2,9 @@ import type {
   HealthRecord,
   FamilyMember,
   Doctor,
-  Provider,
+  CareFacility,
+  FacilityType,
+  Invoice,
   LogEntry,
   LinkedAccountDef,
   OnboardingSlide,
@@ -56,16 +58,169 @@ export const DOCTORS: Doctor[] = [
   { id: 'd3', name: 'Dr. Priya Anand', specialty: 'Dermatology', org: 'ClearSkin Dermatology', initials: 'PA' },
 ];
 
-export const PROVIDERS: Provider[] = [
-  { name: 'Dr. Sarah Chen', specialty: 'Primary Care', distance: '0.8 mi', category: 'Primary Care', emoji: '🩺' },
-  { name: 'Dr. Marcus Webb', specialty: 'Cardiology', distance: '1.4 mi', category: 'Cardiology', emoji: '❤️' },
-  { name: 'Dr. Priya Anand', specialty: 'Dermatology', distance: '2.1 mi', category: 'Dermatology', emoji: '🩹' },
-  { name: 'Central City Lab', specialty: 'Diagnostics', distance: '0.5 mi', category: 'Lab', emoji: '🧪' },
+export const FACILITIES: CareFacility[] = [
+  {
+    id: 'f1',
+    name: 'Wellicare Hospital',
+    type: 'Hospital',
+    typeLabel: 'Hospital & Clinic',
+    leadName: 'Dr. Josh Uche',
+    leadTitle: 'Medical Director',
+    address: '14 Admiralty Way, Lekki Phase 1, Lagos, Nigeria',
+    specialty: 'General',
+    acceptingPatients: true,
+    accredited: true,
+    verified: true,
+    instantBooking: true,
+    emoji: '🏥',
+    gradient: 'linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%)',
+  },
+  {
+    id: 'f2',
+    name: 'MediTrust Pharmacy',
+    type: 'Pharmacy',
+    typeLabel: 'Licensed Pharmacy',
+    leadName: 'Pharm. Ngozi Eze',
+    leadTitle: 'Superintendent Pharmacist',
+    address: '21 Admiralty Way, Lekki Phase 1, Lagos, Nigeria',
+    specialty: 'General',
+    acceptingPatients: true,
+    accredited: true,
+    verified: false,
+    instantBooking: true,
+    emoji: '💊',
+    gradient: 'linear-gradient(135deg, #7c2d12 0%, #9a3412 100%)',
+  },
+  {
+    id: 'f3',
+    name: 'Central City Lab',
+    type: 'Laboratory',
+    typeLabel: 'Diagnostic Lab',
+    leadName: 'Dr. Wale Adeyemi',
+    leadTitle: 'Lab Director',
+    address: '310 Mission St, San Francisco, CA',
+    specialty: 'Diagnostics',
+    acceptingPatients: true,
+    accredited: true,
+    verified: true,
+    instantBooking: false,
+    emoji: '🧪',
+    gradient: 'linear-gradient(135deg, #4c1d95 0%, #6d28d9 100%)',
+  },
+  {
+    id: 'f4',
+    name: 'Dr. Sarah Chen',
+    type: 'Private Practice',
+    typeLabel: 'Private Practice',
+    leadName: 'Dr. Sarah Chen',
+    leadTitle: 'Primary Care Physician',
+    address: 'Riverside Clinic, 220 Sutter St, San Francisco, CA',
+    specialty: 'General',
+    acceptingPatients: true,
+    accredited: false,
+    verified: true,
+    instantBooking: false,
+    emoji: '🩺',
+    gradient: '',
+  },
+  {
+    id: 'f5',
+    name: 'Dr. Marcus Webb',
+    type: 'Private Practice',
+    typeLabel: 'Private Practice',
+    leadName: 'Dr. Marcus Webb',
+    leadTitle: 'Cardiologist',
+    address: 'Heart & Vascular Institute, 450 Stanyan St, San Francisco, CA',
+    specialty: 'Cardiology',
+    acceptingPatients: true,
+    accredited: false,
+    verified: true,
+    instantBooking: false,
+    emoji: '❤️',
+    gradient: '',
+  },
+  {
+    id: 'f6',
+    name: 'Dr. Priya Anand',
+    type: 'Private Practice',
+    typeLabel: 'Private Practice',
+    leadName: 'Dr. Priya Anand',
+    leadTitle: 'Dermatologist',
+    address: 'ClearSkin Dermatology, 88 Geary St, San Francisco, CA',
+    specialty: 'Dermatology',
+    acceptingPatients: false,
+    accredited: false,
+    verified: false,
+    instantBooking: false,
+    emoji: '🩹',
+    gradient: '',
+  },
+];
+
+export const FACILITY_TYPE_FILTERS: { value: FacilityType | 'All'; label: string }[] = [
+  { value: 'All', label: 'All Facilities' },
+  { value: 'Hospital', label: 'Hospitals & Clinics' },
+  { value: 'Pharmacy', label: 'Pharmacies' },
+  { value: 'Laboratory', label: 'Laboratories' },
+  { value: 'Private Practice', label: 'Private Practices' },
+];
+
+export const SPECIALTY_FILTERS = ['All Specialties', 'General', 'Cardiology', 'Dermatology', 'Diagnostics'];
+
+export const FACILITY_SECTIONS: { type: FacilityType; label: string; emoji: string }[] = [
+  { type: 'Hospital', label: 'Hospitals & Medical Centers', emoji: '🏥' },
+  { type: 'Pharmacy', label: 'Pharmacies & Retail Care', emoji: '💊' },
+  { type: 'Laboratory', label: 'Laboratories & Diagnostics', emoji: '🧪' },
+  { type: 'Private Practice', label: 'Private Practices', emoji: '🩺' },
+];
+
+export const INITIAL_INVOICES: Invoice[] = [
+  {
+    id: 'WR-INV-2026-000003',
+    provider: 'Wellicare Hospital',
+    date: 'Aug 19, 2026',
+    status: 'unpaid',
+    hmoCovered: 0,
+    items: [
+      { label: 'Consultation Fee', amount: 12000 },
+      { label: 'Vital Signs Check', amount: 3000 },
+      { label: 'Lab Panel (CBC)', amount: 10000 },
+      { label: 'Malaria Test', amount: 5000 },
+      { label: 'IV Fluids', amount: 8000 },
+      { label: 'Nursing Care', amount: 12000 },
+    ],
+  },
+  {
+    id: 'WR-INV-2026-000002',
+    provider: 'Central City Lab',
+    date: 'Aug 19, 2026',
+    status: 'unpaid',
+    hmoCovered: 0,
+    items: [
+      { label: 'Comprehensive Metabolic Panel', amount: 15000 },
+      { label: 'Complete Blood Count', amount: 8000 },
+      { label: 'Lipid Panel', amount: 7000 },
+      { label: 'Urinalysis', amount: 5000 },
+      { label: 'Sample Collection Fee', amount: 5000 },
+      { label: 'Report Processing', amount: 10000 },
+    ],
+  },
+  {
+    id: 'WR-INV-2026-000001',
+    provider: 'MediTrust Pharmacy',
+    date: 'Aug 10, 2026',
+    status: 'unpaid',
+    hmoCovered: 0,
+    items: [
+      { label: 'Amoxicillin 500mg (x2 packs)', amount: 15000 },
+      { label: 'Paracetamol', amount: 5000 },
+      { label: 'Vitamin D Supplements', amount: 10000 },
+      { label: 'Dispensing Fee', amount: 20000 },
+    ],
+  },
 ];
 
 export const CONSENT_SCOPES = ['Full History', 'Labs Only', 'Radiology', 'Medications', 'Vitals', 'Diagnoses', 'Allergies', 'Vision'];
-
-export const CATEGORIES = ['All', 'Primary Care', 'Cardiology', 'Dermatology', 'Lab'];
 export const RECORD_TYPES: (RecordType | 'All')[] = ['All', 'Lab Result', 'Prescription', 'Imaging', 'Clinical Note'];
 
 export const ONBOARDING: OnboardingSlide[] = [

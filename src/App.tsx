@@ -29,6 +29,9 @@ import { ActivityLogModal } from './modals/ActivityLogModal';
 import { LanguageModal } from './modals/LanguageModal';
 import { FaceIdLockScreen } from './modals/FaceIdLockScreen';
 import { LoggedOutScreen } from './modals/LoggedOutScreen';
+import { BookAppointmentModal } from './modals/BookAppointmentModal';
+import { BillingModal } from './modals/BillingModal';
+import { InvoiceDetailModal } from './modals/InvoiceDetailModal';
 
 function App() {
   const app = useWelliApp();
@@ -69,6 +72,9 @@ function App() {
         <LanguageModal app={app} />
         <FaceIdLockScreen app={app} />
         <LoggedOutScreen app={app} />
+        <BookAppointmentModal app={app} />
+        <BillingModal app={app} />
+        <InvoiceDetailModal app={app} />
 
         <Toast message={state.toast} />
       </div>

@@ -3,8 +3,10 @@ import {
   ACTIVITY_LOG,
   CONSENT_SCOPES,
   DOCTORS,
+  FACILITIES,
   FAMILY,
   INITIAL_ACTIVE_SHARES,
+  INITIAL_INVOICES,
   INITIAL_LINKED_ACCOUNTS,
   INITIAL_NOTIFICATIONS,
   LINKED_ACCOUNTS,
@@ -16,6 +18,7 @@ import type {
   ActiveShare,
   ConsentGranteeType,
   FamilyMember,
+  Invoice,
   Notification,
   RecordType,
   ShareExpiry,
@@ -74,8 +77,16 @@ export interface AppState {
   notifyFamilyActivity: boolean;
   notifyEmailUpdates: boolean;
   showEmergency: boolean;
-  careCategory: string;
+  careFacilityType: string;
+  careSpecialty: string;
   careQuery: string;
+  showBookAppointment: boolean;
+  bookingFacilityId: string | null;
+  bookingDate: string;
+  bookingTimeSlot: string;
+  showBilling: boolean;
+  invoices: Invoice[];
+  showInvoiceDetail: string | null;
   inCall: boolean;
   callMuted: boolean;
   callCameraOff: boolean;
@@ -144,8 +155,16 @@ const initialState: AppState = {
   notifyFamilyActivity: true,
   notifyEmailUpdates: false,
   showEmergency: false,
-  careCategory: 'All',
+  careFacilityType: 'All',
+  careSpecialty: 'All Specialties',
   careQuery: '',
+  showBookAppointment: false,
+  bookingFacilityId: null,
+  bookingDate: '',
+  bookingTimeSlot: '',
+  showBilling: false,
+  invoices: INITIAL_INVOICES,
+  showInvoiceDetail: null,
   inCall: false,
   callMuted: false,
   callCameraOff: false,
@@ -508,7 +527,8 @@ export function useWelliApp() {
       showToast('Push notifications enabled');
     },
 
-    setCareCategory: (c: string) => patch({ careCategory: c }),
+    setCareFacilityType: (t: string) => patch({ careFacilityType: t }),
+    setCareSpecialty: (s: string) => patch({ careSpecialty: s }),
     setCareQuery: (value: string) => patch({ careQuery: value }),
     joinCall: () => patch({ inCall: true, callMuted: false, callCameraOff: false, callDurationSec: 0 }),
     endCall: () => {
@@ -517,7 +537,30 @@ export function useWelliApp() {
     },
     toggleCallMute: () => patch((s) => ({ callMuted: !s.callMuted })),
     toggleCallCamera: () => patch((s) => ({ callCameraOff: !s.callCameraOff })),
-    bookProvider: (name: string) => showToast(`Booking request sent to ${name}`),
+
+    openBookAppointment: (facilityId: string) =>
+      patch({ showBookAppointment: true, bookingFacilityId: facilityId, bookingDate: '', bookingTimeSlot: '' }),
+    closeBookAppointment: () => patch({ showBookAppointment: false }),
+    setBookingDate: (v: string) => patch({ bookingDate: v }),
+    setBookingTimeSlot: (v: string) => patch({ bookingTimeSlot: v }),
+    confirmBooking: () => {
+      const facility = FACILITIES.find((f) => f.id === state.bookingFacilityId);
+      if (!facility || !state.bookingDate || !state.bookingTimeSlot) {
+        showToast('Choose a date and time to continue');
+        return;
+      }
+      patch({ showBookAppointment: false });
+      showToast(`Appointment requested with ${facility.name} — ${state.bookingTimeSlot}`);
+    },
+
+    openBilling: () => patch({ showBilling: true }),
+    closeBilling: () => patch({ showBilling: false }),
+    openInvoiceDetail: (id: string) => patch({ showInvoiceDetail: id }),
+    closeInvoiceDetail: () => patch({ showInvoiceDetail: null }),
+    markInvoicePaid: (id: string) => {
+      patch((s) => ({ invoices: s.invoices.map((inv) => (inv.id === id ? { ...inv, status: 'paid' as const } : inv)) }));
+      showToast('Invoice marked as paid');
+    },
 
     openOnboarding: () => patch({ showOnboarding: true, onboardingStep: 0 }),
     closeOnboarding: () => patch({ showOnboarding: false }),
@@ -594,6 +637,7 @@ export function useWelliApp() {
     onboardingSlides: ONBOARDING,
     linkedAccountDefs: LINKED_ACCOUNTS,
     consentScopes: CONSENT_SCOPES,
+    facilities: FACILITIES,
   };
 }
 

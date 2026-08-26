@@ -18,6 +18,7 @@ export function ProfileScreen({ app }: { app: WelliApp }) {
     { emoji: '🔔', label: 'Notifications', action: actions.openNotificationSettings },
     { emoji: '🔐', label: 'Privacy & Security', action: actions.openPrivacySecurity },
     { emoji: '🔗', label: 'Linked Accounts', action: actions.openLinkedAccounts },
+    { emoji: '💳', label: 'Billing & Payments', action: actions.openBilling },
     { emoji: '📋', label: 'Recent Activity', action: actions.openActivity },
     { emoji: '🌐', label: `Language (${state.language})`, action: actions.openLanguage },
     { emoji: '✨', label: 'Replay Welcome Tour', action: actions.openOnboarding },
