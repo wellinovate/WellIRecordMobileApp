@@ -1,4 +1,5 @@
 import { QRCodeSVG } from 'qrcode.react';
+import { formatDob } from '../utils/formatDate';
 import type { WelliApp } from '../state/useWelliApp';
 
 export function EmergencyModal({ app }: { app: WelliApp }) {
@@ -30,7 +31,7 @@ export function EmergencyModal({ app }: { app: WelliApp }) {
             <span style={{ color: '#fbbf24', fontSize: 12.5, fontWeight: 800, letterSpacing: '.05em', textTransform: 'uppercase' }}>Emergency Medical ID</span>
           </div>
           <div style={{ color: '#fff', fontSize: 20, fontWeight: 800, marginBottom: 2, fontFamily: "'Bricolage Grotesque', sans-serif" }}>{emergencyMember.name}</div>
-          <div style={{ color: '#93a5c9', fontSize: 12.5, marginBottom: 8 }}>DOB: {emergencyMember.dob}</div>
+          <div style={{ color: '#93a5c9', fontSize: 12.5, marginBottom: 8 }}>DOB: {formatDob(emergencyMember.dob)}</div>
           {guardianLine && <div style={{ color: '#fbbf24', fontSize: 12, fontWeight: 700, marginBottom: 18 }}>{guardianLine}</div>}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
             <div>
@@ -38,9 +39,13 @@ export function EmergencyModal({ app }: { app: WelliApp }) {
               <div style={{ color: '#fff', fontSize: 15, fontWeight: 700 }}>{emergencyMember.bloodType}</div>
             </div>
             <div>
-              <div style={{ color: '#6b87b3', fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 3 }}>Allergies</div>
-              <div style={{ color: '#fff', fontSize: 15, fontWeight: 700 }}>{emergencyMember.allergies}</div>
+              <div style={{ color: '#6b87b3', fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 3 }}>Genotype</div>
+              <div style={{ color: '#fff', fontSize: 15, fontWeight: 700 }}>{emergencyMember.genotype}</div>
             </div>
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ color: '#6b87b3', fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 3 }}>Allergies</div>
+            <div style={{ color: '#fff', fontSize: 15, fontWeight: 700 }}>{emergencyMember.allergies}</div>
           </div>
           <div style={{ marginBottom: 16 }}>
             <div style={{ color: '#6b87b3', fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 4 }}>Conditions</div>

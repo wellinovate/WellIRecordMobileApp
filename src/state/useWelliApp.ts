@@ -55,7 +55,9 @@ export interface AppState {
   newMemberName: string;
   newMemberRelationship: string;
   newMemberDob: string;
+  newMemberGender: string;
   newMemberBloodType: string;
+  newMemberGenotype: string;
   showProxyLog: boolean;
   showPersonalInfo: boolean;
   personalInfoEditMode: boolean;
@@ -123,7 +125,9 @@ const initialState: AppState = {
   newMemberName: '',
   newMemberRelationship: '',
   newMemberDob: '',
+  newMemberGender: '',
   newMemberBloodType: '',
+  newMemberGenotype: '',
   showProxyLog: false,
   showPersonalInfo: false,
   personalInfoEditMode: false,
@@ -374,12 +378,22 @@ export function useWelliApp() {
     openFamilyAccess: () => patch({ showFamilyAccess: true }),
     closeFamilyAccess: () => patch({ showFamilyAccess: false }),
     openAddFamilyMember: () =>
-      patch({ showAddFamilyMember: true, newMemberName: '', newMemberRelationship: '', newMemberDob: '', newMemberBloodType: '' }),
+      patch({
+        showAddFamilyMember: true,
+        newMemberName: '',
+        newMemberRelationship: '',
+        newMemberDob: '',
+        newMemberGender: '',
+        newMemberBloodType: '',
+        newMemberGenotype: '',
+      }),
     closeAddFamilyMember: () => patch({ showAddFamilyMember: false }),
     setNewMemberName: (v: string) => patch({ newMemberName: v }),
     setNewMemberRelationship: (v: string) => patch({ newMemberRelationship: v }),
     setNewMemberDob: (v: string) => patch({ newMemberDob: v }),
+    setNewMemberGender: (v: string) => patch({ newMemberGender: v }),
     setNewMemberBloodType: (v: string) => patch({ newMemberBloodType: v }),
+    setNewMemberGenotype: (v: string) => patch({ newMemberGenotype: v }),
     addFamilyMember: () => {
       const name = state.newMemberName.trim();
       if (!name) {
@@ -387,6 +401,9 @@ export function useWelliApp() {
         return;
       }
       const owner = state.familyMembers.find((f) => f.role === 'owner') ?? state.familyMembers[0];
+      const reciprocalRelationship: Record<string, string> =
+        { Child: 'Parent', Spouse: 'Spouse', Parent: 'Child', Other: 'Guardian' };
+      const ownerLabel = reciprocalRelationship[state.newMemberRelationship] ?? 'Guardian';
       const initials = name
         .split(' ')
         .filter(Boolean)
@@ -400,14 +417,15 @@ export function useWelliApp() {
         name,
         initials: initials || '?',
         role: 'dependent',
-        dob: state.newMemberDob.trim() || 'Not set',
-        gender: '—',
-        bloodType: state.newMemberBloodType.trim() || 'Unknown',
+        dob: state.newMemberDob,
+        gender: state.newMemberGender || '—',
+        bloodType: state.newMemberBloodType || 'Unknown',
+        genotype: state.newMemberGenotype || 'Unknown',
         height: '—',
         weight: '—',
         allergies: 'None on file',
         conditions: 'None on file',
-        contact: `${owner.name} (${state.newMemberRelationship || 'Guardian'})`,
+        contact: `${owner.name} (${ownerLabel})`,
         email: '—',
         phone: '—',
         address: owner.address,

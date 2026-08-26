@@ -18,6 +18,7 @@ export interface FamilyMember {
   dob: string;
   gender: string;
   bloodType: string;
+  genotype: string;
   height: string;
   weight: string;
   allergies: string;

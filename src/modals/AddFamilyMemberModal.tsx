@@ -1,7 +1,19 @@
 import { ModalHeader } from '../components/ModalHeader';
+import { FormSelect } from '../components/FormSelect';
+import { BLOOD_TYPES, GENDER_OPTIONS, GENOTYPES } from '../data/mockData';
 import type { WelliApp } from '../state/useWelliApp';
 
 const RELATIONSHIPS = ['Child', 'Spouse', 'Parent', 'Other'];
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  background: '#fff',
+  border: '1px solid #e2e8f0',
+  borderRadius: 12,
+  padding: '11px 14px',
+  fontSize: 13.5,
+  boxSizing: 'border-box',
+};
 
 export function AddFamilyMemberModal({ app }: { app: WelliApp }) {
   const { state, actions } = app;
@@ -20,16 +32,7 @@ export function AddFamilyMemberModal({ app }: { app: WelliApp }) {
           value={state.newMemberName}
           onChange={(e) => actions.setNewMemberName(e.target.value)}
           placeholder="e.g. Nia Nwosu"
-          style={{
-            width: '100%',
-            background: '#fff',
-            border: '1px solid #e2e8f0',
-            borderRadius: 12,
-            padding: '11px 14px',
-            fontSize: 13.5,
-            boxSizing: 'border-box',
-            marginBottom: 20,
-          }}
+          style={{ ...inputStyle, marginBottom: 20 }}
         />
 
         <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>Relationship</div>
@@ -59,36 +62,24 @@ export function AddFamilyMemberModal({ app }: { app: WelliApp }) {
 
         <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>Date of Birth</div>
         <input
+          type="date"
           value={state.newMemberDob}
           onChange={(e) => actions.setNewMemberDob(e.target.value)}
-          placeholder="e.g. March 14, 1990"
-          style={{
-            width: '100%',
-            background: '#fff',
-            border: '1px solid #e2e8f0',
-            borderRadius: 12,
-            padding: '11px 14px',
-            fontSize: 13.5,
-            boxSizing: 'border-box',
-            marginBottom: 20,
-          }}
+          style={{ ...inputStyle, marginBottom: 20 }}
         />
 
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>Gender</div>
+        <div style={{ marginBottom: 20 }}>
+          <FormSelect value={state.newMemberGender} onChange={actions.setNewMemberGender} options={GENDER_OPTIONS} placeholder="Select gender" />
+        </div>
+
         <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>Blood Type</div>
-        <input
-          value={state.newMemberBloodType}
-          onChange={(e) => actions.setNewMemberBloodType(e.target.value)}
-          placeholder="e.g. O+ (optional)"
-          style={{
-            width: '100%',
-            background: '#fff',
-            border: '1px solid #e2e8f0',
-            borderRadius: 12,
-            padding: '11px 14px',
-            fontSize: 13.5,
-            boxSizing: 'border-box',
-          }}
-        />
+        <div style={{ marginBottom: 20 }}>
+          <FormSelect value={state.newMemberBloodType} onChange={actions.setNewMemberBloodType} options={BLOOD_TYPES} placeholder="Select blood type" />
+        </div>
+
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>Genotype</div>
+        <FormSelect value={state.newMemberGenotype} onChange={actions.setNewMemberGenotype} options={GENOTYPES} placeholder="Select genotype" />
       </div>
 
       <div style={{ flexShrink: 0, padding: '10px 20px 24px' }}>

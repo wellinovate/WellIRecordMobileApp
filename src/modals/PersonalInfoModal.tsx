@@ -1,22 +1,33 @@
 import { ModalHeader } from '../components/ModalHeader';
+import { FormSelect } from '../components/FormSelect';
+import { BLOOD_TYPES, GENDER_OPTIONS, GENOTYPES } from '../data/mockData';
+import { formatDob } from '../utils/formatDate';
 import type { FamilyMember } from '../data/types';
 import type { WelliApp } from '../state/useWelliApp';
 
-const EDITABLE_FIELDS: { key: Exclude<keyof FamilyMember, 'id' | 'role' | 'initials'>; label: string }[] = [
-  { key: 'name', label: 'Full Name' },
-  { key: 'dob', label: 'Date of Birth' },
-  { key: 'gender', label: 'Gender' },
-  { key: 'bloodType', label: 'Blood Type' },
-  { key: 'height', label: 'Height' },
-  { key: 'weight', label: 'Weight' },
-  { key: 'allergies', label: 'Allergies' },
-  { key: 'conditions', label: 'Conditions' },
-  { key: 'contact', label: 'Emergency Contact' },
-  { key: 'email', label: 'Email' },
-  { key: 'phone', label: 'Phone' },
-  { key: 'address', label: 'Address' },
-  { key: 'insuranceProvider', label: 'Insurance Provider' },
-  { key: 'insuranceId', label: 'Insurance ID' },
+type EditableKey = Exclude<keyof FamilyMember, 'id' | 'role' | 'initials'>;
+
+type FieldDef =
+  | { key: EditableKey; label: string; type: 'text' }
+  | { key: 'dob'; label: string; type: 'date' }
+  | { key: 'gender' | 'bloodType' | 'genotype'; label: string; type: 'select'; options: string[] };
+
+const EDITABLE_FIELDS: FieldDef[] = [
+  { key: 'name', label: 'Full Name', type: 'text' },
+  { key: 'dob', label: 'Date of Birth', type: 'date' },
+  { key: 'gender', label: 'Gender', type: 'select', options: GENDER_OPTIONS },
+  { key: 'bloodType', label: 'Blood Type', type: 'select', options: BLOOD_TYPES },
+  { key: 'genotype', label: 'Genotype', type: 'select', options: GENOTYPES },
+  { key: 'height', label: 'Height', type: 'text' },
+  { key: 'weight', label: 'Weight', type: 'text' },
+  { key: 'allergies', label: 'Allergies', type: 'text' },
+  { key: 'conditions', label: 'Conditions', type: 'text' },
+  { key: 'contact', label: 'Emergency Contact', type: 'text' },
+  { key: 'email', label: 'Email', type: 'text' },
+  { key: 'phone', label: 'Phone', type: 'text' },
+  { key: 'address', label: 'Address', type: 'text' },
+  { key: 'insuranceProvider', label: 'Insurance Provider', type: 'text' },
+  { key: 'insuranceId', label: 'Insurance ID', type: 'text' },
 ];
 
 export function PersonalInfoModal({ app }: { app: WelliApp }) {
@@ -26,12 +37,14 @@ export function PersonalInfoModal({ app }: { app: WelliApp }) {
   const activeMember = family.find((f) => f.id === state.activeFamilyId) ?? family[0];
   const isGuardianView = state.activeFamilyId !== 'me';
   const editing = state.personalInfoEditMode;
+  const draft = state.personalInfoDraft;
 
   const displayFields = [
     { label: 'Full Name', value: activeMember.name },
-    { label: 'Date of Birth', value: activeMember.dob },
+    { label: 'Date of Birth', value: formatDob(activeMember.dob) },
     { label: 'Gender', value: activeMember.gender },
     { label: 'Blood Type', value: activeMember.bloodType },
+    { label: 'Genotype', value: activeMember.genotype },
     { label: 'Height / Weight', value: `${activeMember.height} / ${activeMember.weight}` },
     { label: 'Allergies', value: activeMember.allergies },
     { label: 'Conditions', value: activeMember.conditions },
@@ -60,24 +73,43 @@ export function PersonalInfoModal({ app }: { app: WelliApp }) {
           </div>
         )}
 
-        {editing && state.personalInfoDraft ? (
+        {editing && draft ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {EDITABLE_FIELDS.map((f) => (
               <div key={f.key}>
                 <div style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 4 }}>{f.label}</div>
-                <input
-                  value={state.personalInfoDraft![f.key]}
-                  onChange={(e) => actions.updatePersonalInfoDraft(f.key, e.target.value)}
-                  style={{
-                    width: '100%',
-                    background: '#fff',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: 10,
-                    padding: '9px 12px',
-                    fontSize: 13.5,
-                    boxSizing: 'border-box',
-                  }}
-                />
+                {f.type === 'select' ? (
+                  <FormSelect value={draft[f.key]} onChange={(v) => actions.updatePersonalInfoDraft(f.key, v)} options={f.options} />
+                ) : f.type === 'date' ? (
+                  <input
+                    type="date"
+                    value={draft.dob}
+                    onChange={(e) => actions.updatePersonalInfoDraft('dob', e.target.value)}
+                    style={{
+                      width: '100%',
+                      background: '#fff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: 10,
+                      padding: '9px 12px',
+                      fontSize: 13.5,
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                ) : (
+                  <input
+                    value={draft[f.key]}
+                    onChange={(e) => actions.updatePersonalInfoDraft(f.key, e.target.value)}
+                    style={{
+                      width: '100%',
+                      background: '#fff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: 10,
+                      padding: '9px 12px',
+                      fontSize: 13.5,
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                )}
               </div>
             ))}
           </div>

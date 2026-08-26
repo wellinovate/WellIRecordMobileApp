@@ -29,9 +29,13 @@ export const RECORDS: HealthRecord[] = [
 ];
 
 export const FAMILY: FamilyMember[] = [
-  { id: 'me', name: 'Amara Nwosu', initials: 'AN', role: 'owner', dob: 'March 14, 1990', gender: 'Female', bloodType: 'O+', height: '168 cm', weight: '70.5 kg', allergies: 'Penicillin, Shellfish', conditions: 'Type 2 Diabetes', contact: 'Chidi Nwosu (Spouse) · +1 (415) 555-0142', email: 'amara.nwosu@email.com', phone: '+1 (415) 555-0198', address: '412 Baywood Ave, San Francisco, CA 94110', insuranceProvider: 'Pacific Horizon Health', insuranceId: 'PHH-88213045' },
-  { id: 'kwame', name: 'Kwame Nwosu', initials: 'KN', role: 'dependent', dob: 'Sept 2, 2016', gender: 'Male', bloodType: 'A+', height: '128 cm', weight: '26 kg', allergies: 'None on file', conditions: 'None on file', contact: 'Amara Nwosu (Mother) · +1 (415) 555-0142', email: '—', phone: '—', address: '412 Baywood Ave, San Francisco, CA 94110', insuranceProvider: 'Pacific Horizon Health (dependent)', insuranceId: 'PHH-88213045-D1' },
+  { id: 'me', name: 'Amara Nwosu', initials: 'AN', role: 'owner', dob: '1990-03-14', gender: 'Female', bloodType: 'O+', genotype: 'AA', height: '168 cm', weight: '70.5 kg', allergies: 'Penicillin, Shellfish', conditions: 'Type 2 Diabetes', contact: 'Chidi Nwosu (Spouse) · +1 (415) 555-0142', email: 'amara.nwosu@email.com', phone: '+1 (415) 555-0198', address: '412 Baywood Ave, San Francisco, CA 94110', insuranceProvider: 'Pacific Horizon Health', insuranceId: 'PHH-88213045' },
+  { id: 'kwame', name: 'Kwame Nwosu', initials: 'KN', role: 'dependent', dob: '2016-09-02', gender: 'Male', bloodType: 'A+', genotype: 'AS', height: '128 cm', weight: '26 kg', allergies: 'None on file', conditions: 'None on file', contact: 'Amara Nwosu (Mother) · +1 (415) 555-0142', email: '—', phone: '—', address: '412 Baywood Ave, San Francisco, CA 94110', insuranceProvider: 'Pacific Horizon Health (dependent)', insuranceId: 'PHH-88213045-D1' },
 ];
+
+export const GENDER_OPTIONS = ['Male', 'Female', 'Transgender', 'Other'];
+export const BLOOD_TYPES = ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'Unknown'];
+export const GENOTYPES = ['AA', 'AS', 'SS', 'AC', 'SC', 'CC', 'Unknown'];
 
 export const PROXY_LOG: LogEntry[] = [
   { emoji: '📤', title: "Shared Kwame's Pediatric Wellness Check with Dr. Priya Anand", time: '5 days ago' },
