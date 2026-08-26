@@ -23,6 +23,7 @@ import { PrivacyPolicyModal } from './modals/PrivacyPolicyModal';
 import { LinkedAccountsModal } from './modals/LinkedAccountsModal';
 import { NotificationSettingsModal } from './modals/NotificationSettingsModal';
 import { FamilyAccessModal } from './modals/FamilyAccessModal';
+import { AddFamilyMemberModal } from './modals/AddFamilyMemberModal';
 import { ProxyLogModal } from './modals/ProxyLogModal';
 import { ActivityLogModal } from './modals/ActivityLogModal';
 import { LanguageModal } from './modals/LanguageModal';
@@ -62,6 +63,7 @@ function App() {
         <LinkedAccountsModal app={app} />
         <NotificationSettingsModal app={app} />
         <FamilyAccessModal app={app} />
+        <AddFamilyMemberModal app={app} />
         <ProxyLogModal app={app} />
         <ActivityLogModal app={app} />
         <LanguageModal app={app} />

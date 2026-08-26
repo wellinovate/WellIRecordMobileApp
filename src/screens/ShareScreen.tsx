@@ -1,13 +1,12 @@
 import { useTheme } from '../theme/ThemeContext';
-import { FAMILY } from '../data/mockData';
 import type { WelliApp } from '../state/useWelliApp';
 
 export function ShareScreen({ app }: { app: WelliApp }) {
   const theme = useTheme();
-  const { state, actions } = app;
+  const { state, actions, family } = app;
 
   const activeSharesView = state.activeShares.map((sh) => {
-    const owner = FAMILY.find((f) => f.id === sh.ownerId) ?? FAMILY[0];
+    const owner = family.find((f) => f.id === sh.ownerId) ?? family[0];
     return { ...sh, ownerLabel: owner.id === 'me' ? null : `For ${owner.name.split(' ')[0]}` };
   });
 

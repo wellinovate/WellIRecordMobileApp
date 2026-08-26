@@ -6,6 +6,7 @@ export function FamilyAccessModal({ app }: { app: WelliApp }) {
   if (!state.showFamilyAccess) return null;
 
   const familyAccessView = family.map((f) => ({
+    id: f.id,
     name: f.name,
     initials: f.initials,
     badge: f.role === 'owner' ? 'Account Owner' : 'Dependent',
@@ -17,8 +18,32 @@ export function FamilyAccessModal({ app }: { app: WelliApp }) {
     <div className="overlay-fullscreen">
       <ModalHeader title="Family & Caregiver Access" onClose={actions.closeFamilyAccess} />
       <div style={{ flex: 1, overflowY: 'auto', padding: '6px 20px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <button
+          onClick={actions.openAddFamilyMember}
+          style={{
+            width: '100%',
+            background: '#041E42',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 14,
+            padding: 13,
+            fontSize: 14,
+            fontWeight: 700,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            marginBottom: 4,
+          }}
+        >
+          <svg width="15" height="15" viewBox="0 0 20 20">
+            <path d="M10 3v14M3 10h14" stroke="#fff" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+          Add Family Member
+        </button>
         {familyAccessView.map((f) => (
-          <div key={f.name} style={{ background: '#f8fafc', borderRadius: 16, padding: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div key={f.id} style={{ background: '#f8fafc', borderRadius: 16, padding: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
             <div
               style={{
                 width: 40,

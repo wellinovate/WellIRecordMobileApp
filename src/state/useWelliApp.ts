@@ -15,6 +15,7 @@ import {
 import type {
   ActiveShare,
   ConsentGranteeType,
+  FamilyMember,
   Notification,
   RecordType,
   ShareExpiry,
@@ -27,6 +28,7 @@ import { EXPIRY_SHORT_LABEL_MAP } from '../utils/expiry';
 export interface AppState {
   tab: Tab;
   activeFamilyId: string;
+  familyMembers: FamilyMember[];
   recordFilter: RecordType | 'All';
   recordQuery: string;
   recordDetailId: string | null;
@@ -49,8 +51,15 @@ export interface AppState {
   consentExpiry: ShareExpiry;
   consentPurpose: string;
   showFamilyAccess: boolean;
+  showAddFamilyMember: boolean;
+  newMemberName: string;
+  newMemberRelationship: string;
+  newMemberDob: string;
+  newMemberBloodType: string;
   showProxyLog: boolean;
   showPersonalInfo: boolean;
+  personalInfoEditMode: boolean;
+  personalInfoDraft: FamilyMember | null;
   showPrivacyPolicy: boolean;
   showPrivacySecurity: boolean;
   twoFactorEnabled: boolean;
@@ -87,6 +96,7 @@ export interface AppState {
 const initialState: AppState = {
   tab: 'home',
   activeFamilyId: 'me',
+  familyMembers: FAMILY,
   recordFilter: 'All',
   recordQuery: '',
   recordDetailId: null,
@@ -109,8 +119,15 @@ const initialState: AppState = {
   consentExpiry: '24h',
   consentPurpose: '',
   showFamilyAccess: false,
+  showAddFamilyMember: false,
+  newMemberName: '',
+  newMemberRelationship: '',
+  newMemberDob: '',
+  newMemberBloodType: '',
   showProxyLog: false,
   showPersonalInfo: false,
+  personalInfoEditMode: false,
+  personalInfoDraft: null,
   showPrivacyPolicy: false,
   showPrivacySecurity: false,
   twoFactorEnabled: false,
@@ -356,10 +373,75 @@ export function useWelliApp() {
     closeEmergency: () => patch({ showEmergency: false }),
     openFamilyAccess: () => patch({ showFamilyAccess: true }),
     closeFamilyAccess: () => patch({ showFamilyAccess: false }),
+    openAddFamilyMember: () =>
+      patch({ showAddFamilyMember: true, newMemberName: '', newMemberRelationship: '', newMemberDob: '', newMemberBloodType: '' }),
+    closeAddFamilyMember: () => patch({ showAddFamilyMember: false }),
+    setNewMemberName: (v: string) => patch({ newMemberName: v }),
+    setNewMemberRelationship: (v: string) => patch({ newMemberRelationship: v }),
+    setNewMemberDob: (v: string) => patch({ newMemberDob: v }),
+    setNewMemberBloodType: (v: string) => patch({ newMemberBloodType: v }),
+    addFamilyMember: () => {
+      const name = state.newMemberName.trim();
+      if (!name) {
+        showToast('Enter a name for the family member');
+        return;
+      }
+      const owner = state.familyMembers.find((f) => f.role === 'owner') ?? state.familyMembers[0];
+      const initials = name
+        .split(' ')
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((p) => p[0])
+        .join('')
+        .toUpperCase();
+      const dependentCount = state.familyMembers.filter((f) => f.role === 'dependent').length;
+      const newMember: FamilyMember = {
+        id: 'fam-' + Date.now(),
+        name,
+        initials: initials || '?',
+        role: 'dependent',
+        dob: state.newMemberDob.trim() || 'Not set',
+        gender: '—',
+        bloodType: state.newMemberBloodType.trim() || 'Unknown',
+        height: '—',
+        weight: '—',
+        allergies: 'None on file',
+        conditions: 'None on file',
+        contact: `${owner.name} (${state.newMemberRelationship || 'Guardian'})`,
+        email: '—',
+        phone: '—',
+        address: owner.address,
+        insuranceProvider: `${owner.insuranceProvider} (dependent)`,
+        insuranceId: `${owner.insuranceId}-D${dependentCount + 1}`,
+      };
+      patch((s) => ({
+        familyMembers: [...s.familyMembers, newMember],
+        activeFamilyId: newMember.id,
+        showAddFamilyMember: false,
+      }));
+      showToast(`${name} added to your family`);
+    },
     openProxyLog: () => patch({ showProxyLog: true }),
     closeProxyLog: () => patch({ showProxyLog: false }),
-    openPersonalInfo: () => patch({ showPersonalInfo: true }),
-    closePersonalInfo: () => patch({ showPersonalInfo: false }),
+    openPersonalInfo: () => patch({ showPersonalInfo: true, personalInfoEditMode: false, personalInfoDraft: null }),
+    closePersonalInfo: () => patch({ showPersonalInfo: false, personalInfoEditMode: false, personalInfoDraft: null }),
+    startEditPersonalInfo: () => {
+      const activeMember = state.familyMembers.find((f) => f.id === state.activeFamilyId) ?? state.familyMembers[0];
+      patch({ personalInfoEditMode: true, personalInfoDraft: { ...activeMember } });
+    },
+    cancelEditPersonalInfo: () => patch({ personalInfoEditMode: false, personalInfoDraft: null }),
+    updatePersonalInfoDraft: (field: keyof FamilyMember, value: string) =>
+      patch((s) => (s.personalInfoDraft ? { personalInfoDraft: { ...s.personalInfoDraft, [field]: value } } : {})),
+    savePersonalInfo: () => {
+      const draft = state.personalInfoDraft;
+      if (!draft) return;
+      patch((s) => ({
+        familyMembers: s.familyMembers.map((f) => (f.id === draft.id ? draft : f)),
+        personalInfoEditMode: false,
+        personalInfoDraft: null,
+      }));
+      showToast('Personal info updated');
+    },
     openPrivacyPolicy: () => patch({ showPrivacyPolicy: true }),
     closePrivacyPolicy: () => patch({ showPrivacyPolicy: false }),
     openPrivacySecurity: () => patch({ showPrivacySecurity: true }),
@@ -468,7 +550,7 @@ export function useWelliApp() {
     state,
     actions,
     records: RECORDS,
-    family: FAMILY,
+    family: state.familyMembers,
     doctors: DOCTORS,
     proxyLog: PROXY_LOG,
     activityLog: ACTIVITY_LOG,
