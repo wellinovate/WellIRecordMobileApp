@@ -460,6 +460,25 @@ export function useWelliApp() {
       }));
       showToast('Personal info updated');
     },
+    setAvatar: (memberId: string, dataUrl: string, sizeBytes: number) => {
+      if (sizeBytes > 5 * 1024 * 1024) {
+        showToast('Photo is too large — choose one under 5MB');
+        return;
+      }
+      patch((s) => ({
+        familyMembers: s.familyMembers.map((f) => (f.id === memberId ? { ...f, avatarUrl: dataUrl } : f)),
+        personalInfoDraft: s.personalInfoDraft && s.personalInfoDraft.id === memberId ? { ...s.personalInfoDraft, avatarUrl: dataUrl } : s.personalInfoDraft,
+      }));
+      showToast('Profile photo updated');
+    },
+    removeAvatar: (memberId: string) => {
+      patch((s) => ({
+        familyMembers: s.familyMembers.map((f) => (f.id === memberId ? { ...f, avatarUrl: undefined } : f)),
+        personalInfoDraft:
+          s.personalInfoDraft && s.personalInfoDraft.id === memberId ? { ...s.personalInfoDraft, avatarUrl: undefined } : s.personalInfoDraft,
+      }));
+      showToast('Profile photo removed');
+    },
     openPrivacyPolicy: () => patch({ showPrivacyPolicy: true }),
     closePrivacyPolicy: () => patch({ showPrivacyPolicy: false }),
     openPrivacySecurity: () => patch({ showPrivacySecurity: true }),

@@ -29,6 +29,7 @@ export interface FamilyMember {
   address: string;
   insuranceProvider: string;
   insuranceId: string;
+  avatarUrl?: string;
 }
 
 export interface Doctor {

@@ -1,6 +1,7 @@
 import { useTheme } from '../theme/ThemeContext';
 import { Chip } from '../components/Chip';
 import { Logo } from '../components/Logo';
+import { Avatar } from '../components/Avatar';
 import { RECORD_META, VITALS } from '../data/mockData';
 import type { WelliApp } from '../state/useWelliApp';
 
@@ -63,24 +64,7 @@ export function HomeScreen({ app }: { app: WelliApp }) {
               </div>
             )}
           </div>
-          <div
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: 999,
-              background: '#041E42',
-              color: '#fff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: 700,
-              fontSize: 15,
-              fontFamily: "'Bricolage Grotesque', sans-serif",
-              flexShrink: 0,
-            }}
-          >
-            {activeMember.initials}
-          </div>
+          <Avatar member={activeMember} size={42} fontSize={15} />
         </div>
       </div>
 

@@ -1,4 +1,5 @@
 import { ModalHeader } from '../components/ModalHeader';
+import { Avatar } from '../components/Avatar';
 import type { WelliApp } from '../state/useWelliApp';
 
 export function FamilyAccessModal({ app }: { app: WelliApp }) {
@@ -9,6 +10,7 @@ export function FamilyAccessModal({ app }: { app: WelliApp }) {
     id: f.id,
     name: f.name,
     initials: f.initials,
+    avatarUrl: f.avatarUrl,
     badge: f.role === 'owner' ? 'Account Owner' : 'Dependent',
     badgeColor: f.role === 'owner' ? '#0EA5E9' : '#c87941',
     sub: f.role === 'owner' ? 'Full access to your own records' : 'Managed by you as guardian',
@@ -44,24 +46,7 @@ export function FamilyAccessModal({ app }: { app: WelliApp }) {
         </button>
         {familyAccessView.map((f) => (
           <div key={f.id} style={{ background: '#f8fafc', borderRadius: 16, padding: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 999,
-                background: '#041E42',
-                color: '#fff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 700,
-                fontSize: 15,
-                fontFamily: "'Bricolage Grotesque', sans-serif",
-                flexShrink: 0,
-              }}
-            >
-              {f.initials}
-            </div>
+            <Avatar member={f} size={40} fontSize={15} />
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{f.name}</div>
               <div style={{ fontSize: 11.5, color: '#64748b' }}>{f.sub}</div>

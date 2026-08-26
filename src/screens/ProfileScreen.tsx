@@ -1,4 +1,5 @@
 import { useTheme } from '../theme/ThemeContext';
+import { Avatar } from '../components/Avatar';
 import type { WelliApp } from '../state/useWelliApp';
 
 interface SettingsRow {
@@ -9,7 +10,8 @@ interface SettingsRow {
 
 export function ProfileScreen({ app }: { app: WelliApp }) {
   const theme = useTheme();
-  const { state, actions } = app;
+  const { state, actions, family } = app;
+  const owner = family.find((f) => f.role === 'owner') ?? family[0];
 
   const settingsRows: SettingsRow[] = [
     { emoji: '👤', label: 'Personal Info', action: actions.openPersonalInfo },
@@ -24,25 +26,9 @@ export function ProfileScreen({ app }: { app: WelliApp }) {
   return (
     <div className="screen-pad wr-fade-up">
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 22 }}>
-        <div
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: 999,
-            background: '#041E42',
-            color: '#fff',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontWeight: 700,
-            fontSize: 19,
-            fontFamily: "'Bricolage Grotesque', sans-serif",
-          }}
-        >
-          AN
-        </div>
+        <Avatar member={owner} size={56} fontSize={19} />
         <div>
-          <div style={{ fontSize: 17, fontWeight: 800, color: theme.text, fontFamily: "'Bricolage Grotesque', sans-serif" }}>Amara Nwosu</div>
+          <div style={{ fontSize: 17, fontWeight: 800, color: theme.text, fontFamily: "'Bricolage Grotesque', sans-serif" }}>{owner.name}</div>
           <div style={{ fontSize: 12.5, color: theme.muted }}>Member since 2022</div>
         </div>
       </div>

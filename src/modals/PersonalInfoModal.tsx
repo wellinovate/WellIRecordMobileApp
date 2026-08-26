@@ -1,5 +1,6 @@
 import { ModalHeader } from '../components/ModalHeader';
 import { FormSelect } from '../components/FormSelect';
+import { Avatar } from '../components/Avatar';
 import { BLOOD_TYPES, GENDER_OPTIONS, GENOTYPES } from '../data/mockData';
 import { formatDob } from '../utils/formatDate';
 import type { FamilyMember } from '../data/types';
@@ -39,6 +40,19 @@ export function PersonalInfoModal({ app }: { app: WelliApp }) {
   const editing = state.personalInfoEditMode;
   const draft = state.personalInfoDraft;
 
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        actions.setAvatar(activeMember.id, reader.result, file.size);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const displayFields = [
     { label: 'Full Name', value: activeMember.name },
     { label: 'Date of Birth', value: formatDob(activeMember.dob) },
@@ -67,6 +81,45 @@ export function PersonalInfoModal({ app }: { app: WelliApp }) {
         )}
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '6px 20px 30px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+          <div style={{ position: 'relative' }}>
+            <Avatar member={activeMember} size={84} fontSize={26} />
+            <label
+              htmlFor="personal-info-avatar-upload"
+              style={{
+                position: 'absolute',
+                bottom: -2,
+                right: -2,
+                width: 30,
+                height: 30,
+                borderRadius: 999,
+                background: '#041E42',
+                border: '2px solid #fff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M4 8a2 2 0 012-2h1.2l.8-1.5A1 1 0 018.9 4h6.2a1 1 0 01.9.5L16.8 6H18a2 2 0 012 2v9a2 2 0 01-2 2H6a2 2 0 01-2-2V8z"
+                  stroke="#fff"
+                  strokeWidth="1.7"
+                  strokeLinejoin="round"
+                />
+                <circle cx="12" cy="13" r="3.2" stroke="#fff" strokeWidth="1.7" />
+              </svg>
+            </label>
+            <input id="personal-info-avatar-upload" type="file" accept="image/*" onChange={handleAvatarChange} style={{ display: 'none' }} />
+          </div>
+          {activeMember.avatarUrl && (
+            <span onClick={() => actions.removeAvatar(activeMember.id)} style={{ fontSize: 12, fontWeight: 700, color: '#dc2626', cursor: 'pointer' }}>
+              Remove Photo
+            </span>
+          )}
+        </div>
+
         {isGuardianView && (
           <div style={{ fontSize: 12, color: '#92582b', background: '#fdf4ec', border: '1px solid #f3dcc4', borderRadius: 10, padding: '8px 12px', marginBottom: 14 }}>
             Viewing as guardian. Some fields may be limited for dependents.
