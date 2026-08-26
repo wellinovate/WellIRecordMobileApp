@@ -13,11 +13,13 @@ import { NotificationsPanel } from './modals/NotificationsPanel';
 import { RecordDetailSheet } from './modals/RecordDetailSheet';
 import { UploadModal } from './modals/UploadModal';
 import { ShareFlowModal } from './modals/ShareFlowModal';
+import { SmartConsentModal } from './modals/SmartConsentModal';
 import { EmergencyModal } from './modals/EmergencyModal';
 import { InCallModal } from './modals/InCallModal';
 import { OnboardingModal } from './modals/OnboardingModal';
 import { PersonalInfoModal } from './modals/PersonalInfoModal';
 import { PrivacySecurityModal } from './modals/PrivacySecurityModal';
+import { PrivacyPolicyModal } from './modals/PrivacyPolicyModal';
 import { LinkedAccountsModal } from './modals/LinkedAccountsModal';
 import { NotificationSettingsModal } from './modals/NotificationSettingsModal';
 import { FamilyAccessModal } from './modals/FamilyAccessModal';
@@ -25,6 +27,7 @@ import { ProxyLogModal } from './modals/ProxyLogModal';
 import { ActivityLogModal } from './modals/ActivityLogModal';
 import { LanguageModal } from './modals/LanguageModal';
 import { FaceIdLockScreen } from './modals/FaceIdLockScreen';
+import { LoggedOutScreen } from './modals/LoggedOutScreen';
 
 function App() {
   const app = useWelliApp();
@@ -49,11 +52,13 @@ function App() {
         <RecordDetailSheet app={app} />
         <UploadModal app={app} />
         <ShareFlowModal app={app} />
+        <SmartConsentModal app={app} />
         <EmergencyModal app={app} />
         <InCallModal app={app} />
         <OnboardingModal app={app} />
         <PersonalInfoModal app={app} />
         <PrivacySecurityModal app={app} />
+        <PrivacyPolicyModal app={app} />
         <LinkedAccountsModal app={app} />
         <NotificationSettingsModal app={app} />
         <FamilyAccessModal app={app} />
@@ -61,6 +66,7 @@ function App() {
         <ActivityLogModal app={app} />
         <LanguageModal app={app} />
         <FaceIdLockScreen app={app} />
+        <LoggedOutScreen app={app} />
 
         <Toast message={state.toast} />
       </div>

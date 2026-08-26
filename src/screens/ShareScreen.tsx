@@ -45,6 +45,33 @@ export function ShareScreen({ app }: { app: WelliApp }) {
         New Share
       </button>
 
+      <button
+        onClick={actions.openSmartConsent}
+        style={{
+          width: '100%',
+          background: '#ecfdf5',
+          color: '#059669',
+          border: '1px solid #a7f3d0',
+          borderRadius: 14,
+          padding: 13,
+          fontSize: 14,
+          fontWeight: 700,
+          marginBottom: 22,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
+        }}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <path d="M13.5 6.5L17.5 10.5L13.5 14.5" stroke="#059669" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M17 10.5H4.5" stroke="#059669" strokeWidth="1.8" strokeLinecap="round" />
+          <circle cx="19" cy="17" r="2.5" stroke="#059669" strokeWidth="1.8" />
+        </svg>
+        Smart Consent Controls
+      </button>
+
       <div className="section-label" style={{ color: theme.text, marginBottom: 10 }}>
         Active Shares
       </div>
@@ -77,7 +104,7 @@ export function ShareScreen({ app }: { app: WelliApp }) {
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 700, color: theme.text }}>{sh.doctorName}</div>
                 <div style={{ fontSize: 11.5, color: theme.muted }}>
-                  {sh.recordCount} records &middot; expires {sh.expiresLabel}
+                  {sh.scopeLabel ?? `${sh.recordCount} records`} &middot; expires {sh.expiresLabel}
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
@@ -94,6 +121,21 @@ export function ShareScreen({ app }: { app: WelliApp }) {
                 >
                   Active
                 </span>
+                {sh.writeAccess && (
+                  <span
+                    style={{
+                      fontSize: 9.5,
+                      fontWeight: 700,
+                      padding: '2px 7px',
+                      borderRadius: 999,
+                      background: '#fdf4ec',
+                      color: '#92582b',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Write Access
+                  </span>
+                )}
                 {sh.ownerLabel && (
                   <span
                     style={{
@@ -111,6 +153,9 @@ export function ShareScreen({ app }: { app: WelliApp }) {
                 )}
               </div>
             </div>
+            {sh.purpose && (
+              <div style={{ fontSize: 11.5, color: theme.mutedLight, fontStyle: 'italic', marginBottom: 8 }}>&ldquo;{sh.purpose}&rdquo;</div>
+            )}
             <button
               onClick={() => actions.revokeShare(sh.id)}
               style={{

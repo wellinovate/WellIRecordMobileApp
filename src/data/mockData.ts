@@ -59,6 +59,8 @@ export const PROVIDERS: Provider[] = [
   { name: 'Central City Lab', specialty: 'Diagnostics', distance: '0.5 mi', category: 'Lab', emoji: '🧪' },
 ];
 
+export const CONSENT_SCOPES = ['Full History', 'Labs Only', 'Radiology', 'Medications', 'Vitals', 'Diagnoses', 'Allergies', 'Vision'];
+
 export const CATEGORIES = ['All', 'Primary Care', 'Cardiology', 'Dermatology', 'Lab'];
 export const RECORD_TYPES: (RecordType | 'All')[] = ['All', 'Lab Result', 'Prescription', 'Imaging', 'Clinical Note'];
 

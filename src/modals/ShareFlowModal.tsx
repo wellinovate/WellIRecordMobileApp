@@ -1,9 +1,12 @@
 import { ModalHeader } from '../components/ModalHeader';
+import { BridgeCodeCard } from '../components/BridgeCodeCard';
 import { RECORD_META } from '../data/mockData';
+import { bridgeLinkFor } from '../utils/bridgeCode';
+import { EXPIRY_LABEL_MAP } from '../utils/expiry';
 import type { WelliApp } from '../state/useWelliApp';
 import type { ShareExpiry } from '../data/types';
 
-const SHARE_TITLES = ['Select Records', 'Choose Doctor', 'Set Expiry', 'Review & Send', 'Sent'];
+const SHARE_TITLES = ['Select Records', 'Choose Recipient', 'Set Expiry', 'Review & Send', 'Sent'];
 const NEXT_LABELS = ['Continue', 'Continue', 'Continue', 'Send Access', 'Done'];
 const EXPIRY_DEFS: [ShareExpiry, string][] = [
   ['24h', '24 Hours'],
@@ -11,12 +14,6 @@ const EXPIRY_DEFS: [ShareExpiry, string][] = [
   ['30d', '30 Days'],
   ['custom', '90 Days'],
 ];
-const EXPIRY_LABEL_MAP: Record<ShareExpiry, string> = {
-  '24h': '24 hours from now',
-  '7d': '7 days from now',
-  '30d': '30 days from now',
-  custom: '90 days from now',
-};
 
 export function ShareFlowModal({ app }: { app: WelliApp }) {
   const { state, actions, records, family, doctors } = app;
@@ -36,8 +33,13 @@ export function ShareFlowModal({ app }: { app: WelliApp }) {
       d.name.toLowerCase().includes(state.shareDoctorQuery.toLowerCase()) ||
       d.specialty.toLowerCase().includes(state.shareDoctorQuery.toLowerCase())
   );
+  const isBridge = state.shareSelectedDoctorId === 'bridge';
   const selectedDoctor = doctors.find((d) => d.id === state.shareSelectedDoctorId);
-  const shareSelectedDoctorName = selectedDoctor ? selectedDoctor.name : 'your doctor';
+  const shareSelectedDoctorName = isBridge
+    ? 'Anyone with your WelliBridge link'
+    : selectedDoctor
+      ? selectedDoctor.name
+      : 'your doctor';
   const shareExpiryLabel = EXPIRY_LABEL_MAP[state.shareExpiry];
 
   const stepValid = [shareSelectedCount > 0, !!state.shareSelectedDoctorId, true, true, true];
@@ -127,7 +129,7 @@ export function ShareFlowModal({ app }: { app: WelliApp }) {
               Search
             </div>
             <div
-              onClick={() => actions.setMethod('qr')}
+              onClick={() => actions.setMethod('bridge')}
               style={{
                 flex: 1,
                 textAlign: 'center',
@@ -136,11 +138,12 @@ export function ShareFlowModal({ app }: { app: WelliApp }) {
                 fontSize: 12.5,
                 fontWeight: 700,
                 cursor: 'pointer',
-                background: state.shareMethod === 'qr' ? '#041E42' : '#f1f5f9',
-                color: state.shareMethod === 'qr' ? '#fff' : '#334155',
+                whiteSpace: 'nowrap',
+                background: state.shareMethod === 'bridge' ? '#041E42' : '#f1f5f9',
+                color: state.shareMethod === 'bridge' ? '#fff' : '#334155',
               }}
             >
-              Scan QR
+              WelliBridge
             </div>
           </div>
 
@@ -184,24 +187,33 @@ export function ShareFlowModal({ app }: { app: WelliApp }) {
             </>
           )}
 
-          {state.shareMethod === 'qr' && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, padding: '20px 0' }}>
-              <div
-                style={{
-                  width: 180,
-                  height: 180,
-                  borderRadius: 16,
-                  background:
-                    'repeating-linear-gradient(0deg, #0f172a 0 6px, #fff 6px 12px), repeating-linear-gradient(90deg, #0f172a 0 6px, transparent 6px 12px)',
-                  border: '1px solid #e2e8f0',
-                }}
-              />
-              <div style={{ fontSize: 13, color: '#64748b', textAlign: 'center' }}>Point your camera at the doctor's WelliRecord code</div>
+          {state.shareMethod === 'bridge' && state.bridgeCode && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, padding: '16px 0 6px' }}>
+              <div style={{ fontSize: 12.5, color: '#64748b', textAlign: 'center', padding: '0 8px' }}>
+                Let your doctor scan this code, or copy the link and send it however you like.
+              </div>
+              <BridgeCodeCard code={state.bridgeCode} link={bridgeLinkFor(state.bridgeCode)} />
               <button
-                onClick={actions.scanQrSuccess}
-                style={{ background: '#041E42', color: '#fff', border: 'none', borderRadius: 999, padding: '10px 20px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                onClick={actions.copyBridgeLink}
+                style={{
+                  background: '#f0f9ff',
+                  color: '#041E42',
+                  border: '1px solid #bae6fd',
+                  borderRadius: 999,
+                  padding: '10px 22px',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 7,
+                }}
               >
-                Simulate Scan
+                <svg width="14" height="14" viewBox="0 0 20 20" fill="none">
+                  <rect x="6" y="6" width="11" height="11" rx="2" stroke="#041E42" strokeWidth="1.6" />
+                  <path d="M3 13V4a1 1 0 011-1h9" stroke="#041E42" strokeWidth="1.6" />
+                </svg>
+                Copy Link
               </button>
             </div>
           )}
@@ -246,7 +258,10 @@ export function ShareFlowModal({ app }: { app: WelliApp }) {
         <div style={{ flex: 1, overflowY: 'auto', padding: '4px 20px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ background: '#f8fafc', borderRadius: 16, padding: 16 }}>
             <div style={{ fontSize: 11.5, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700, marginBottom: 6 }}>Sharing with</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 14 }}>{shareSelectedDoctorName}</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: isBridge ? 4 : 14 }}>{shareSelectedDoctorName}</div>
+            {isBridge && (
+              <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12.5, color: '#0EA5E9', marginBottom: 14 }}>{state.bridgeCode}</div>
+            )}
             <div style={{ fontSize: 11.5, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700, marginBottom: 6 }}>
               Records ({shareSelectedCount})
             </div>

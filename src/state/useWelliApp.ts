@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ACTIVITY_LOG,
+  CONSENT_SCOPES,
   DOCTORS,
   FAMILY,
   INITIAL_ACTIVE_SHARES,
@@ -13,12 +14,15 @@ import {
 } from '../data/mockData';
 import type {
   ActiveShare,
+  ConsentGranteeType,
   Notification,
   RecordType,
   ShareExpiry,
   ShareMethod,
   Tab,
 } from '../data/types';
+import { bridgeLinkFor, generateBridgeCode } from '../utils/bridgeCode';
+import { EXPIRY_SHORT_LABEL_MAP } from '../utils/expiry';
 
 export interface AppState {
   tab: Tab;
@@ -34,11 +38,20 @@ export interface AppState {
   shareMethod: ShareMethod;
   shareDoctorQuery: string;
   shareSelectedDoctorId: string | null;
+  bridgeCode: string | null;
   shareExpiry: ShareExpiry;
   activeShares: ActiveShare[];
+  showSmartConsent: boolean;
+  consentGranteeType: ConsentGranteeType;
+  consentProviderId: string;
+  consentScope: string | null;
+  consentAllowWrite: boolean;
+  consentExpiry: ShareExpiry;
+  consentPurpose: string;
   showFamilyAccess: boolean;
   showProxyLog: boolean;
   showPersonalInfo: boolean;
+  showPrivacyPolicy: boolean;
   showPrivacySecurity: boolean;
   twoFactorEnabled: boolean;
   showLinkedAccounts: boolean;
@@ -53,6 +66,9 @@ export interface AppState {
   careCategory: string;
   careQuery: string;
   inCall: boolean;
+  callMuted: boolean;
+  callCameraOff: boolean;
+  callDurationSec: number;
   showOnboarding: boolean;
   onboardingStep: number;
   showNotifications: boolean;
@@ -64,6 +80,7 @@ export interface AppState {
   showLanguage: boolean;
   language: string;
   notifPermission: 'granted' | 'skipped' | null;
+  loggedOut: boolean;
   toast: string | null;
 }
 
@@ -81,11 +98,20 @@ const initialState: AppState = {
   shareMethod: 'search',
   shareDoctorQuery: '',
   shareSelectedDoctorId: null,
+  bridgeCode: null,
   shareExpiry: '24h',
   activeShares: INITIAL_ACTIVE_SHARES,
+  showSmartConsent: false,
+  consentGranteeType: 'individual',
+  consentProviderId: '',
+  consentScope: null,
+  consentAllowWrite: false,
+  consentExpiry: '24h',
+  consentPurpose: '',
   showFamilyAccess: false,
   showProxyLog: false,
   showPersonalInfo: false,
+  showPrivacyPolicy: false,
   showPrivacySecurity: false,
   twoFactorEnabled: false,
   showLinkedAccounts: false,
@@ -100,6 +126,9 @@ const initialState: AppState = {
   careCategory: 'All',
   careQuery: '',
   inCall: false,
+  callMuted: false,
+  callCameraOff: false,
+  callDurationSec: 0,
   showOnboarding: false,
   onboardingStep: 0,
   showNotifications: false,
@@ -111,6 +140,7 @@ const initialState: AppState = {
   showLanguage: false,
   language: 'English',
   notifPermission: null,
+  loggedOut: false,
   toast: null,
 };
 
@@ -143,6 +173,15 @@ export function useWelliApp() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!state.inCall) return;
+    const id = setInterval(() => {
+      patch((s) => ({ callDurationSec: s.callDurationSec + 1 }));
+    }, 1000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.inCall]);
 
   const persistShares = (shares: ActiveShare[]) => {
     try {
@@ -192,6 +231,7 @@ export function useWelliApp() {
         shareMethod: 'search',
         shareDoctorQuery: '',
         shareSelectedDoctorId: null,
+        bridgeCode: null,
         shareExpiry: '24h',
       });
     },
@@ -215,21 +255,18 @@ export function useWelliApp() {
         ][s.shareStep];
         if (!valid) return s;
         if (s.shareStep === 3) {
-          const doc = DOCTORS.find((d) => d.id === s.shareSelectedDoctorId)!;
+          const doc =
+            s.shareSelectedDoctorId === 'bridge'
+              ? { id: 'bridge', name: `WelliBridge Link · ${s.bridgeCode}`, initials: 'WB' }
+              : DOCTORS.find((d) => d.id === s.shareSelectedDoctorId)!;
           const count = Object.values(s.shareSelected).filter(Boolean).length;
-          const expiryLabels: Record<ShareExpiry, string> = {
-            '24h': 'in 24 hours',
-            '7d': 'in 7 days',
-            '30d': 'in 30 days',
-            custom: 'in 90 days',
-          };
           const newShare: ActiveShare = {
             id: 's' + Date.now(),
             doctorId: doc.id,
             doctorName: doc.name,
             initials: doc.initials,
             recordCount: count,
-            expiresLabel: expiryLabels[s.shareExpiry],
+            expiresLabel: EXPIRY_SHORT_LABEL_MAP[s.shareExpiry],
             ownerId: s.activeFamilyId,
           };
           const activeShares = [newShare, ...s.activeShares];
@@ -244,12 +281,23 @@ export function useWelliApp() {
     },
     toggleShareRecord: (id: string) =>
       patch((s) => ({ shareSelected: { ...s.shareSelected, [id]: !s.shareSelected[id] } })),
-    setMethod: (m: ShareMethod) => patch({ shareMethod: m }),
+    setMethod: (m: ShareMethod) => {
+      setState((s) => {
+        if (m !== 'bridge') return { ...s, shareMethod: m };
+        const bridgeCode = s.bridgeCode ?? generateBridgeCode();
+        return { ...s, shareMethod: m, bridgeCode, shareSelectedDoctorId: 'bridge' };
+      });
+    },
     setDoctorQuery: (value: string) => patch({ shareDoctorQuery: value }),
     selectDoctor: (id: string) => patch({ shareSelectedDoctorId: id }),
-    scanQrSuccess: () => {
-      patch({ shareSelectedDoctorId: 'd2' });
-      actions.shareNext();
+    copyBridgeLink: () => {
+      const code = state.bridgeCode;
+      if (!code) return;
+      const link = `https://${bridgeLinkFor(code)}`;
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(link).catch(() => {});
+      }
+      showToast('Link copied');
     },
     setExpiry: (v: ShareExpiry) => patch({ shareExpiry: v }),
     revokeShare: (id: string) => {
@@ -261,6 +309,49 @@ export function useWelliApp() {
       showToast('Access revoked');
     },
 
+    openSmartConsent: () =>
+      patch({
+        showSmartConsent: true,
+        consentGranteeType: 'individual',
+        consentProviderId: '',
+        consentScope: null,
+        consentAllowWrite: false,
+        consentExpiry: '24h',
+        consentPurpose: '',
+      }),
+    closeSmartConsent: () => patch({ showSmartConsent: false }),
+    setConsentGranteeType: (t: ConsentGranteeType) => patch({ consentGranteeType: t }),
+    setConsentProviderId: (v: string) => patch({ consentProviderId: v }),
+    setConsentScope: (v: string) => patch({ consentScope: v }),
+    toggleConsentWrite: () => patch((s) => ({ consentAllowWrite: !s.consentAllowWrite })),
+    setConsentExpiry: (v: ShareExpiry) => patch({ consentExpiry: v }),
+    setConsentPurpose: (v: string) => patch({ consentPurpose: v }),
+    grantSmartAccess: () => {
+      const providerId = state.consentProviderId.trim();
+      if (!providerId || !state.consentScope) {
+        showToast('Enter a provider ID and choose an access scope');
+        return;
+      }
+      const newShare: ActiveShare = {
+        id: 's' + Date.now(),
+        doctorId: 'consent-' + Date.now(),
+        doctorName: providerId,
+        initials: providerId.slice(0, 2).toUpperCase(),
+        recordCount: 0,
+        scopeLabel: state.consentScope,
+        writeAccess: state.consentAllowWrite,
+        purpose: state.consentPurpose.trim() || undefined,
+        expiresLabel: EXPIRY_SHORT_LABEL_MAP[state.consentExpiry],
+        ownerId: state.activeFamilyId,
+      };
+      setState((s) => {
+        const activeShares = [newShare, ...s.activeShares];
+        persistShares(activeShares);
+        return { ...s, activeShares, showSmartConsent: false };
+      });
+      showToast('Access granted');
+    },
+
     openEmergency: () => patch({ showEmergency: true }),
     closeEmergency: () => patch({ showEmergency: false }),
     openFamilyAccess: () => patch({ showFamilyAccess: true }),
@@ -269,6 +360,8 @@ export function useWelliApp() {
     closeProxyLog: () => patch({ showProxyLog: false }),
     openPersonalInfo: () => patch({ showPersonalInfo: true }),
     closePersonalInfo: () => patch({ showPersonalInfo: false }),
+    openPrivacyPolicy: () => patch({ showPrivacyPolicy: true }),
+    closePrivacyPolicy: () => patch({ showPrivacyPolicy: false }),
     openPrivacySecurity: () => patch({ showPrivacySecurity: true }),
     closePrivacySecurity: () => patch({ showPrivacySecurity: false }),
     toggleTwoFactor: () => {
@@ -298,11 +391,13 @@ export function useWelliApp() {
 
     setCareCategory: (c: string) => patch({ careCategory: c }),
     setCareQuery: (value: string) => patch({ careQuery: value }),
-    joinCall: () => patch({ inCall: true }),
+    joinCall: () => patch({ inCall: true, callMuted: false, callCameraOff: false, callDurationSec: 0 }),
     endCall: () => {
       patch({ inCall: false });
       showToast('Call ended');
     },
+    toggleCallMute: () => patch((s) => ({ callMuted: !s.callMuted })),
+    toggleCallCamera: () => patch((s) => ({ callCameraOff: !s.callCameraOff })),
     bookProvider: (name: string) => showToast(`Booking request sent to ${name}`),
 
     openOnboarding: () => patch({ showOnboarding: true, onboardingStep: 0 }),
@@ -364,7 +459,9 @@ export function useWelliApp() {
       actions.openShareFlow(recordId ?? undefined);
     },
     downloadRecord: () => showToast('Record saved to Files'),
-    openSettingsStub: (label: string) => showToast(`Opening ${label}`),
+
+    logOut: () => patch({ loggedOut: true }),
+    logBackIn: () => patch({ loggedOut: false, tab: 'home' }),
   };
 
   return {
@@ -377,6 +474,7 @@ export function useWelliApp() {
     activityLog: ACTIVITY_LOG,
     onboardingSlides: ONBOARDING,
     linkedAccountDefs: LINKED_ACCOUNTS,
+    consentScopes: CONSENT_SCOPES,
   };
 }
 

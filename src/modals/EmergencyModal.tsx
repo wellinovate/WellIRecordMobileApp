@@ -1,3 +1,4 @@
+import { QRCodeSVG } from 'qrcode.react';
 import type { WelliApp } from '../state/useWelliApp';
 
 export function EmergencyModal({ app }: { app: WelliApp }) {
@@ -50,13 +51,12 @@ export function EmergencyModal({ app }: { app: WelliApp }) {
           <div style={{ color: '#fff', fontSize: 13.5, fontWeight: 600 }}>{emergencyMember.contact}</div>
         </div>
         <div style={{ background: '#fff', borderRadius: 16, padding: 18, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
-          <div
-            style={{
-              width: 130,
-              height: 130,
-              borderRadius: 10,
-              background: 'repeating-linear-gradient(0deg, #0f172a 0 5px, #fff 5px 10px), repeating-linear-gradient(90deg, #0f172a 0 5px, transparent 5px 10px)',
-            }}
+          <QRCodeSVG
+            value={`https://welli.link/emergency/${emergencyMember.id}`}
+            size={130}
+            fgColor="#0f172a"
+            bgColor="#ffffff"
+            level="M"
           />
           <div style={{ fontSize: 11.5, color: '#64748b', textAlign: 'center' }}>First responders can scan for full profile</div>
         </div>

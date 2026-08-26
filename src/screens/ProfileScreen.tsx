@@ -210,7 +210,10 @@ export function ProfileScreen({ app }: { app: WelliApp }) {
         ))}
       </div>
 
-      <button style={{ width: '100%', background: 'transparent', border: 'none', color: '#dc2626', fontSize: 13.5, fontWeight: 700, padding: 10, cursor: 'pointer' }}>
+      <button
+        onClick={actions.logOut}
+        style={{ width: '100%', background: 'transparent', border: 'none', color: '#dc2626', fontSize: 13.5, fontWeight: 700, padding: 10, cursor: 'pointer' }}
+      >
         Log Out
       </button>
     </div>

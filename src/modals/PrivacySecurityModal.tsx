@@ -83,7 +83,7 @@ export function PrivacySecurityModal({ app }: { app: WelliApp }) {
           <div style={{ borderBottom: '1px solid #e2e8f0' }}>
             <Row emoji="📥" label="Download My Data" onClick={actions.downloadMyData} />
           </div>
-          <Row emoji="📄" label="Privacy Policy" onClick={() => actions.openSettingsStub('Privacy Policy')} />
+          <Row emoji="📄" label="Privacy Policy" onClick={actions.openPrivacyPolicy} />
         </div>
 
         <div style={{ background: '#fff', border: '1px solid #fca5a5', borderRadius: 16, overflow: 'hidden' }}>

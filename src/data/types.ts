@@ -54,7 +54,12 @@ export interface ActiveShare {
   recordCount: number;
   expiresLabel: string;
   ownerId: string;
+  scopeLabel?: string;
+  writeAccess?: boolean;
+  purpose?: string;
 }
+
+export type ConsentGranteeType = 'individual' | 'organization';
 
 export interface Notification {
   id: string;
@@ -98,5 +103,5 @@ export interface Theme {
 }
 
 export type Tab = 'home' | 'records' | 'share' | 'care' | 'profile';
-export type ShareMethod = 'search' | 'qr';
+export type ShareMethod = 'search' | 'bridge';
 export type ShareExpiry = '24h' | '7d' | '30d' | 'custom';
