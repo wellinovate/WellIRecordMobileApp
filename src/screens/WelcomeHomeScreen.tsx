@@ -17,6 +17,7 @@ import { FormSelect } from '../components/FormSelect';
 import { BLOOD_TYPES, GENOTYPES } from '../data/mockData';
 import { authenticateWithBiometrics } from '../utils/biometrics';
 import { hapticFeedback } from '../utils/haptics';
+import { CONFIG } from '../services/config';
 import type { WelliApp } from '../state/useWelliApp';
 import type { SignUpFormData, WelcomeTab } from '../data/types';
 
@@ -577,17 +578,19 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
               ))}
             </View>
 
-            {/* Quick Autofill Helper for convenience */}
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => {
-                setOtpDigits(['8', '4', '9', '2', '0', '1']);
-                triggerVerifyOtp('849201');
-              }}
-              style={styles.demoFillBtn}
-            >
-              <Text style={styles.demoFillText}>💡 Tap to Auto-fill Demo Code: 849 201</Text>
-            </TouchableOpacity>
+            {/* Quick Autofill Helper (only in demo mode) */}
+            {CONFIG.demoMode && (
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => {
+                  setOtpDigits(['8', '4', '9', '2', '0', '1']);
+                  triggerVerifyOtp('849201');
+                }}
+                style={styles.demoFillBtn}
+              >
+                <Text style={styles.demoFillText}>💡 Tap to Auto-fill Demo Code: 849 201</Text>
+              </TouchableOpacity>
+            )}
 
             {/* Main Verify Submit Button */}
             <TouchableOpacity
