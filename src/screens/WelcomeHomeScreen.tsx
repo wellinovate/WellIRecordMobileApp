@@ -84,6 +84,8 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [authenticatingBio, setAuthenticatingBio] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [signInError, setSignInError] = useState<string | null>(null);
 
   // Sign Up State
   const [signUpData, setSignUpData] = useState<SignUpFormData>({
@@ -105,12 +107,27 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
 
   const handleTabChange = (tab: WelcomeTab) => {
     hapticFeedback.selection();
+    setSignInError(null);
+    setSignUpError(null);
     actions.setWelcomeTab(tab);
   };
-  const handleSignIn = () => {
-    const id = loginIdentifier.trim() || 'amara@wellirecord.com';
-    hapticFeedback.success();
-    actions.signInWithCredentials(id);
+
+  const handleSignIn = async () => {
+    if (!loginIdentifier.trim()) {
+      setSignInError('Please enter your email address or phone number');
+      hapticFeedback.error();
+      return;
+    }
+    setSignInError(null);
+    setIsSubmitting(true);
+    try {
+      await actions.signInWithCredentials(loginIdentifier.trim(), loginPassword.trim());
+    } catch (err: any) {
+      setSignInError(err?.message || 'Invalid credentials. Please verify and try again.');
+      hapticFeedback.error();
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleBiometricSignIn = async () => {
@@ -119,11 +136,11 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
     const result = await authenticateWithBiometrics('Sign in to WelliRecord');
     setAuthenticatingBio(false);
     if (result.success) {
-      actions.signInWithCredentials('amara@wellirecord.com');
+      actions.signInWithCredentials('amara.nwosu@gmail.com');
     }
   };
 
-  const handleSignUp = () => {
+  const handleSignUp = async () => {
     if (!signUpData.name.trim()) {
       setSignUpError('Please enter your full name');
       hapticFeedback.error();
@@ -140,7 +157,15 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
       return;
     }
     setSignUpError(null);
-    actions.signUpWithData(signUpData);
+    setIsSubmitting(true);
+    try {
+      await actions.signUpWithData(signUpData);
+    } catch (err: any) {
+      setSignUpError(err?.message || 'Registration failed. Please check connection and try again.');
+      hapticFeedback.error();
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -384,6 +409,12 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
               Sign in to manage your health records, shares, and family vault.
             </Text>
 
+            {signInError && (
+              <View style={styles.errorAlert}>
+                <Text style={styles.errorAlertText}>⚠️ {signInError}</Text>
+              </View>
+            )}
+
             {/* Email / Phone Input */}
             <Text style={styles.inputLabel}>Email or Phone Number</Text>
             <TextInput
@@ -446,9 +477,14 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={handleSignIn}
-              style={styles.submitBtn}
+              disabled={isSubmitting}
+              style={[styles.submitBtn, isSubmitting && { opacity: 0.8 }]}
             >
-              <Text style={styles.submitBtnText}>Sign In to Vault</Text>
+              {isSubmitting ? (
+                <ActivityIndicator color="#ffffff" size="small" />
+              ) : (
+                <Text style={styles.submitBtnText}>Sign In to Vault</Text>
+              )}
             </TouchableOpacity>
 
             {/* Biometric Sign In Button */}
@@ -612,9 +648,14 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={handleSignUp}
-              style={styles.submitBtn}
+              disabled={isSubmitting}
+              style={[styles.submitBtn, isSubmitting && { opacity: 0.8 }]}
             >
-              <Text style={styles.submitBtnText}>Create Free Vault & Start</Text>
+              {isSubmitting ? (
+                <ActivityIndicator color="#ffffff" size="small" />
+              ) : (
+                <Text style={styles.submitBtnText}>Create Free Vault & Start</Text>
+              )}
             </TouchableOpacity>
 
             {/* Switch to Sign In */}

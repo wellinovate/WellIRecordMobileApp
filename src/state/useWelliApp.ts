@@ -38,8 +38,9 @@ import type {
 } from '../data/types';
 import { bridgeLinkFor, generateBridgeCode } from '../utils/bridgeCode';
 import { EXPIRY_SHORT_LABEL_MAP } from '../utils/expiry';
-import { storage } from '../utils/storage';
 import { hapticFeedback } from '../utils/haptics';
+import { storage } from '../utils/storage';
+import { authService } from '../services/authService';
 
 export interface AppState {
   tab: Tab;
@@ -860,21 +861,38 @@ export function useWelliApp() {
       showToast('Welcome back to WelliRecord');
     },
 
-    signInWithCredentials: (identifier: string) => {
+    signInWithCredentials: async (identifier: string, password?: string) => {
       hapticFeedback.success();
       const trimmed = identifier.trim();
-      patch({
+      const session = await authService.loginWithPassword(trimmed, password);
+      
+      patch((s) => ({
         loggedOut: false,
         showWelcomeHome: false,
         activeFamilyId: 'me',
         tab: 'home',
-      });
-      showToast(`Signed in as ${trimmed || 'Amara Nwosu'}`);
+        familyMembers: s.familyMembers.map((f) =>
+          f.id === 'me'
+            ? {
+                ...f,
+                name: session.user.fullName || f.name,
+                email: session.user.email || f.email,
+                phone: session.user.phoneNumber || f.phone,
+                bloodType: session.user.bloodType || f.bloodType,
+                genotype: session.user.genotype || f.genotype,
+                insuranceProvider: session.user.hmoProvider || f.insuranceProvider,
+                insuranceId: session.user.hmoPolicyNumber || f.insuranceId,
+              }
+            : f
+        ),
+      }));
+      showToast(`Welcome back, ${session.user.fullName.split(' ')[0]}!`);
     },
 
-    signUpWithData: (data: SignUpFormData) => {
+    signUpWithData: async (data: SignUpFormData) => {
       hapticFeedback.success();
-      const initials = data.name
+      const session = await authService.registerUser(data);
+      const initials = (session.user.fullName || data.name)
         .split(' ')
         .filter(Boolean)
         .slice(0, 2)
@@ -884,23 +902,23 @@ export function useWelliApp() {
 
       const newOwner: FamilyMember = {
         id: 'me',
-        name: data.name.trim() || 'New User',
+        name: session.user.fullName || data.name.trim() || 'New User',
         initials,
         role: 'owner',
         dob: data.dob || '1990-01-01',
         gender: '—',
-        bloodType: data.bloodType || 'O+',
-        genotype: data.genotype || 'AA',
+        bloodType: session.user.bloodType || data.bloodType || 'O+',
+        genotype: session.user.genotype || data.genotype || 'AA',
         height: '—',
         weight: '—',
         allergies: 'None reported',
         conditions: 'None reported',
-        contact: data.phone || '+234 800 000 0000',
-        email: data.email || 'user@example.com',
-        phone: data.phone || '+234 800 000 0000',
+        contact: session.user.phoneNumber || data.phone || '+234 800 000 0000',
+        email: session.user.email || data.email || 'user@example.com',
+        phone: session.user.phoneNumber || data.phone || '+234 800 000 0000',
         address: 'Lagos, Nigeria',
-        insuranceProvider: data.insuranceProvider || 'Private Self-Pay',
-        insuranceId: data.insuranceId || `WELLI-${Math.floor(100000 + Math.random() * 900000)}`,
+        insuranceProvider: session.user.hmoProvider || data.insuranceProvider || 'Private Self-Pay',
+        insuranceId: session.user.hmoPolicyNumber || data.insuranceId || `WELLI-${Math.floor(100000 + Math.random() * 900000)}`,
       };
 
       patch((s) => ({
