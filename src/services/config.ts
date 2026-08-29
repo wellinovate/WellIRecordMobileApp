@@ -12,7 +12,7 @@ export interface AppConfig {
   requestTimeoutMs: number;
 }
 
-export const API_BASE_URL = 'https://wellirecordmobileapp.onrender.com';
+export const API_BASE_URL = 'https://wellirecordmobileapp.onrender.com/api/v1';
 
 export const CONFIG: AppConfig = {
   // Live backend API URL on Render

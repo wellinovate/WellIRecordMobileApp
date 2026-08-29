@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Modal,
   SafeAreaView,
+  ActivityIndicator,
 } from 'react-native';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
 import { ModalHeader } from '../components/ModalHeader';
@@ -51,26 +52,73 @@ export function ShareFlowModal({ app }: { app: WelliApp }) {
   const [otpChannel, setOtpChannel] = useState<'phone' | 'email'>('phone');
   const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [resendCooldown, setResendCooldown] = useState(30);
+  const [dispatchState, setDispatchState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [dispatchError, setDispatchError] = useState<string | null>(null);
+  const [dispatchMessage, setDispatchMessage] = useState<string | null>(null);
   const otpInputsRef = useRef<Array<TextInput | null>>([]);
 
-  // Countdown timer for OTP & live dispatch trigger
-  useEffect(() => {
-    if (state.shareStep === 3) {
-      if (!CONFIG.demoMode) {
-        if (otpChannel === 'phone') {
-          authService.sendPhoneOtp('+2348055555504').catch(() => {});
-        } else {
-          authService.sendEmailOtp('amara.nwosu@gmail.com').catch(() => {});
-        }
+  const triggerDispatch = async (channel: 'phone' | 'email') => {
+    if (CONFIG.demoMode) return;
+    setDispatchState('sending');
+    setDispatchError(null);
+    try {
+      if (channel === 'phone') {
+        const res = await authService.sendPhoneOtp('+2348055555504');
+        setDispatchState('sent');
+        setDispatchMessage(res.message || 'Security code dispatched to +234 805 *** 5504');
+      } else {
+        const res = await authService.sendEmailOtp('amara.nwosu@gmail.com');
+        setDispatchState('sent');
+        setDispatchMessage(res.message || 'Security code dispatched to am***u@gmail.com');
       }
-      if (resendCooldown > 0) {
-        const timer = setInterval(() => {
-          setResendCooldown((c) => (c > 0 ? c - 1 : 0));
-        }, 1000);
-        return () => clearInterval(timer);
-      }
+    } catch (err: any) {
+      setDispatchState('error');
+      setDispatchError(err?.message || 'Failed to connect to backend OTP gateway');
     }
-  }, [state.shareStep, resendCooldown, otpChannel]);
+  };
+
+  // Countdown timer for OTP resend cooldown
+  useEffect(() => {
+    if (resendCooldown > 0 && state.shareStep === 3) {
+      const timer = setInterval(() => {
+        setResendCooldown((c) => (c > 0 ? c - 1 : 0));
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [resendCooldown, state.shareStep]);
+
+  // Initial live OTP dispatch when entering Step 3 or switching channel
+  useEffect(() => {
+    let isMounted = true;
+    if (state.shareStep === 3 && !CONFIG.demoMode) {
+      const run = async () => {
+        try {
+          if (otpChannel === 'phone') {
+            const res = await authService.sendPhoneOtp('+2348055555504');
+            if (isMounted) {
+              setDispatchState('sent');
+              setDispatchMessage(res.message || 'Security code dispatched to +234 805 *** 5504');
+            }
+          } else {
+            const res = await authService.sendEmailOtp('amara.nwosu@gmail.com');
+            if (isMounted) {
+              setDispatchState('sent');
+              setDispatchMessage(res.message || 'Security code dispatched to am***u@gmail.com');
+            }
+          }
+        } catch (err: any) {
+          if (isMounted) {
+            setDispatchState('error');
+            setDispatchError(err?.message || 'Failed to connect to backend OTP gateway');
+          }
+        }
+      };
+      void run();
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [state.shareStep, otpChannel]);
 
   if (!state.showShareFlow) return null;
 
@@ -792,12 +840,37 @@ export function ShareFlowModal({ app }: { app: WelliApp }) {
                   💡 Tap to Auto-fill Demo Security Code: <Text style={{ fontWeight: '900' }}>849 201</Text>
                 </Text>
               </TouchableOpacity>
+            ) : dispatchState === 'sending' ? (
+              <View style={[styles.liveDispatchBadge, { backgroundColor: '#f0f9ff', borderColor: '#bae6fd' }]}>
+                <ActivityIndicator size="small" color="#0284c7" />
+                <Text style={[styles.liveDispatchText, { color: '#0369a1' }]}>
+                  Connecting to Termii SMS Gateway & dispatching live code...
+                </Text>
+              </View>
+            ) : dispatchState === 'error' ? (
+              <View style={[styles.liveDispatchBadge, { backgroundColor: '#fef2f2', borderColor: '#fecaca', alignItems: 'flex-start' }]}>
+                <Text style={{ fontSize: 14, marginTop: 1 }}>⚠️</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.liveDispatchText, { color: '#b91c1c', fontWeight: '700' }]}>
+                    Gateway Dispatch Error
+                  </Text>
+                  <Text style={{ fontSize: 11, color: '#dc2626', marginTop: 2, lineHeight: 14 }}>
+                    {dispatchError}
+                  </Text>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={() => triggerDispatch(otpChannel)}
+                    style={{ marginTop: 6, alignSelf: 'flex-start', paddingVertical: 4, paddingHorizontal: 10, backgroundColor: '#fee2e2', borderRadius: 6 }}
+                  >
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#991b1b' }}>🔄 Tap to Retry Live SMS</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
             ) : (
               <View style={styles.liveDispatchBadge}>
-                <Text style={{ fontSize: 13 }}>📡</Text>
+                <Text style={{ fontSize: 13 }}>✓</Text>
                 <Text style={styles.liveDispatchText}>
-                  Live security code dispatched via Termii Gateway to{' '}
-                  {otpChannel === 'phone' ? '+234 805 *** 5504' : 'am***u@gmail.com'}
+                  {dispatchMessage || `Live security code dispatched via Termii to ${otpChannel === 'phone' ? '+234 805 *** 5504' : 'am***u@gmail.com'}`}
                 </Text>
               </View>
             )}
@@ -815,13 +888,7 @@ export function ShareFlowModal({ app }: { app: WelliApp }) {
                   onPress={() => {
                     hapticFeedback.light();
                     setResendCooldown(30);
-                    if (!CONFIG.demoMode) {
-                      if (otpChannel === 'phone') {
-                        authService.sendPhoneOtp('+2348055555504').catch(() => {});
-                      } else {
-                        authService.sendEmailOtp('amara.nwosu@gmail.com').catch(() => {});
-                      }
-                    }
+                    triggerDispatch(otpChannel);
                   }}
                 >
                   <Text style={styles.resendActionText}>Resend Code Now</Text>
