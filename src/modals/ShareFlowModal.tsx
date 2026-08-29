@@ -16,6 +16,8 @@ import { RECORD_META } from '../data/mockData';
 import { bridgeLinkFor } from '../utils/bridgeCode';
 import { EXPIRY_LABEL_MAP } from '../utils/expiry';
 import { hapticFeedback } from '../utils/haptics';
+import { CONFIG } from '../services/config';
+import { authService } from '../services/authService';
 import type { WelliApp } from '../state/useWelliApp';
 import type { ShareExpiry } from '../data/types';
 
@@ -51,15 +53,24 @@ export function ShareFlowModal({ app }: { app: WelliApp }) {
   const [resendCooldown, setResendCooldown] = useState(30);
   const otpInputsRef = useRef<Array<TextInput | null>>([]);
 
-  // Countdown timer for OTP
+  // Countdown timer for OTP & live dispatch trigger
   useEffect(() => {
-    if (state.shareStep === 3 && resendCooldown > 0) {
-      const timer = setInterval(() => {
-        setResendCooldown((c) => (c > 0 ? c - 1 : 0));
-      }, 1000);
-      return () => clearInterval(timer);
+    if (state.shareStep === 3) {
+      if (!CONFIG.demoMode) {
+        if (otpChannel === 'phone') {
+          authService.sendPhoneOtp('+2348055555504').catch(() => {});
+        } else {
+          authService.sendEmailOtp('amara.nwosu@gmail.com').catch(() => {});
+        }
+      }
+      if (resendCooldown > 0) {
+        const timer = setInterval(() => {
+          setResendCooldown((c) => (c > 0 ? c - 1 : 0));
+        }, 1000);
+        return () => clearInterval(timer);
+      }
     }
-  }, [state.shareStep, resendCooldown]);
+  }, [state.shareStep, resendCooldown, otpChannel]);
 
   if (!state.showShareFlow) return null;
 
@@ -770,16 +781,26 @@ export function ShareFlowModal({ app }: { app: WelliApp }) {
               })}
             </View>
 
-            {/* Demo Quick-Fill Button */}
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={autoFillDemoOtp}
-              style={styles.demoFillBtn}
-            >
-              <Text style={styles.demoFillBtnText}>
-                💡 Tap to Auto-fill Demo Security Code: <Text style={{ fontWeight: '900' }}>849 201</Text>
-              </Text>
-            </TouchableOpacity>
+            {/* Demo Quick-Fill or Live Dispatch Badge */}
+            {CONFIG.demoMode ? (
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={autoFillDemoOtp}
+                style={styles.demoFillBtn}
+              >
+                <Text style={styles.demoFillBtnText}>
+                  💡 Tap to Auto-fill Demo Security Code: <Text style={{ fontWeight: '900' }}>849 201</Text>
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.liveDispatchBadge}>
+                <Text style={{ fontSize: 13 }}>📡</Text>
+                <Text style={styles.liveDispatchText}>
+                  Live security code dispatched via Termii Gateway to{' '}
+                  {otpChannel === 'phone' ? '+234 805 *** 5504' : 'am***u@gmail.com'}
+                </Text>
+              </View>
+            )}
 
             {/* Resend Cooldown Link */}
             <View style={styles.resendRow}>
@@ -794,6 +815,13 @@ export function ShareFlowModal({ app }: { app: WelliApp }) {
                   onPress={() => {
                     hapticFeedback.light();
                     setResendCooldown(30);
+                    if (!CONFIG.demoMode) {
+                      if (otpChannel === 'phone') {
+                        authService.sendPhoneOtp('+2348055555504').catch(() => {});
+                      } else {
+                        authService.sendEmailOtp('amara.nwosu@gmail.com').catch(() => {});
+                      }
+                    }
                   }}
                 >
                   <Text style={styles.resendActionText}>Resend Code Now</Text>
@@ -1387,6 +1415,25 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     color: '#1d4ed8',
     fontWeight: '600',
+  },
+  liveDispatchBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#f0fdf4',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+  },
+  liveDispatchText: {
+    flex: 1,
+    fontSize: 11,
+    color: '#166534',
+    fontWeight: '600',
+    lineHeight: 14,
   },
   resendRow: {
     flexDirection: 'row',

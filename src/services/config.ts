@@ -19,7 +19,7 @@ export const CONFIG: AppConfig = {
   apiBaseUrl: process.env.EXPO_PUBLIC_API_URL || API_BASE_URL,
   
   // Set to false when connecting to a live backend
-  demoMode: true,
+  demoMode: false,
 
   // Nigerian SMS Gateway Sender ID (registered on Termii / DND-compliant)
   termiiSenderId: 'WelliRecord',
