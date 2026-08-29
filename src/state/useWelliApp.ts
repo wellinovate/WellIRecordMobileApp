@@ -273,6 +273,7 @@ export function useWelliApp() {
   };
 
   const actions = {
+    showToast: (msg: string) => showToast(msg),
     setTab: (tab: Tab) => {
       patch((s) => {
         if (s.tab === tab) return {};

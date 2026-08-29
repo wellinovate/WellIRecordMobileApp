@@ -119,7 +119,7 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
     const result = await authenticateWithBiometrics('Sign in to WelliRecord');
     setAuthenticatingBio(false);
     if (result.success) {
-      actions.signInWithDemo('me');
+      actions.signInWithCredentials('amara@wellirecord.com');
     }
   };
 
@@ -158,18 +158,6 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
               <Text style={styles.countryBadgeText}>🇳🇬 Nigeria</Text>
             </View>
           </View>
-
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => {
-              hapticFeedback.selection();
-              actions.signInWithDemo('me');
-            }}
-            style={styles.quickDemoBtn}
-            accessibilityLabel="Instant demo access"
-          >
-            <Text style={styles.quickDemoText}>⚡ Demo Access ›</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Navigation Switcher Bar */}
@@ -445,7 +433,10 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
 
               <TouchableOpacity
                 activeOpacity={0.7}
-                onPress={() => actions.signInWithDemo('me')}
+                onPress={() => {
+                  hapticFeedback.selection();
+                  actions.showToast('Password reset link sent to your registered email');
+                }}
               >
                 <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
               </TouchableOpacity>
