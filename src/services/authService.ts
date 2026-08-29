@@ -44,22 +44,12 @@ export const authService = {
       };
     }
 
-    try {
-      const res = await apiClient.post<SendOtpResponse>('/auth/otp/send', {
-        channel: 'dnd',
-        to: phoneNumber,
-        from: CONFIG.termiiSenderId,
-        type: 'numeric',
-      });
-      return res;
-    } catch {
-      return {
-        success: true,
-        message: `Security code dispatched to ${phoneNumber}`,
-        otpId: `otp_${Date.now()}`,
-        expiresInSeconds: 300,
-      };
-    }
+    return await apiClient.post<SendOtpResponse>('/auth/otp/send', {
+      channel: 'dnd',
+      to: phoneNumber,
+      from: CONFIG.termiiSenderId,
+      type: 'numeric',
+    });
   },
 
   /**
@@ -85,30 +75,12 @@ export const authService = {
       return session;
     }
 
-    try {
-      const session = await apiClient.post<AuthSession>('/auth/otp/verify', {
-        phoneNumber,
-        code,
-      });
-      await this.saveSession(session);
-      return session;
-    } catch {
-      const session: AuthSession = {
-        token: `jwt_welli_auth_${Date.now()}`,
-        user: {
-          id: 'me',
-          fullName: 'Amara Nwosu',
-          phoneNumber: phoneNumber || '+234 805 335 5504',
-          email: 'amara.nwosu@gmail.com',
-          bloodType: 'O+',
-          genotype: 'AA',
-          hmoProvider: 'Hygeia HMO',
-          hmoPolicyNumber: 'HYG-992014-LAG',
-        },
-      };
-      await this.saveSession(session);
-      return session;
-    }
+    const session = await apiClient.post<AuthSession>('/auth/otp/verify', {
+      phoneNumber,
+      code,
+    });
+    await this.saveSession(session);
+    return session;
   },
 
   /**
@@ -124,15 +96,7 @@ export const authService = {
       };
     }
 
-    try {
-      return await apiClient.post<SendOtpResponse>('/auth/email/send', { email });
-    } catch {
-      return {
-        success: true,
-        message: `Verification code sent to ${email}`,
-        expiresInSeconds: 300,
-      };
-    }
+    return await apiClient.post<SendOtpResponse>('/auth/email/send', { email });
   },
 
   /**
@@ -199,31 +163,12 @@ export const authService = {
       return session;
     }
 
-    try {
-      const session = await apiClient.post<AuthSession>('/auth/login', {
-        identifier,
-        password: password || 'DefaultPass123!',
-      });
-      await this.saveSession(session);
-      return session;
-    } catch {
-      // Offline / resilient fallback session
-      const session: AuthSession = {
-        token: `jwt_welli_auth_${Date.now()}`,
-        user: {
-          id: 'me',
-          fullName: 'Amara Nwosu',
-          phoneNumber: identifier.includes('@') ? '+234 805 335 5504' : identifier,
-          email: identifier.includes('@') ? identifier : 'amara.nwosu@gmail.com',
-          bloodType: 'O+',
-          genotype: 'AA',
-          hmoProvider: 'Hygeia HMO',
-          hmoPolicyNumber: 'HYG-992014-LAG',
-        },
-      };
-      await this.saveSession(session);
-      return session;
-    }
+    const session = await apiClient.post<AuthSession>('/auth/login', {
+      identifier,
+      password: password || 'DefaultPass123!',
+    });
+    await this.saveSession(session);
+    return session;
   },
 
   /**
