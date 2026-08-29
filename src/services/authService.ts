@@ -38,8 +38,7 @@ export const authService = {
       await new Promise((res) => setTimeout(res, 400));
       return {
         success: true,
-        code: '849201',
-        message: `Security code sent to ${phoneNumber}. Demo Code: 849201`,
+        message: `Security code sent to ${phoneNumber}`,
         otpId: `otp_${Date.now()}`,
         expiresInSeconds: 300,
       };
@@ -52,14 +51,10 @@ export const authService = {
         from: CONFIG.termiiSenderId,
         type: 'numeric',
       });
-      return {
-        ...res,
-        code: res.code || '849201',
-      };
+      return res;
     } catch {
       return {
         success: true,
-        code: '849201',
         message: `Security code dispatched to ${phoneNumber}`,
         otpId: `otp_${Date.now()}`,
         expiresInSeconds: 300,
@@ -124,7 +119,7 @@ export const authService = {
       await new Promise((res) => setTimeout(res, 400));
       return {
         success: true,
-        message: `Verification code sent to ${email}. Demo Code: 849201`,
+        message: `Verification code sent to ${email}`,
         expiresInSeconds: 300,
       };
     }

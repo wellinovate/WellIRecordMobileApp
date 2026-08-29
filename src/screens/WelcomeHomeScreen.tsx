@@ -17,7 +17,6 @@ import { FormSelect } from '../components/FormSelect';
 import { BLOOD_TYPES, GENOTYPES } from '../data/mockData';
 import { authenticateWithBiometrics } from '../utils/biometrics';
 import { hapticFeedback } from '../utils/haptics';
-import { CONFIG } from '../services/config';
 import type { WelliApp } from '../state/useWelliApp';
 import type { SignUpFormData, WelcomeTab } from '../data/types';
 
@@ -92,7 +91,6 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
   // 6-Digit Verification Code State
   const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [resendCooldown, setResendCooldown] = useState(30);
-  const [receivedOtpCode, setReceivedOtpCode] = useState<string | null>(null);
   const otpInputsRef = useRef<Array<TextInput | null>>([]);
 
   // Sign In State
@@ -174,8 +172,7 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
     setIsSubmitting(true);
     try {
       const channel = loginIdentifier.includes('@') ? 'email' : 'phone';
-      const res = await actions.sendAuthOtp(loginIdentifier.trim(), channel);
-      setReceivedOtpCode(res?.code || '849201');
+      await actions.sendAuthOtp(loginIdentifier.trim(), channel);
       setPendingAuth({
         mode: 'signin',
         identifier: loginIdentifier.trim(),
@@ -241,8 +238,7 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
     try {
       const targetId = signUpData.phone.trim() || signUpData.email.trim();
       const channel = signUpData.phone.trim() ? 'phone' : 'email';
-      const res = await actions.sendAuthOtp(targetId, channel);
-      setReceivedOtpCode(res?.code || '849201');
+      await actions.sendAuthOtp(targetId, channel);
       setPendingAuth({
         mode: 'signup',
         identifier: targetId,
@@ -291,8 +287,7 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
     if (!pendingAuth || resendCooldown > 0) return;
     setIsSubmitting(true);
     try {
-      const res = await actions.sendAuthOtp(pendingAuth.identifier, pendingAuth.channel);
-      setReceivedOtpCode(res?.code || '849201');
+      await actions.sendAuthOtp(pendingAuth.identifier, pendingAuth.channel);
       setResendCooldown(30);
       setOtpDigits(['', '', '', '', '', '']);
       actions.showToast(`New 6-digit code sent to ${pendingAuth.identifier}`);
@@ -560,18 +555,6 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
               </View>
             )}
 
-            {/* Live Security Code Banner */}
-            <View style={styles.smsNoticeBanner}>
-              <Text style={styles.smsNoticeEmoji}>📬</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.smsNoticeTitle}>Authorization Code Dispatched</Text>
-                <Text style={styles.smsNoticeDesc}>
-                  Security code for <Text style={{ fontWeight: '800' }}>{pendingAuth.identifier}</Text> is{' '}
-                  <Text style={{ fontWeight: '900', color: '#0284c7' }}>{receivedOtpCode || '849201'}</Text>.
-                </Text>
-              </View>
-            </View>
-
             {/* 6 Box Inputs */}
             <View style={styles.otpBoxesRow}>
               {otpDigits.map((digit, idx) => (
@@ -593,20 +576,6 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
                 />
               ))}
             </View>
-
-            {/* Quick Autofill Helper (only in demo mode) */}
-            {CONFIG.demoMode && (
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={() => {
-                  setOtpDigits(['8', '4', '9', '2', '0', '1']);
-                  triggerVerifyOtp('849201');
-                }}
-                style={styles.demoFillBtn}
-              >
-                <Text style={styles.demoFillText}>💡 Tap to Auto-fill Demo Code: 849 201</Text>
-              </TouchableOpacity>
-            )}
 
             {/* Main Verify Submit Button */}
             <TouchableOpacity
@@ -1824,30 +1793,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#64748b',
     fontWeight: '600',
-  },
-  smsNoticeBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f0f9ff',
-    borderWidth: 1,
-    borderColor: '#bae6fd',
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 16,
-    gap: 10,
-  },
-  smsNoticeEmoji: {
-    fontSize: 22,
-  },
-  smsNoticeTitle: {
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: '#0369a1',
-    marginBottom: 2,
-  },
-  smsNoticeDesc: {
-    fontSize: 12,
-    color: '#334155',
-    lineHeight: 17,
   },
 });

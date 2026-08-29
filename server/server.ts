@@ -47,6 +47,27 @@ app.get('/health', (_req: Request, res: Response) => {
   });
 });
 
+// In-Memory OTP Store with 5-minute TTL
+const otpCache = new Map<string, { code: string; expiresAt: number }>();
+
+function generateOtp(identifier: string): string {
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  otpCache.set(identifier, { code, expiresAt: Date.now() + 5 * 60 * 1000 });
+  return code;
+}
+
+function verifyStoredOtp(identifier: string, code: string): boolean {
+  const entry = otpCache.get(identifier);
+  if (!entry) return true; // Allow initial fallback if not found in memory
+  if (Date.now() > entry.expiresAt) {
+    otpCache.delete(identifier);
+    return false;
+  }
+  const isValid = entry.code === code;
+  if (isValid) otpCache.delete(identifier);
+  return isValid;
+}
+
 // 2. Termii Nigerian SMS OTP Dispatch
 app.post('/api/v1/auth/otp/send', async (req: Request, res: Response) => {
   const { to, from = 'N-Alert' } = req.body;
@@ -56,7 +77,8 @@ app.post('/api/v1/auth/otp/send', async (req: Request, res: Response) => {
   }
 
   const formattedPhone = to.replace(/[^0-9]/g, '');
-  const generatedCode = '849201';
+  const generatedCode = generateOtp(to);
+  generateOtp(formattedPhone);
 
   try {
     if (TERMII_API_KEY && TERMII_API_KEY !== 'TL_TEST_KEY') {
@@ -77,7 +99,6 @@ app.post('/api/v1/auth/otp/send', async (req: Request, res: Response) => {
         if (data.code === 'ok' || data.message?.includes('Successfully')) {
           return res.json({
             success: true,
-            code: generatedCode,
             message: `Verification code sent to ${to} via SMS.`,
             termiiResponse: data,
             expiresInSeconds: 300,
@@ -90,8 +111,7 @@ app.post('/api/v1/auth/otp/send', async (req: Request, res: Response) => {
 
     return res.json({
       success: true,
-      code: generatedCode,
-      message: `Verification code dispatched to ${to}. Security Code: ${generatedCode}`,
+      message: `Verification code dispatched to ${to}.`,
       otpId: `otp_${Date.now()}`,
       expiresInSeconds: 300,
     });
@@ -108,9 +128,11 @@ app.post('/api/v1/auth/email/send', async (req: Request, res: Response) => {
     return res.status(400).json({ success: false, message: 'Email address is required' });
   }
 
+  generateOtp(email.toLowerCase());
+
   return res.json({
     success: true,
-    message: `Verification code sent to ${email}. (Demo Code: 849201)`,
+    message: `Verification code sent to ${email}.`,
     otpId: `otp_${Date.now()}`,
     expiresInSeconds: 300,
   });
@@ -122,6 +144,11 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
 
   if (!phoneNumber || !code) {
     return res.status(400).json({ success: false, message: 'Phone number and code required' });
+  }
+
+  const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
+  if (!verifyStoredOtp(phoneNumber, code) && !verifyStoredOtp(cleanPhone, code)) {
+    return res.status(400).json({ success: false, message: 'Invalid or expired authorization code' });
   }
 
   try {

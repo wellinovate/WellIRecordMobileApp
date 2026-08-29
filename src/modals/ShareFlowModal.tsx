@@ -213,11 +213,6 @@ export function ShareFlowModal({ app }: { app: WelliApp }) {
     }
   };
 
-  const autoFillDemoOtp = () => {
-    hapticFeedback.success();
-    setOtpDigits(['8', '4', '9', '2', '0', '1']);
-  };
-
   const handleCustomInviteSelect = () => {
     if (!customProviderName.trim()) return;
     hapticFeedback.selection();
@@ -829,22 +824,12 @@ export function ShareFlowModal({ app }: { app: WelliApp }) {
               })}
             </View>
 
-            {/* Demo Quick-Fill or Live Dispatch Badge */}
-            {CONFIG.demoMode ? (
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={autoFillDemoOtp}
-                style={styles.demoFillBtn}
-              >
-                <Text style={styles.demoFillBtnText}>
-                  💡 Tap to Auto-fill Demo Security Code: <Text style={{ fontWeight: '900' }}>849 201</Text>
-                </Text>
-              </TouchableOpacity>
-            ) : dispatchState === 'sending' ? (
+            {/* Live Gateway Dispatch Status */}
+            {dispatchState === 'sending' ? (
               <View style={[styles.liveDispatchBadge, { backgroundColor: '#f0f9ff', borderColor: '#bae6fd' }]}>
                 <ActivityIndicator size="small" color="#0284c7" />
                 <Text style={[styles.liveDispatchText, { color: '#0369a1' }]}>
-                  Connecting to Termii SMS Gateway & dispatching live code...
+                  Connecting to SMS Gateway & dispatching verification code...
                 </Text>
               </View>
             ) : dispatchState === 'error' ? (
