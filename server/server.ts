@@ -90,6 +90,22 @@ app.post('/api/v1/auth/otp/send', async (req: Request, res: Response) => {
   }
 });
 
+// 2b. Email OTP Dispatch
+app.post('/api/v1/auth/email/send', async (req: Request, res: Response) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ success: false, message: 'Email address is required' });
+  }
+
+  return res.json({
+    success: true,
+    message: `Verification code sent to ${email}. (Demo Code: 849201)`,
+    otpId: `otp_${Date.now()}`,
+    expiresInSeconds: 300,
+  });
+});
+
 // 3. Verify OTP & Issue JWT (with MongoDB user lookup)
 app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
   const { phoneNumber, code } = req.body;

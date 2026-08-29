@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -78,7 +78,22 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
   const { state, actions } = app;
   const activeTab: WelcomeTab = state.welcomeTab || 'about';
 
-  // Sign In State (clean by default to prevent credential confusion)
+  // Authentication Flow Navigation & Mode State
+  const [authStep, setAuthStep] = useState<'form' | 'otp_verify'>('form');
+  const [signInMethod, setSignInMethod] = useState<'otp' | 'password'>('otp');
+  const [pendingAuth, setPendingAuth] = useState<{
+    mode: 'signin' | 'signup';
+    identifier: string;
+    channel: 'phone' | 'email';
+    signUpData?: SignUpFormData;
+  } | null>(null);
+
+  // 6-Digit Verification Code State
+  const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
+  const [resendCooldown, setResendCooldown] = useState(30);
+  const otpInputsRef = useRef<Array<TextInput | null>>([]);
+
+  // Sign In State
   const [loginIdentifier, setLoginIdentifier] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -105,14 +120,76 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
   // FAQ Accordion State
   const [expandedFaq, setExpandedFaq] = useState<number | null>(0);
 
+  // Resend Countdown Timer
+  useEffect(() => {
+    if (authStep !== 'otp_verify' || resendCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setResendCooldown((c) => Math.max(0, c - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [authStep, resendCooldown]);
+
   const handleTabChange = (tab: WelcomeTab) => {
     hapticFeedback.selection();
     setSignInError(null);
     setSignUpError(null);
+    setAuthStep('form');
     actions.setWelcomeTab(tab);
   };
 
-  const handleSignIn = async () => {
+  const handleOtpBoxChange = (val: string, index: number) => {
+    const cleanVal = val.replace(/\D/g, '').slice(-1);
+    const newDigits = [...otpDigits];
+    newDigits[index] = cleanVal;
+    setOtpDigits(newDigits);
+    setSignInError(null);
+    setSignUpError(null);
+
+    if (cleanVal && index < 5) {
+      otpInputsRef.current[index + 1]?.focus();
+    }
+
+    if (newDigits.every((d) => d !== '') && cleanVal) {
+      triggerVerifyOtp(newDigits.join(''));
+    }
+  };
+
+  const handleOtpKeyPress = (e: any, index: number) => {
+    if (e.nativeEvent.key === 'Backspace') {
+      if (otpDigits[index] === '' && index > 0) {
+        otpInputsRef.current[index - 1]?.focus();
+      }
+    }
+  };
+
+  const handleSendOtpSignIn = async () => {
+    if (!loginIdentifier.trim()) {
+      setSignInError('Please enter your phone number or email address');
+      hapticFeedback.error();
+      return;
+    }
+    setSignInError(null);
+    setIsSubmitting(true);
+    try {
+      const channel = loginIdentifier.includes('@') ? 'email' : 'phone';
+      await actions.sendAuthOtp(loginIdentifier.trim(), channel);
+      setPendingAuth({
+        mode: 'signin',
+        identifier: loginIdentifier.trim(),
+        channel,
+      });
+      setOtpDigits(['', '', '', '', '', '']);
+      setResendCooldown(30);
+      setAuthStep('otp_verify');
+    } catch (err: any) {
+      setSignInError(err?.message || 'Failed to dispatch verification code. Please try again.');
+      hapticFeedback.error();
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handlePasswordSignIn = async () => {
     if (!loginIdentifier.trim()) {
       setSignInError('Please enter your email address or phone number');
       hapticFeedback.error();
@@ -140,7 +217,7 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
     }
   };
 
-  const handleSignUp = async () => {
+  const handleSendOtpSignUp = async () => {
     if (!signUpData.name.trim()) {
       setSignUpError('Please enter your full name');
       hapticFeedback.error();
@@ -159,10 +236,65 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
     setSignUpError(null);
     setIsSubmitting(true);
     try {
-      await actions.signUpWithData(signUpData);
+      const targetId = signUpData.phone.trim() || signUpData.email.trim();
+      const channel = signUpData.phone.trim() ? 'phone' : 'email';
+      await actions.sendAuthOtp(targetId, channel);
+      setPendingAuth({
+        mode: 'signup',
+        identifier: targetId,
+        channel,
+        signUpData,
+      });
+      setOtpDigits(['', '', '', '', '', '']);
+      setResendCooldown(30);
+      setAuthStep('otp_verify');
     } catch (err: any) {
-      setSignUpError(err?.message || 'Registration failed. Please check connection and try again.');
+      setSignUpError(err?.message || 'Registration failed. Please try again.');
       hapticFeedback.error();
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const triggerVerifyOtp = async (codeToVerify?: string) => {
+    const code = codeToVerify || otpDigits.join('');
+    if (code.length < 6) {
+      const msg = 'Please enter the complete 6-digit authorization code';
+      if (pendingAuth?.mode === 'signin') setSignInError(msg);
+      else setSignUpError(msg);
+      hapticFeedback.error();
+      return;
+    }
+    if (!pendingAuth) return;
+    setIsSubmitting(true);
+    try {
+      if (pendingAuth.mode === 'signin') {
+        await actions.verifyAuthOtp(pendingAuth.identifier, code);
+      } else {
+        await actions.verifyAuthOtp(pendingAuth.identifier, code, pendingAuth.signUpData);
+      }
+    } catch (err: any) {
+      const msg = err?.message || 'Invalid or expired code. Please check and retry.';
+      if (pendingAuth.mode === 'signin') setSignInError(msg);
+      else setSignUpError(msg);
+      hapticFeedback.error();
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (!pendingAuth || resendCooldown > 0) return;
+    setIsSubmitting(true);
+    try {
+      await actions.sendAuthOtp(pendingAuth.identifier, pendingAuth.channel);
+      setResendCooldown(30);
+      setOtpDigits(['', '', '', '', '', '']);
+      actions.showToast(`New 6-digit code sent to ${pendingAuth.identifier}`);
+    } catch (err: any) {
+      const msg = err?.message || 'Failed to resend code';
+      if (pendingAuth.mode === 'signin') setSignInError(msg);
+      else setSignUpError(msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -399,15 +531,148 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
       )}
 
       {/* ========================================================================= */}
-      {/* 2. SIGN IN (LOGIN) TAB */}
+      {/* 2. SIGN IN & 3. SIGN UP (WITH DEDICATED 6-DIGIT OTP VERIFICATION) */}
       {/* ========================================================================= */}
-      {activeTab === 'signin' && (
+      
+      {/* A) DEDICATED 6-DIGIT OTP VERIFICATION CARD */}
+      {authStep === 'otp_verify' && pendingAuth && (
+        <View style={styles.tabContent}>
+          <View style={styles.formCard}>
+            <View style={styles.otpHeaderBadge}>
+              <Text style={styles.otpHeaderBadgeText}>
+                {pendingAuth.channel === 'phone' ? '📱 SMS AUTHORIZATION' : '✉️ EMAIL AUTHORIZATION'}
+              </Text>
+            </View>
+            <Text style={styles.formTitle}>Enter 6-Digit Code</Text>
+            <Text style={styles.formSubtitle}>
+              We dispatched a secure authorization code to{' '}
+              <Text style={{ fontWeight: '800', color: '#0f172a' }}>{pendingAuth.identifier}</Text>.
+            </Text>
+
+            {(signInError || signUpError) && (
+              <View style={styles.errorAlert}>
+                <Text style={styles.errorAlertText}>⚠️ {signInError || signUpError}</Text>
+              </View>
+            )}
+
+            {/* 6 Box Inputs */}
+            <View style={styles.otpBoxesRow}>
+              {otpDigits.map((digit, idx) => (
+                <TextInput
+                  key={idx}
+                  ref={(el) => {
+                    otpInputsRef.current[idx] = el;
+                  }}
+                  value={digit}
+                  onChangeText={(v) => handleOtpBoxChange(v, idx)}
+                  onKeyPress={(e) => handleOtpKeyPress(e, idx)}
+                  keyboardType="number-pad"
+                  maxLength={1}
+                  selectTextOnFocus
+                  style={[
+                    styles.otpBox,
+                    digit ? styles.otpBoxFilled : null,
+                  ]}
+                />
+              ))}
+            </View>
+
+            {/* Quick Autofill Helper for convenience */}
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => {
+                setOtpDigits(['8', '4', '9', '2', '0', '1']);
+                triggerVerifyOtp('849201');
+              }}
+              style={styles.demoFillBtn}
+            >
+              <Text style={styles.demoFillText}>💡 Tap to Auto-fill Demo Code: 849 201</Text>
+            </TouchableOpacity>
+
+            {/* Main Verify Submit Button */}
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => triggerVerifyOtp()}
+              disabled={isSubmitting}
+              style={[styles.submitBtn, isSubmitting && { opacity: 0.8 }]}
+            >
+              {isSubmitting ? (
+                <ActivityIndicator color="#ffffff" size="small" />
+              ) : (
+                <Text style={styles.submitBtnText}>Verify & Unlock Health Vault</Text>
+              )}
+            </TouchableOpacity>
+
+            {/* Resend Code Section */}
+            <View style={styles.resendRow}>
+              <Text style={styles.resendText}>Didn't receive the SMS/Email code?</Text>
+              {resendCooldown > 0 ? (
+                <Text style={styles.resendTimerText}>Resend in {resendCooldown}s</Text>
+              ) : (
+                <TouchableOpacity activeOpacity={0.7} onPress={handleResendOtp}>
+                  <Text style={styles.resendActionText}>🔄 Resend Code Now</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Back to Form link */}
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => {
+                hapticFeedback.light();
+                setAuthStep('form');
+                setSignInError(null);
+                setSignUpError(null);
+              }}
+              style={styles.backLinkBtn}
+            >
+              <Text style={styles.backLinkText}>
+                ← Change {pendingAuth.channel === 'phone' ? 'Phone Number' : 'Email Address'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* B) SIGN IN FORM (WHEN NOT IN OTP VERIFICATION) */}
+      {activeTab === 'signin' && authStep === 'form' && (
         <View style={styles.tabContent}>
           <View style={styles.formCard}>
             <Text style={styles.formTitle}>Welcome Back</Text>
             <Text style={styles.formSubtitle}>
               Sign in to manage your health records, shares, and family vault.
             </Text>
+
+            {/* Method Toggle: OTP Code vs Password */}
+            <View style={styles.authModeSelector}>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => {
+                  hapticFeedback.selection();
+                  setSignInMethod('otp');
+                  setSignInError(null);
+                }}
+                style={[styles.authModeBtn, signInMethod === 'otp' && styles.authModeBtnActive]}
+              >
+                <Text style={[styles.authModeBtnText, signInMethod === 'otp' && styles.authModeBtnTextActive]}>
+                  📱 SMS / Email Code
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => {
+                  hapticFeedback.selection();
+                  setSignInMethod('password');
+                  setSignInError(null);
+                }}
+                style={[styles.authModeBtn, signInMethod === 'password' && styles.authModeBtnActive]}
+              >
+                <Text style={[styles.authModeBtnText, signInMethod === 'password' && styles.authModeBtnTextActive]}>
+                  🔒 Password
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             {signInError && (
               <View style={styles.errorAlert}>
@@ -416,76 +681,98 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
             )}
 
             {/* Email / Phone Input */}
-            <Text style={styles.inputLabel}>Email or Phone Number</Text>
+            <Text style={styles.inputLabel}>
+              {signInMethod === 'otp' ? 'Phone Number (+234) or Email' : 'Email or Phone Number'}
+            </Text>
             <TextInput
               value={loginIdentifier}
               onChangeText={setLoginIdentifier}
-              placeholder="e.g. yourname@domain.com or +234 800 000 0000"
+              placeholder={signInMethod === 'otp' ? 'e.g. +234 805 555 5504 or email' : 'e.g. yourname@domain.com or +234...'}
               placeholderTextColor="#94a3b8"
               autoCapitalize="none"
-              keyboardType="email-address"
+              keyboardType={signInMethod === 'otp' ? 'default' : 'email-address'}
               style={styles.textInput}
             />
 
-            {/* Password Input */}
-            <Text style={styles.inputLabel}>Password</Text>
-            <View style={styles.passwordWrapper}>
-              <TextInput
-                value={loginPassword}
-                onChangeText={setLoginPassword}
-                placeholder="Enter your vault password"
-                placeholderTextColor="#94a3b8"
-                secureTextEntry={!showPassword}
-                style={styles.passwordInput}
-              />
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={() => setShowPassword(!showPassword)}
-                style={styles.eyeBtn}
-              >
-                <Text style={{ fontSize: 13, color: '#0EA5E9', fontWeight: '600' }}>
-                  {showPassword ? 'Hide' : 'Show'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Remember Me & Forgot Password */}
-            <View style={styles.authMetaRow}>
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={() => setRememberMe(!rememberMe)}
-                style={styles.rememberMeGroup}
-              >
-                <View style={[styles.customCheck, rememberMe && styles.customCheckActive]}>
-                  {rememberMe && <Text style={styles.checkMark}>✓</Text>}
+            {signInMethod === 'password' ? (
+              <>
+                {/* Password Input */}
+                <Text style={styles.inputLabel}>Password</Text>
+                <View style={styles.passwordWrapper}>
+                  <TextInput
+                    value={loginPassword}
+                    onChangeText={setLoginPassword}
+                    placeholder="Enter your vault password"
+                    placeholderTextColor="#94a3b8"
+                    secureTextEntry={!showPassword}
+                    style={styles.passwordInput}
+                  />
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={() => setShowPassword(!showPassword)}
+                    style={styles.eyeBtn}
+                  >
+                    <Text style={{ fontSize: 13, color: '#0EA5E9', fontWeight: '600' }}>
+                      {showPassword ? 'Hide' : 'Show'}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
-                <Text style={styles.rememberMeText}>Remember me</Text>
-              </TouchableOpacity>
 
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={() => {
-                  hapticFeedback.selection();
-                  actions.showToast('Password reset link sent to your registered email');
-                }}
-              >
-                <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-              </TouchableOpacity>
-            </View>
+                {/* Remember Me & Forgot Password */}
+                <View style={styles.authMetaRow}>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={() => setRememberMe(!rememberMe)}
+                    style={styles.rememberMeGroup}
+                  >
+                    <View style={[styles.customCheck, rememberMe && styles.customCheckActive]}>
+                      {rememberMe && <Text style={styles.checkMark}>✓</Text>}
+                    </View>
+                    <Text style={styles.rememberMeText}>Remember me</Text>
+                  </TouchableOpacity>
 
-            {/* Main Sign In Button */}
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={handleSignIn}
-              disabled={isSubmitting}
-              style={[styles.submitBtn, isSubmitting && { opacity: 0.8 }]}
-            >
-              {isSubmitting ? (
-                <ActivityIndicator color="#ffffff" size="small" />
-              ) : (
-                <Text style={styles.submitBtnText}>Sign In to Vault</Text>
-              )}
-            </TouchableOpacity>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      hapticFeedback.selection();
+                      actions.showToast('Password reset link sent to your registered email');
+                    }}
+                  >
+                    <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Main Sign In Button */}
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={handlePasswordSignIn}
+                  disabled={isSubmitting}
+                  style={[styles.submitBtn, isSubmitting && { opacity: 0.8 }]}
+                >
+                  {isSubmitting ? (
+                    <ActivityIndicator color="#ffffff" size="small" />
+                  ) : (
+                    <Text style={styles.submitBtnText}>Sign In to Vault</Text>
+                  )}
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                {/* Send OTP Button */}
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={handleSendOtpSignIn}
+                  disabled={isSubmitting}
+                  style={[styles.submitBtn, isSubmitting && { opacity: 0.8 }]}
+                >
+                  {isSubmitting ? (
+                    <ActivityIndicator color="#ffffff" size="small" />
+                  ) : (
+                    <Text style={styles.submitBtnText}>Send 6-Digit Authorization Code ›</Text>
+                  )}
+                </TouchableOpacity>
+              </>
+            )}
 
             {/* Biometric Sign In Button */}
             <TouchableOpacity
@@ -527,10 +814,8 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
         </View>
       )}
 
-      {/* ========================================================================= */}
-      {/* 3. SIGN UP (CREATE ACCOUNT) TAB */}
-      {/* ========================================================================= */}
-      {activeTab === 'signup' && (
+      {/* C) SIGN UP FORM (WHEN NOT IN OTP VERIFICATION) */}
+      {activeTab === 'signup' && authStep === 'form' && (
         <View style={styles.tabContent}>
           <View style={styles.formCard}>
             <Text style={styles.formTitle}>Create Your Health Vault</Text>
@@ -644,17 +929,17 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
               </Text>
             </TouchableOpacity>
 
-            {/* Create Account Submit */}
+            {/* Create Account & Send OTP Submit */}
             <TouchableOpacity
               activeOpacity={0.85}
-              onPress={handleSignUp}
+              onPress={handleSendOtpSignUp}
               disabled={isSubmitting}
               style={[styles.submitBtn, isSubmitting && { opacity: 0.8 }]}
             >
               {isSubmitting ? (
                 <ActivityIndicator color="#ffffff" size="small" />
               ) : (
-                <Text style={styles.submitBtnText}>Create Free Vault & Start</Text>
+                <Text style={styles.submitBtnText}>Verify & Create Health Vault ›</Text>
               )}
             </TouchableOpacity>
 
@@ -1408,5 +1693,117 @@ const styles = StyleSheet.create({
     color: '#10b981',
     fontWeight: '600',
     textAlign: 'center',
+  },
+  authModeSelector: {
+    flexDirection: 'row',
+    backgroundColor: '#f1f5f9',
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 18,
+  },
+  authModeBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  authModeBtnActive: {
+    backgroundColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  authModeBtnText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  authModeBtnTextActive: {
+    color: '#041E42',
+  },
+  otpHeaderBadge: {
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    borderRadius: 999,
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+  },
+  otpHeaderBadgeText: {
+    color: '#0284c7',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  otpBoxesRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginVertical: 18,
+    gap: 8,
+  },
+  otpBox: {
+    flex: 1,
+    height: 54,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1.5,
+    borderColor: '#cbd5e1',
+    borderRadius: 12,
+    textAlign: 'center',
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  otpBoxFilled: {
+    borderColor: '#0284c7',
+    backgroundColor: '#f0f9ff',
+  },
+  demoFillBtn: {
+    backgroundColor: '#f1f5f9',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  demoFillText: {
+    color: '#475569',
+    fontSize: 12.5,
+    fontWeight: '600',
+  },
+  resendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 18,
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  resendText: {
+    fontSize: 13,
+    color: '#64748b',
+  },
+  resendTimerText: {
+    fontSize: 13,
+    color: '#94a3b8',
+    fontWeight: '700',
+  },
+  resendActionText: {
+    fontSize: 13,
+    color: '#0284c7',
+    fontWeight: '800',
+  },
+  backLinkBtn: {
+    marginTop: 16,
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  backLinkText: {
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '600',
   },
 });

@@ -248,6 +248,29 @@ export function useWelliApp() {
         }
         const dm = await storage.getItem('welli_dark_mode');
         if (dm !== null) patch({ darkMode: dm === '1' });
+        
+        // Restore active user session from secure storage
+        const savedSession = await authService.getSavedSession();
+        if (savedSession?.user) {
+          patch((s) => ({
+            loggedOut: false,
+            showWelcomeHome: false,
+            familyMembers: s.familyMembers.map((f) =>
+              f.id === 'me'
+                ? {
+                    ...f,
+                    name: savedSession.user.fullName || f.name,
+                    email: savedSession.user.email || f.email,
+                    phone: savedSession.user.phoneNumber || f.phone,
+                    bloodType: savedSession.user.bloodType || f.bloodType,
+                    genotype: savedSession.user.genotype || f.genotype,
+                    insuranceProvider: savedSession.user.hmoProvider || f.insuranceProvider,
+                    insuranceId: savedSession.user.hmoPolicyNumber || f.insuranceId,
+                  }
+                : f
+            ),
+          }));
+        }
       } catch {
         // ignore corrupt local storage
       }
@@ -861,6 +884,93 @@ export function useWelliApp() {
       showToast('Welcome back to WelliRecord');
     },
 
+    sendAuthOtp: async (identifier: string, explicitChannel?: 'phone' | 'email') => {
+      hapticFeedback.light();
+      const res = await authService.sendAuthOtp(identifier, explicitChannel);
+      
+      // Dispatch in-app security notification
+      const securityNotif: Notification = {
+        id: `sec_${Date.now()}`,
+        emoji: '🔐',
+        tint: '#0284c7',
+        title: 'WelliRecord Security Code',
+        desc: `Your 6-digit authorization code is 849201. Sent to ${identifier}. Valid for 5 minutes.`,
+        time: 'Just now',
+      };
+
+      patch((s) => ({
+        notifications: [securityNotif, ...s.notifications],
+      }));
+      showToast(`Verification code sent to ${identifier}`);
+      return res;
+    },
+
+    verifyAuthOtp: async (
+      identifier: string,
+      code: string,
+      userData?: {
+        name?: string;
+        email?: string;
+        phone?: string;
+        dob?: string;
+        bloodType?: string;
+        genotype?: string;
+        insuranceProvider?: string;
+        insuranceId?: string;
+      }
+    ) => {
+      hapticFeedback.success();
+      const session = await authService.verifyAuthOtp(identifier, code, userData ? {
+        fullName: userData.name,
+        email: userData.email,
+        phoneNumber: userData.phone,
+        bloodType: userData.bloodType,
+        genotype: userData.genotype,
+        hmoProvider: userData.insuranceProvider,
+        hmoPolicyNumber: userData.insuranceId,
+      } : undefined);
+
+      const displayName = userData?.name || session.user.fullName || 'Amara Nwosu';
+      const initials = displayName
+        .split(' ')
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((p) => p[0])
+        .join('')
+        .toUpperCase() || 'U';
+
+      const newOwner: FamilyMember = {
+        id: 'me',
+        name: displayName,
+        initials,
+        role: 'owner',
+        dob: userData?.dob || '1990-01-01',
+        gender: '—',
+        bloodType: session.user.bloodType || userData?.bloodType || 'O+',
+        genotype: session.user.genotype || userData?.genotype || 'AA',
+        height: '—',
+        weight: '—',
+        allergies: 'None reported',
+        conditions: 'None reported',
+        contact: session.user.phoneNumber || userData?.phone || '+234 800 000 0000',
+        email: session.user.email || userData?.email || 'user@example.com',
+        phone: session.user.phoneNumber || userData?.phone || '+234 800 000 0000',
+        address: 'Lagos, Nigeria',
+        insuranceProvider: session.user.hmoProvider || userData?.insuranceProvider || 'Private Self-Pay',
+        insuranceId: session.user.hmoPolicyNumber || userData?.insuranceId || `WELLI-${Math.floor(100000 + Math.random() * 900000)}`,
+      };
+
+      patch((s) => ({
+        familyMembers: [newOwner, ...s.familyMembers.filter((f) => f.id !== 'me')],
+        activeFamilyId: 'me',
+        loggedOut: false,
+        showWelcomeHome: false,
+        tab: 'home',
+      }));
+      showToast(`Welcome to WelliRecord, ${displayName.split(' ')[0]}!`);
+      return session;
+    },
+
     signInWithCredentials: async (identifier: string, password?: string) => {
       hapticFeedback.success();
       const trimmed = identifier.trim();
@@ -1026,7 +1136,12 @@ export function useWelliApp() {
       showToast('Prescription refill dispatched via HMO E-Pharmacy');
     },
 
-    logOut: () => patch({ loggedOut: true, showWelcomeHome: true, welcomeTab: 'signin' }),
+    logOut: async () => {
+      hapticFeedback.light();
+      await authService.logout();
+      patch({ loggedOut: true, showWelcomeHome: true, welcomeTab: 'signin' });
+      showToast('Logged out of vault');
+    },
     logBackIn: () => patch({ loggedOut: false, showWelcomeHome: false, tab: 'home' }),
   };
 

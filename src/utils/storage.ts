@@ -22,4 +22,14 @@ export const storage = {
       // ignore
     }
   },
+  async removeItem(key: string): Promise<void> {
+    try {
+      if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+        localStorage.removeItem(key);
+      }
+      await AsyncStorage.removeItem(key);
+    } catch {
+      // ignore
+    }
+  },
 };
