@@ -690,7 +690,7 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
             <TextInput
               value={loginIdentifier}
               onChangeText={setLoginIdentifier}
-              placeholder={signInMethod === 'otp' ? 'e.g. +234 805 555 5504 or email' : 'e.g. yourname@domain.com or +234...'}
+              placeholder={signInMethod === 'otp' ? 'e.g. +234 805 335 5504 or email' : 'e.g. yourname@domain.com or +234...'}
               placeholderTextColor="#94a3b8"
               autoCapitalize="none"
               keyboardType={signInMethod === 'otp' ? 'default' : 'email-address'}

@@ -84,7 +84,7 @@ async function seedDatabase() {
 
   console.log('[Seed] Creating primary account (Amara Nwosu)...');
   const user = await User.create({
-    phoneNumber: '+2348055555504',
+    phoneNumber: '+2348053355504',
     email: 'amara.nwosu@gmail.com',
     fullName: 'Amara Nwosu',
     bloodType: 'O+',

@@ -172,7 +172,7 @@ app.post('/api/v1/auth/login', async (req: Request, res: Response) => {
     const userId = user ? user._id.toString() : 'u_amara_nwosu';
     const fullName = user ? user.fullName : 'Amara Nwosu';
     const email = user ? user.email : (identifier.includes('@') ? identifier : 'amara.nwosu@gmail.com');
-    const phoneNumber = user ? user.phoneNumber : (identifier.includes('@') ? '+234 805 555 5504' : identifier);
+    const phoneNumber = user ? user.phoneNumber : (identifier.includes('@') ? '+234 805 335 5504' : identifier);
 
     const token = jwt.sign({ userId, email, role: 'patient' }, JWT_SECRET, { expiresIn: '30d' });
 

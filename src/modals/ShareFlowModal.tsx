@@ -63,9 +63,9 @@ export function ShareFlowModal({ app }: { app: WelliApp }) {
     setDispatchError(null);
     try {
       if (channel === 'phone') {
-        const res = await authService.sendPhoneOtp('+2348055555504');
+        const res = await authService.sendPhoneOtp('+2348053355504');
         setDispatchState('sent');
-        setDispatchMessage(res.message || 'Security code dispatched to +234 805 *** 5504');
+        setDispatchMessage(res.message || 'Security code dispatched to +234 805 335 5504');
       } else {
         const res = await authService.sendEmailOtp('amara.nwosu@gmail.com');
         setDispatchState('sent');
@@ -94,10 +94,10 @@ export function ShareFlowModal({ app }: { app: WelliApp }) {
       const run = async () => {
         try {
           if (otpChannel === 'phone') {
-            const res = await authService.sendPhoneOtp('+2348055555504');
+            const res = await authService.sendPhoneOtp('+2348053355504');
             if (isMounted) {
               setDispatchState('sent');
-              setDispatchMessage(res.message || 'Security code dispatched to +234 805 *** 5504');
+              setDispatchMessage(res.message || 'Security code dispatched to +234 805 335 5504');
             }
           } else {
             const res = await authService.sendEmailOtp('amara.nwosu@gmail.com');

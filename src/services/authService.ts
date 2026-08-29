@@ -71,7 +71,7 @@ export const authService = {
         user: {
           id: 'me',
           fullName: 'Amara Nwosu',
-          phoneNumber: phoneNumber || '+234 805 555 5504',
+          phoneNumber: phoneNumber || '+234 805 335 5504',
           email: 'amara.nwosu@gmail.com',
           bloodType: 'O+',
           genotype: 'AA',
@@ -96,7 +96,7 @@ export const authService = {
         user: {
           id: 'me',
           fullName: 'Amara Nwosu',
-          phoneNumber: phoneNumber || '+234 805 555 5504',
+          phoneNumber: phoneNumber || '+234 805 335 5504',
           email: 'amara.nwosu@gmail.com',
           bloodType: 'O+',
           genotype: 'AA',
@@ -156,7 +156,7 @@ export const authService = {
         user: {
           id: 'me',
           fullName: userData?.fullName || 'Amara Nwosu',
-          phoneNumber: userData?.phoneNumber || '+234 805 555 5504',
+          phoneNumber: userData?.phoneNumber || '+234 805 335 5504',
           email: identifier.trim(),
           bloodType: userData?.bloodType || 'O+',
           genotype: userData?.genotype || 'AA',
@@ -185,7 +185,7 @@ export const authService = {
         user: {
           id: 'me',
           fullName: 'Amara Nwosu',
-          phoneNumber: '+234 805 555 5504',
+          phoneNumber: '+234 805 335 5504',
           email: identifier.includes('@') ? identifier : 'amara.nwosu@gmail.com',
           bloodType: 'O+',
           genotype: 'AA',
@@ -211,7 +211,7 @@ export const authService = {
         user: {
           id: 'me',
           fullName: 'Amara Nwosu',
-          phoneNumber: identifier.includes('@') ? '+234 805 555 5504' : identifier,
+          phoneNumber: identifier.includes('@') ? '+234 805 335 5504' : identifier,
           email: identifier.includes('@') ? identifier : 'amara.nwosu@gmail.com',
           bloodType: 'O+',
           genotype: 'AA',
