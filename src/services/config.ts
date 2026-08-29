@@ -12,9 +12,11 @@ export interface AppConfig {
   requestTimeoutMs: number;
 }
 
+export const API_BASE_URL = 'https://wellirecordmobileapp.onrender.com';
+
 export const CONFIG: AppConfig = {
-  // In production, update with your live backend API URL (e.g., https://api.wellirecord.com/v1)
-  apiBaseUrl: process.env.EXPO_PUBLIC_API_URL || 'https://api.wellirecord.com/v1',
+  // Live backend API URL on Render
+  apiBaseUrl: process.env.EXPO_PUBLIC_API_URL || API_BASE_URL,
   
   // Set to false when connecting to a live backend
   demoMode: true,
