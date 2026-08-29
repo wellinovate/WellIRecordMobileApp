@@ -1,3 +1,12 @@
+import React from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Modal,
+  SafeAreaView,
+} from 'react-native';
 import { Logo } from '../components/Logo';
 import type { WelliApp } from '../state/useWelliApp';
 
@@ -7,74 +16,167 @@ export function OnboardingModal({ app }: { app: WelliApp }) {
 
   const slide = onboardingSlides[state.onboardingStep];
   const isPermissionSlide = !!slide.permission;
-  const buttonLabel = state.onboardingStep >= onboardingSlides.length - 1 ? 'Get Started' : 'Continue';
+  const buttonLabel =
+    state.onboardingStep >= onboardingSlides.length - 1 ? 'Get Started' : 'Continue';
 
   return (
-    <div style={{ position: 'absolute', inset: 0, background: '#fff', zIndex: 50, paddingTop: 54, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '10px 18px' }}>
-        <span onClick={actions.closeOnboarding} style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8', cursor: 'pointer' }}>
-          Skip
-        </span>
-      </div>
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '10px 32px' }}>
-        <div style={{ marginBottom: 18 }}>
-          <Logo height={34} />
-        </div>
-        <div
-          style={{
-            width: 88,
-            height: 88,
-            borderRadius: 24,
-            background: slide.tint,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 36,
-            marginBottom: 26,
-          }}
-        >
-          {slide.emoji}
-        </div>
-        <div style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: 21, fontWeight: 800, color: '#0f172a', marginBottom: 10 }}>{slide.title}</div>
-        <div style={{ fontSize: 13.5, color: '#64748b', lineHeight: 1.6 }}>{slide.desc}</div>
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'center', gap: 6, padding: '6px 0 18px' }}>
-        {onboardingSlides.map((_, i) => (
-          <div
-            key={i}
-            style={{
-              width: i === state.onboardingStep ? 22 : 6,
-              height: 6,
-              borderRadius: 999,
-              background: i === state.onboardingStep ? '#041E42' : '#e2e8f0',
-              transition: 'width .2s',
-            }}
-          />
-        ))}
-      </div>
-      {isPermissionSlide && (
-        <div style={{ padding: '6px 24px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <button
-            onClick={actions.allowNotifications}
-            style={{ width: '100%', background: '#041E42', color: '#fff', border: 'none', borderRadius: 14, padding: 15, fontSize: 14.5, fontWeight: 700, cursor: 'pointer' }}
-          >
-            Allow Notifications
-          </button>
-          <button onClick={actions.skipNotifications} style={{ width: '100%', background: 'transparent', color: '#64748b', border: 'none', padding: 6, fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }}>
-            Not Now
-          </button>
-        </div>
-      )}
-      <div style={{ padding: '6px 24px 30px' }}>
-        {!isPermissionSlide && (
-          <button
-            onClick={actions.onboardingNext}
-            style={{ width: '100%', background: '#041E42', color: '#fff', border: 'none', borderRadius: 14, padding: 15, fontSize: 14.5, fontWeight: 700, cursor: 'pointer' }}
-          >
-            {buttonLabel}
-          </button>
+    <Modal
+      visible={state.showOnboarding}
+      animationType="fade"
+      transparent={false}
+      onRequestClose={actions.closeOnboarding}
+    >
+      <SafeAreaView style={styles.container}>
+        <View style={styles.topBar}>
+          <TouchableOpacity activeOpacity={0.7} onPress={actions.closeOnboarding}>
+            <Text style={styles.skipText}>Skip</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.content}>
+          <View style={styles.logoBox}>
+            <Logo height={34} />
+          </View>
+          <View style={[styles.slideIconBox, { backgroundColor: slide.tint }]}>
+            <Text style={{ fontSize: 36 }}>{slide.emoji}</Text>
+          </View>
+          <Text style={styles.slideTitle}>{slide.title}</Text>
+          <Text style={styles.slideDesc}>{slide.desc}</Text>
+        </View>
+
+        {/* Pagination Dots */}
+        <View style={styles.dotsRow}>
+          {onboardingSlides.map((_, i) => (
+            <View
+              key={i}
+              style={[
+                styles.dot,
+                {
+                  width: i === state.onboardingStep ? 22 : 6,
+                  backgroundColor:
+                    i === state.onboardingStep ? '#041E42' : '#e2e8f0',
+                },
+              ]}
+            />
+          ))}
+        </View>
+
+        {isPermissionSlide ? (
+          <View style={styles.permissionButtons}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={actions.allowNotifications}
+              style={styles.primaryBtn}
+            >
+              <Text style={styles.primaryBtnText}>Allow Notifications</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={actions.skipNotifications}
+              style={styles.secondaryBtn}
+            >
+              <Text style={styles.secondaryBtnText}>Not Now</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.footer}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={actions.onboardingNext}
+              style={styles.primaryBtn}
+            >
+              <Text style={styles.primaryBtnText}>{buttonLabel}</Text>
+            </TouchableOpacity>
+          </View>
         )}
-      </div>
-    </div>
+      </SafeAreaView>
+    </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
+  topBar: {
+    alignItems: 'flex-end',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  skipText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#94a3b8',
+  },
+  content: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+  logoBox: {
+    marginBottom: 24,
+  },
+  slideIconBox: {
+    width: 90,
+    height: 90,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  slideTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  slideDesc: {
+    fontSize: 14,
+    color: '#64748b',
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  dotsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 18,
+  },
+  dot: {
+    height: 6,
+    borderRadius: 3,
+  },
+  permissionButtons: {
+    paddingHorizontal: 24,
+    paddingBottom: 28,
+    gap: 10,
+  },
+  footer: {
+    paddingHorizontal: 24,
+    paddingBottom: 28,
+  },
+  primaryBtn: {
+    backgroundColor: '#041E42',
+    borderRadius: 14,
+    paddingVertical: 15,
+    alignItems: 'center',
+  },
+  primaryBtnText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  secondaryBtn: {
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  secondaryBtnText: {
+    color: '#64748b',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+});

@@ -9,5 +9,7 @@ export function useTheme() {
 }
 
 export function themeFor(darkMode: boolean): Theme {
-  return darkMode ? DARK_THEME : LIGHT_THEME;
+  return darkMode
+    ? { ...DARK_THEME, darkMode: true }
+    : { ...LIGHT_THEME, darkMode: false };
 }

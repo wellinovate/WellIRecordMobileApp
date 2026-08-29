@@ -1,20 +1,40 @@
 {
   "name": "welli-record-mobile",
   "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "version": "1.0.0",
+  "main": "index.js",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "lint": "oxlint",
-    "preview": "vite preview"
+    "start": "expo start",
+    "web": "expo start --web",
+    "android": "expo run:android",
+    "ios": "expo start --ios",
+    "ios11": "xcrun simctl boot 4353D57C-F11D-40C2-823D-29C40D8F1E67 2>/dev/null; expo start --ios",
+    "dev": "expo start",
+    "build": "tsc -b",
+    "lint": "oxlint"
   },
   "dependencies": {
+    "@expo/metro-runtime": "^57.0.14",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "babel-preset-expo": "^57.0.9",
+    "expo": "^57.0.17",
+    "expo-clipboard": "^57.0.1",
+    "expo-document-picker": "~57.0.1",
+    "expo-haptics": "~57.0.2",
+    "expo-image-picker": "~57.0.14",
+    "expo-linear-gradient": "^57.0.1",
+    "expo-local-authentication": "~57.0.2",
+    "expo-status-bar": "^57.0.1",
     "qrcode.react": "^4.2.0",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-qrcode-svg": "^6.3.21",
+    "react-native-svg": "15.15.4",
+    "react-native-web": "^0.21.2"
   },
   "devDependencies": {
+    "@expo/ngrok": "^4.1.3",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",

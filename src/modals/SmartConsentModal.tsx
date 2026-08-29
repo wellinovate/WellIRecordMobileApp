@@ -1,3 +1,16 @@
+import React from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  StyleSheet,
+  Modal,
+  SafeAreaView,
+} from 'react-native';
+import Svg, { Path } from 'react-native-svg';
+import { ModalHeader } from '../components/ModalHeader';
 import { EXPIRY_LABEL_MAP } from '../utils/expiry';
 import type { WelliApp } from '../state/useWelliApp';
 import type { ShareExpiry } from '../data/types';
@@ -23,42 +36,43 @@ function Tile({
   solid?: boolean;
 }) {
   return (
-    <div style={{ position: 'relative' }}>
-      {badge && (
-        <span
-          style={{
-            position: 'absolute',
-            top: -8,
-            right: 10,
-            zIndex: 1,
-            background: '#2563eb',
-            color: '#fff',
-            fontSize: 9.5,
-            fontWeight: 700,
-            padding: '2px 8px',
-            borderRadius: 999,
-          }}
-        >
-          {badge}
-        </span>
-      )}
-      <div
-        onClick={onClick}
-        style={{
-          textAlign: 'center',
-          padding: '13px 10px',
-          borderRadius: 12,
-          cursor: 'pointer',
-          fontSize: 13.5,
-          fontWeight: 700,
-          border: `1.5px solid ${selected ? '#10b981' : '#e2e8f0'}`,
-          background: selected ? (solid ? '#059669' : '#ecfdf5') : '#fff',
-          color: selected ? (solid ? '#fff' : '#059669') : '#0f172a',
-        }}
+    <View style={styles.tileWrapper}>
+      {badge ? (
+        <View style={styles.tileBadge}>
+          <Text style={styles.tileBadgeText}>{badge}</Text>
+        </View>
+      ) : null}
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={onClick}
+        style={[
+          styles.tile,
+          {
+            borderColor: selected ? '#10b981' : '#e2e8f0',
+            backgroundColor: selected
+              ? solid
+                ? '#059669'
+                : '#ecfdf5'
+              : '#ffffff',
+          },
+        ]}
       >
-        {label}
-      </div>
-    </div>
+        <Text
+          style={[
+            styles.tileText,
+            {
+              color: selected
+                ? solid
+                  ? '#ffffff'
+                  : '#059669'
+                : '#0f172a',
+            },
+          ]}
+        >
+          {label}
+        </Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -69,156 +83,300 @@ export function SmartConsentModal({ app }: { app: WelliApp }) {
   const isOrg = state.consentGranteeType === 'organization';
 
   return (
-    <div className="overlay-fullscreen">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px 4px' }}>
-        <span style={{ fontSize: 19, fontWeight: 800, color: '#0f172a' }}>Smart Consent Controls</span>
-        <div
-          onClick={actions.closeSmartConsent}
-          style={{ width: 30, height: 30, borderRadius: 999, background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
-        >
-          <svg width="13" height="13" viewBox="0 0 20 20">
-            <path d="M4 4l12 12M16 4L4 16" stroke="#334155" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-        </div>
-      </div>
-
-      <div style={{ flex: 1, overflowY: 'auto', padding: '10px 20px 30px' }}>
-        <div
-          style={{
-            borderRadius: 12,
-            background: '#eef4ff',
-            border: '1px solid #dbeafe',
-            padding: '11px 13px',
-            marginBottom: 20,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 9,
-            fontSize: 12.5,
-            fontWeight: 600,
-            color: '#1e3a8a',
-          }}
-        >
-          <span style={{ fontSize: 15 }}>🔗</span>
-          Grant access to a provider or organization.
-        </div>
-
-        <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 10 }}>Grantee Type</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
-          <Tile label="Individual Provider" selected={!isOrg} onClick={() => actions.setConsentGranteeType('individual')} />
-          <Tile label="Organization" selected={isOrg} onClick={() => actions.setConsentGranteeType('organization')} />
-        </div>
-
-        <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 10 }}>{isOrg ? 'Organization ID' : 'Provider User ID'}</div>
-        <input
-          value={state.consentProviderId}
-          onChange={(e) => actions.setConsentProviderId(e.target.value)}
-          placeholder={isOrg ? 'Enter organization ID' : 'Enter provider user ID'}
-          style={{
-            width: '100%',
-            background: '#fff',
-            border: '1px solid #e2e8f0',
-            borderRadius: 12,
-            padding: '12px 14px',
-            fontSize: 13.5,
-            boxSizing: 'border-box',
-            marginBottom: 20,
-          }}
+    <Modal
+      visible={state.showSmartConsent}
+      animationType="slide"
+      transparent={false}
+      onRequestClose={actions.closeSmartConsent}
+    >
+      <SafeAreaView style={styles.container}>
+        <ModalHeader
+          title="Smart Consent Controls"
+          onClose={actions.closeSmartConsent}
+          onBack={actions.closeSmartConsent}
         />
 
-        <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 10 }}>Access Scope</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
-          {consentScopes.map((scope) => (
-            <Tile key={scope} label={scope} selected={state.consentScope === scope} onClick={() => actions.setConsentScope(scope)} />
-          ))}
-        </div>
-
-        <div
-          onClick={actions.toggleConsentWrite}
-          style={{
-            display: 'flex',
-            gap: 12,
-            padding: 14,
-            borderRadius: 14,
-            border: '1px solid #e2e8f0',
-            cursor: 'pointer',
-            marginBottom: 24,
-          }}
+        <ScrollView
+          style={styles.scrollArea}
+          contentContainerStyle={styles.scrollInner}
         >
-          <div
-            style={{
-              width: 20,
-              height: 20,
-              borderRadius: 5,
-              border: `1.5px solid ${state.consentAllowWrite ? '#059669' : '#cbd5e1'}`,
-              background: state.consentAllowWrite ? '#059669' : '#fff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-              marginTop: 1,
-            }}
+          <View style={styles.infoBanner}>
+            <Text style={{ fontSize: 16 }}>🔗</Text>
+            <Text style={styles.infoBannerText}>
+              Grant access to a provider or organization.
+            </Text>
+          </View>
+
+          <Text style={styles.sectionHeading}>Grantee Type</Text>
+          <View style={styles.gridTwo}>
+            <Tile
+              label="Individual Provider"
+              selected={!isOrg}
+              onClick={() => actions.setConsentGranteeType('individual')}
+            />
+            <Tile
+              label="Organization"
+              selected={isOrg}
+              onClick={() => actions.setConsentGranteeType('organization')}
+            />
+          </View>
+
+          <Text style={styles.sectionHeading}>
+            {isOrg ? 'Organization ID' : 'Provider User ID'}
+          </Text>
+          <TextInput
+            value={state.consentProviderId}
+            onChangeText={actions.setConsentProviderId}
+            placeholder={isOrg ? 'Enter organization ID' : 'Enter provider user ID'}
+            placeholderTextColor="#94a3b8"
+            style={styles.textInput}
+          />
+
+          <Text style={styles.sectionHeading}>Access Scope</Text>
+          <View style={styles.gridTwo}>
+            {consentScopes.map((scope) => (
+              <Tile
+                key={scope}
+                label={scope}
+                selected={state.consentScope === scope}
+                onClick={() => actions.setConsentScope(scope)}
+              />
+            ))}
+          </View>
+
+          {/* Allow Write Access Toggle */}
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={actions.toggleConsentWrite}
+            style={styles.writeAccessCard}
           >
-            {state.consentAllowWrite && (
-              <svg width="12" height="12" viewBox="0 0 20 20">
-                <path d="M4 10l4 4 8-9" stroke="#fff" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            )}
-          </div>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginBottom: 3 }}>Allow write access</div>
-            <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
-              This provider can add new records (e.g. lab orders, prescriptions) for you, not just view existing ones. Off by default.
-            </div>
-          </div>
-        </div>
+            <View
+              style={[
+                styles.writeCheckbox,
+                {
+                  borderColor: state.consentAllowWrite ? '#059669' : '#cbd5e1',
+                  backgroundColor: state.consentAllowWrite ? '#059669' : '#ffffff',
+                },
+              ]}
+            >
+              {state.consentAllowWrite && (
+                <Svg width={12} height={12} viewBox="0 0 20 20">
+                  <Path
+                    d="M4 10l4 4 8-9"
+                    stroke="#ffffff"
+                    strokeWidth={2.5}
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </Svg>
+              )}
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.writeTitle}>Allow write access</Text>
+              <Text style={styles.writeSub}>
+                This provider can add new records (e.g. lab orders, prescriptions) for you, not just view existing ones. Off by default.
+              </Text>
+            </View>
+          </TouchableOpacity>
 
-        <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 10 }}>Auto-Expire Duration</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 24 }}>
-          {EXPIRY_DEFS.map(([val, label, badge]) => (
-            <Tile key={val} label={label} badge={badge} selected={state.consentExpiry === val} onClick={() => actions.setConsentExpiry(val)} solid />
-          ))}
-        </div>
-        <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: -14, marginBottom: 24 }}>
-          Expires {EXPIRY_LABEL_MAP[state.consentExpiry]}.
-        </div>
+          <Text style={styles.sectionHeading}>Auto-Expire Duration</Text>
+          <View style={styles.gridTwo}>
+            {EXPIRY_DEFS.map(([val, label, badge]) => (
+              <Tile
+                key={val}
+                label={label}
+                badge={badge}
+                selected={state.consentExpiry === val}
+                onClick={() => actions.setConsentExpiry(val)}
+                solid
+              />
+            ))}
+          </View>
+          <Text style={styles.expireNotice}>
+            Expires {EXPIRY_LABEL_MAP[state.consentExpiry]}.
+          </Text>
 
-        <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 10 }}>Purpose</div>
-        <textarea
-          value={state.consentPurpose}
-          onChange={(e) => actions.setConsentPurpose(e.target.value)}
-          placeholder="Example: Second opinion, emergency treatment, lab review..."
-          rows={3}
-          style={{
-            width: '100%',
-            background: '#fff',
-            border: '1px solid #e2e8f0',
-            borderRadius: 12,
-            padding: '12px 14px',
-            fontSize: 13.5,
-            boxSizing: 'border-box',
-            marginBottom: 26,
-            fontFamily: 'inherit',
-            resize: 'none',
-          }}
-        />
+          <Text style={styles.sectionHeading}>Purpose</Text>
+          <TextInput
+            value={state.consentPurpose}
+            onChangeText={actions.setConsentPurpose}
+            placeholder="Example: Second opinion, emergency treatment, lab review..."
+            placeholderTextColor="#94a3b8"
+            multiline
+            numberOfLines={3}
+            style={[styles.textInput, styles.textArea]}
+          />
 
-        <button
-          onClick={actions.grantSmartAccess}
-          style={{
-            width: '100%',
-            background: '#059669',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 14,
-            padding: 15,
-            fontSize: 14.5,
-            fontWeight: 700,
-            cursor: 'pointer',
-          }}
-        >
-          Grant Access
-        </button>
-      </div>
-    </div>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={actions.grantSmartAccess}
+            style={styles.grantBtn}
+          >
+            <Text style={styles.grantBtnText}>Grant Access</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 10,
+  },
+  headerTitle: {
+    fontSize: 19,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scrollArea: {
+    flex: 1,
+  },
+  scrollInner: {
+    paddingHorizontal: 20,
+    paddingBottom: 36,
+  },
+  infoBanner: {
+    borderRadius: 12,
+    backgroundColor: '#eef4ff',
+    borderWidth: 1,
+    borderColor: '#dbeafe',
+    paddingVertical: 11,
+    paddingHorizontal: 13,
+    marginBottom: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  infoBannerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1e3a8a',
+    flex: 1,
+  },
+  sectionHeading: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginBottom: 10,
+  },
+  gridTwo: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 20,
+  },
+  tileWrapper: {
+    width: '48%',
+    position: 'relative',
+  },
+  tileBadge: {
+    position: 'absolute',
+    top: -7,
+    right: 8,
+    zIndex: 10,
+    backgroundColor: '#2563eb',
+    borderRadius: 999,
+    paddingVertical: 2,
+    paddingHorizontal: 7,
+  },
+  tileBadgeText: {
+    color: '#ffffff',
+    fontSize: 9.5,
+    fontWeight: '700',
+  },
+  tile: {
+    paddingVertical: 13,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tileText: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  textInput: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    fontSize: 14,
+    marginBottom: 20,
+    color: '#0f172a',
+  },
+  textArea: {
+    height: 80,
+    textAlignVertical: 'top',
+  },
+  writeAccessCard: {
+    flexDirection: 'row',
+    gap: 12,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 24,
+  },
+  writeCheckbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  writeTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 3,
+  },
+  writeSub: {
+    fontSize: 12,
+    color: '#64748b',
+    lineHeight: 17,
+  },
+  expireNotice: {
+    fontSize: 12,
+    color: '#94a3b8',
+    marginTop: -12,
+    marginBottom: 20,
+  },
+  grantBtn: {
+    backgroundColor: '#059669',
+    borderRadius: 14,
+    paddingVertical: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 6,
+  },
+  grantBtnText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+});

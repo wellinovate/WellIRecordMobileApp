@@ -1,28 +1,24 @@
+import React from 'react';
+import { View, Text, TouchableOpacity, Switch, StyleSheet } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
+
 export function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div
-      style={{
-        fontSize: 13,
-        fontWeight: 700,
-        color: '#0f172a',
-        textTransform: 'uppercase',
-        letterSpacing: '.04em',
-        marginBottom: 10,
-      }}
-    >
+    <Text style={styles.sectionLabel}>
       {children}
-    </div>
+    </Text>
   );
 }
 
 export function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
-    <div
-      onClick={onClick}
-      style={{ width: 40, height: 24, borderRadius: 999, background: on ? '#0EA5E9' : '#cbd5e1', position: 'relative', cursor: 'pointer', flexShrink: 0 }}
-    >
-      <div style={{ position: 'absolute', top: 2, [on ? 'right' : 'left']: 2, width: 20, height: 20, borderRadius: 999, background: '#fff' }} />
-    </div>
+    <Switch
+      value={on}
+      onValueChange={onClick}
+      trackColor={{ false: '#cbd5e1', true: '#0EA5E9' }}
+      thumbColor="#ffffff"
+      ios_backgroundColor="#cbd5e1"
+    />
   );
 }
 
@@ -40,21 +36,31 @@ export function Row({
   danger?: boolean;
 }) {
   return (
-    <div
-      onClick={onClick}
-      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px', cursor: 'pointer' }}
+    <TouchableOpacity
+      activeOpacity={0.7}
+      onPress={onClick}
+      style={styles.row}
     >
-      <span style={{ fontSize: 16, width: 20, textAlign: 'center' }}>{emoji}</span>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 13.5, fontWeight: 600, color: danger ? '#dc2626' : '#0f172a' }}>{label}</div>
-        {sub && <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 1 }}>{sub}</div>}
-      </div>
+      <Text style={styles.emoji}>{emoji}</Text>
+      <View style={styles.rowContent}>
+        <Text style={[styles.rowLabel, danger && { color: '#dc2626' }]}>
+          {label}
+        </Text>
+        {sub ? <Text style={styles.rowSub}>{sub}</Text> : null}
+      </View>
       {!danger && (
-        <svg width="14" height="14" viewBox="0 0 20 20">
-          <path d="M7 4l6 6-6 6" stroke="#94a3b8" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+        <Svg width={14} height={14} viewBox="0 0 20 20">
+          <Path
+            d="M7 4l6 6-6 6"
+            stroke="#94a3b8"
+            strokeWidth={2}
+            fill="none"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </Svg>
       )}
-    </div>
+    </TouchableOpacity>
   );
 }
 
@@ -72,13 +78,49 @@ export function ToggleRow({
   onClick: () => void;
 }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px' }}>
-      <span style={{ fontSize: 16, width: 20, textAlign: 'center' }}>{emoji}</span>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a' }}>{label}</div>
-        {sub && <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 1 }}>{sub}</div>}
-      </div>
+    <View style={styles.row}>
+      <Text style={styles.emoji}>{emoji}</Text>
+      <View style={styles.rowContent}>
+        <Text style={styles.rowLabel}>{label}</Text>
+        {sub ? <Text style={styles.rowSub}>{sub}</Text> : null}
+      </View>
       <Toggle on={on} onClick={onClick} />
-    </div>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  sectionLabel: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#0f172a',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+  },
+  emoji: {
+    fontSize: 17,
+    width: 26,
+    textAlign: 'center',
+    marginRight: 10,
+  },
+  rowContent: {
+    flex: 1,
+  },
+  rowLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0f172a',
+  },
+  rowSub: {
+    fontSize: 12,
+    color: '#94a3b8',
+    marginTop: 2,
+  },
+});

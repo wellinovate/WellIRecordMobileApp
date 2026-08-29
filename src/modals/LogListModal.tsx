@@ -1,3 +1,12 @@
+import React from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  Modal,
+  SafeAreaView,
+} from 'react-native';
 import { ModalHeader } from '../components/ModalHeader';
 import type { LogEntry } from '../data/types';
 
@@ -8,37 +17,89 @@ interface LogListModalProps {
   onClose: () => void;
 }
 
-export function LogListModal({ title, intro, entries, onClose }: LogListModalProps) {
+export function LogListModal({
+  title,
+  intro,
+  entries,
+  onClose,
+}: LogListModalProps) {
   return (
-    <div className="overlay-fullscreen">
-      <ModalHeader title={title} onClose={onClose} />
-      <div style={{ flex: 1, overflowY: 'auto', padding: '6px 20px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {intro && <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>{intro}</div>}
-        {entries.map((a, i) => (
-          <div key={i} style={{ display: 'flex', gap: 12, padding: 12, background: '#f8fafc', borderRadius: 14 }}>
-            <div
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 999,
-                background: '#fff',
-                border: '1px solid #e2e8f0',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 14,
-                flexShrink: 0,
-              }}
-            >
-              {a.emoji}
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{a.title}</div>
-              <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 2 }}>{a.time}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
+    <Modal
+      visible={true}
+      animationType="slide"
+      transparent={false}
+      onRequestClose={onClose}
+    >
+      <SafeAreaView style={styles.container}>
+        <ModalHeader title={title} onClose={onClose} />
+
+        <ScrollView
+          style={styles.scrollArea}
+          contentContainerStyle={styles.scrollInner}
+        >
+          {intro ? <Text style={styles.introText}>{intro}</Text> : null}
+
+          {entries.map((a, i) => (
+            <View key={i} style={styles.logCard}>
+              <View style={styles.emojiBox}>
+                <Text style={{ fontSize: 15 }}>{a.emoji}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.logTitle}>{a.title}</Text>
+                <Text style={styles.logTime}>{a.time}</Text>
+              </View>
+            </View>
+          ))}
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
+  scrollArea: {
+    flex: 1,
+  },
+  scrollInner: {
+    paddingHorizontal: 20,
+    paddingBottom: 36,
+    gap: 10,
+  },
+  introText: {
+    fontSize: 12.5,
+    color: '#94a3b8',
+    marginBottom: 6,
+  },
+  logCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    backgroundColor: '#f8fafc',
+    borderRadius: 14,
+  },
+  emojiBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logTitle: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  logTime: {
+    fontSize: 12,
+    color: '#94a3b8',
+    marginTop: 2,
+  },
+});

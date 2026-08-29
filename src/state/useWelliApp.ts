@@ -1,37 +1,54 @@
 import { useEffect, useRef, useState } from 'react';
+import { Linking, Share } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import {
   ACTIVITY_LOG,
   CONSENT_SCOPES,
   DOCTORS,
   FACILITIES,
   FAMILY,
+  IMMUNIZATION_SCHEDULE,
   INITIAL_ACTIVE_SHARES,
   INITIAL_INVOICES,
   INITIAL_LINKED_ACCOUNTS,
   INITIAL_NOTIFICATIONS,
+  INITIAL_PRESCRIPTIONS,
   LINKED_ACCOUNTS,
   ONBOARDING,
   PROXY_LOG,
   RECORDS,
+  VITALS_LOGS,
 } from '../data/mockData';
 import type {
   ActiveShare,
   ConsentGranteeType,
   FamilyMember,
+  HealthRecord,
+  ImmunizationMilestone,
   Invoice,
   Notification,
+  PrescriptionItem,
   RecordType,
   ShareExpiry,
   ShareMethod,
+  SignUpFormData,
   Tab,
+  VitalLogEntry,
+  WelcomeTab,
 } from '../data/types';
 import { bridgeLinkFor, generateBridgeCode } from '../utils/bridgeCode';
 import { EXPIRY_SHORT_LABEL_MAP } from '../utils/expiry';
+import { storage } from '../utils/storage';
+import { hapticFeedback } from '../utils/haptics';
 
 export interface AppState {
   tab: Tab;
+  tabHistory: Tab[];
   activeFamilyId: string;
   familyMembers: FamilyMember[];
+  recordsList: HealthRecord[];
+  immunizationSchedule: ImmunizationMilestone[];
+  vitalsLogs: VitalLogEntry[];
   recordFilter: RecordType | 'All';
   recordQuery: string;
   recordDetailId: string | null;
@@ -87,6 +104,10 @@ export interface AppState {
   showBilling: boolean;
   invoices: Invoice[];
   showInvoiceDetail: string | null;
+  showPrintLabResult: string | null;
+  showEmailLabResult: string | null;
+  prescriptions: PrescriptionItem[];
+  showRefillModal: string | null;
   inCall: boolean;
   callMuted: boolean;
   callCameraOff: boolean;
@@ -103,18 +124,28 @@ export interface AppState {
   language: string;
   notifPermission: 'granted' | 'skipped' | null;
   loggedOut: boolean;
+  showWelcomeHome: boolean;
+  welcomeTab: WelcomeTab;
+  showVaultExport: boolean;
   toast: string | null;
 }
 
 const initialState: AppState = {
   tab: 'home',
+  tabHistory: [],
   activeFamilyId: 'me',
   familyMembers: FAMILY,
+  recordsList: RECORDS,
+  immunizationSchedule: IMMUNIZATION_SCHEDULE,
+  vitalsLogs: VITALS_LOGS,
   recordFilter: 'All',
   recordQuery: '',
   recordDetailId: null,
   showUpload: false,
   uploadStep: 0,
+  showWelcomeHome: false,
+  welcomeTab: 'about',
+  showVaultExport: false,
   showShareFlow: false,
   shareStep: 0,
   shareSelected: {},
@@ -165,6 +196,10 @@ const initialState: AppState = {
   showBilling: false,
   invoices: INITIAL_INVOICES,
   showInvoiceDetail: null,
+  showPrintLabResult: null,
+  showEmailLabResult: null,
+  prescriptions: INITIAL_PRESCRIPTIONS,
+  showRefillModal: null,
   inCall: false,
   callMuted: false,
   callCameraOff: false,
@@ -203,15 +238,19 @@ export function useWelliApp() {
   };
 
   useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('welli_active_shares') || 'null');
-      if (saved && Array.isArray(saved)) patch({ activeShares: saved });
-      const dm = localStorage.getItem('welli_dark_mode');
-      if (dm !== null) patch({ darkMode: dm === '1' });
-    } catch {
-      // ignore corrupt local storage
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    (async () => {
+      try {
+        const saved = await storage.getItem('welli_active_shares');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) patch({ activeShares: parsed });
+        }
+        const dm = await storage.getItem('welli_dark_mode');
+        if (dm !== null) patch({ darkMode: dm === '1' });
+      } catch {
+        // ignore corrupt local storage
+      }
+    })();
   }, []);
 
   useEffect(() => {
@@ -220,25 +259,41 @@ export function useWelliApp() {
       patch((s) => ({ callDurationSec: s.callDurationSec + 1 }));
     }, 1000);
     return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.inCall]);
 
   const persistShares = (shares: ActiveShare[]) => {
-    try {
-      localStorage.setItem('welli_active_shares', JSON.stringify(shares));
-    } catch {
-      // ignore write failures
-    }
+    storage.setItem('welli_active_shares', JSON.stringify(shares)).catch(() => {});
   };
 
   const showToast = (msg: string) => {
+    hapticFeedback.light();
     if (toastTimer.current) clearTimeout(toastTimer.current);
     patch({ toast: msg });
     toastTimer.current = setTimeout(() => patch({ toast: null }), 2200);
   };
 
   const actions = {
-    setTab: (tab: Tab) => patch({ tab }),
+    setTab: (tab: Tab) => {
+      patch((s) => {
+        if (s.tab === tab) return {};
+        return {
+          tabHistory: [...s.tabHistory, s.tab],
+          tab,
+        };
+      });
+    },
+    goBackTab: () => {
+      hapticFeedback.light();
+      patch((s) => {
+        if (s.tabHistory.length === 0) return {};
+        const newHistory = [...s.tabHistory];
+        const prevTab = newHistory.pop()!;
+        return {
+          tabHistory: newHistory,
+          tab: prevTab,
+        };
+      });
+    },
     setFamily: (id: string) => patch({ activeFamilyId: id }),
     openRecord: (id: string) => patch({ recordDetailId: id }),
     closeRecord: () => patch({ recordDetailId: null }),
@@ -295,10 +350,21 @@ export function useWelliApp() {
         ][s.shareStep];
         if (!valid) return s;
         if (s.shareStep === 3) {
-          const doc =
-            s.shareSelectedDoctorId === 'bridge'
-              ? { id: 'bridge', name: `WelliBridge Link · ${s.bridgeCode}`, initials: 'WB' }
-              : DOCTORS.find((d) => d.id === s.shareSelectedDoctorId)!;
+          let doc: { id: string; name: string; initials: string };
+          if (s.shareSelectedDoctorId === 'bridge') {
+            doc = { id: 'bridge', name: `WelliBridge Link · ${s.bridgeCode}`, initials: 'WB' };
+          } else {
+            const foundDoc = DOCTORS.find((d) => d.id === s.shareSelectedDoctorId);
+            const foundFac = FACILITIES.find((f) => f.id === s.shareSelectedDoctorId);
+            if (foundDoc) {
+              doc = foundDoc;
+            } else if (foundFac) {
+              const inits = foundFac.name.split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || 'HC';
+              doc = { id: foundFac.id, name: foundFac.name, initials: inits };
+            } else {
+              doc = { id: s.shareSelectedDoctorId || 'org', name: 'Healthcare Provider', initials: 'HP' };
+            }
+          }
           const count = Object.values(s.shareSelected).filter(Boolean).length;
           const newShare: ActiveShare = {
             id: 's' + Date.now(),
@@ -330,13 +396,27 @@ export function useWelliApp() {
     },
     setDoctorQuery: (value: string) => patch({ shareDoctorQuery: value }),
     selectDoctor: (id: string) => patch({ shareSelectedDoctorId: id }),
+    shareWithFacility: (facilityId: string) => {
+      hapticFeedback.light();
+      const owned = state.recordsList.filter((r) => r.ownerId === state.activeFamilyId);
+      const selected: Record<string, boolean> = {};
+      owned.forEach((r) => {
+        selected[r.id] = true;
+      });
+      patch({
+        showShareFlow: true,
+        shareStep: 1,
+        shareSelected: selected,
+        shareMethod: 'search',
+        shareSelectedDoctorId: facilityId,
+      });
+      showToast('Facility pre-selected for clinical vault share');
+    },
     copyBridgeLink: () => {
       const code = state.bridgeCode;
       if (!code) return;
       const link = `https://${bridgeLinkFor(code)}`;
-      if (navigator.clipboard?.writeText) {
-        navigator.clipboard.writeText(link).catch(() => {});
-      }
+      Clipboard.setStringAsync(link).catch(() => {});
       showToast('Link copied');
     },
     setExpiry: (v: ShareExpiry) => patch({ shareExpiry: v }),
@@ -509,7 +589,15 @@ export function useWelliApp() {
         return { ...s, twoFactorEnabled };
       });
     },
-    downloadMyData: () => showToast("We'll email you a download link shortly"),
+    downloadMyData: () => {
+      hapticFeedback.selection();
+      patch({ showVaultExport: true, showPrivacySecurity: false });
+    },
+    openVaultExport: () => {
+      hapticFeedback.selection();
+      patch({ showVaultExport: true });
+    },
+    closeVaultExport: () => patch({ showVaultExport: false }),
     requestAccountDeletion: () => showToast('Contact WelliRecord support to delete your account'),
 
     openLinkedAccounts: () => patch({ showLinkedAccounts: true }),
@@ -534,6 +622,73 @@ export function useWelliApp() {
     endCall: () => {
       patch({ inCall: false });
       showToast('Call ended');
+    },
+    syncTelehealthVisit: (data: {
+      doctorName: string;
+      diagnosis: string;
+      notes: string;
+      prescriptionName?: string;
+      dosage?: string;
+    }) => {
+      hapticFeedback.success();
+      const newRecordId = `r_${Date.now()}`;
+      const now = new Date();
+      const dateStr = now.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+
+      const newRecord: HealthRecord = {
+        id: newRecordId,
+        ownerId: state.activeFamilyId,
+        title: `Telehealth Summary · ${data.doctorName}`,
+        date: dateStr,
+        type: 'Clinical Note',
+        provider: `${data.doctorName} · WelliCare Virtual Care`,
+        summary: `Diagnosis: ${data.diagnosis}. ${data.notes}`,
+        extractedOcr: {
+          keyValues: [
+            { label: 'Consultant', value: data.doctorName },
+            { label: 'Diagnosis', value: data.diagnosis },
+            { label: 'Encounter Type', value: 'Telehealth Video Encounter' },
+          ],
+          statusBadge: 'Doctor Certified',
+        },
+      };
+
+      let updatedRxList = state.prescriptions;
+      if (data.prescriptionName) {
+        const newRx: PrescriptionItem = {
+          id: `rx_${Date.now()}`,
+          ownerId: state.activeFamilyId,
+          medicationName: data.prescriptionName,
+          dosage: data.dosage || '1 tablet daily as prescribed',
+          frequency: 'Daily · 10-Day Supply',
+          prescriber: `${data.doctorName} · WelliCare Telehealth`,
+          prescribedDate: dateStr,
+          pharmacyProvider: 'MediTrust Pharmacy & Diagnostics · Lekki Phase 1',
+          totalPriceNaira: 3500,
+          hmoCoveredNaira: 2800,
+          patientCoPayNaira: 700,
+          refillsTotal: 2,
+          refillsRemaining: 2,
+          status: 'active',
+          deliveryAddress: 'Block 12, Admiralty Way, Lekki Phase 1, Lagos',
+          eta: 'Today via Express Dispatch',
+          hmoProvider: 'Hygeia HMO (80% Tariff Co-Pay)',
+          notes: `Prescribed during telehealth follow-up for ${data.diagnosis}.`,
+        };
+        updatedRxList = [newRx, ...state.prescriptions];
+      }
+
+      patch((s) => ({
+        inCall: false,
+        recordsList: [newRecord, ...s.recordsList],
+        prescriptions: updatedRxList,
+      }));
+
+      showToast(
+        data.prescriptionName
+          ? 'Consultation note & new prescription saved to your vault'
+          : 'Consultation note saved to your vault'
+      );
     },
     toggleCallMute: () => patch((s) => ({ callMuted: !s.callMuted })),
     toggleCallCamera: () => patch((s) => ({ callCameraOff: !s.callCameraOff })),
@@ -587,25 +742,26 @@ export function useWelliApp() {
       patch((s) => ({ notifications: s.notifications.filter((n) => n.id !== id) })),
 
     toggleDarkMode: () => {
+      hapticFeedback.selection();
       setState((s) => {
         const darkMode = !s.darkMode;
-        try {
-          localStorage.setItem('welli_dark_mode', darkMode ? '1' : '0');
-        } catch {
-          // ignore
-        }
+        storage.setItem('welli_dark_mode', darkMode ? '1' : '0').catch(() => {});
         return { ...s, darkMode };
       });
     },
 
     toggleFaceId: () => {
+      hapticFeedback.selection();
       setState((s) => {
         const faceIdEnabled = !s.faceIdEnabled;
-        if (faceIdEnabled) showToast('Face ID Lock enabled — optional, off by default');
+        if (faceIdEnabled) showToast('Biometric Lock enabled — optional, off by default');
         return { ...s, faceIdEnabled, showLockScreen: faceIdEnabled };
       });
     },
-    unlockWithFaceId: () => patch({ showLockScreen: false }),
+    unlockWithFaceId: () => {
+      hapticFeedback.success();
+      patch({ showLockScreen: false });
+    },
 
     openActivity: () => patch({ showActivity: true }),
     closeActivity: () => patch({ showActivity: false }),
@@ -620,16 +776,248 @@ export function useWelliApp() {
       patch({ recordDetailId: null });
       actions.openShareFlow(recordId ?? undefined);
     },
-    downloadRecord: () => showToast('Record saved to Files'),
+    downloadRecord: () => {
+      hapticFeedback.success();
+      showToast('Record saved to Files as PDF');
+    },
 
-    logOut: () => patch({ loggedOut: true }),
-    logBackIn: () => patch({ loggedOut: false, tab: 'home' }),
+    openPrintLabResult: (recordId: string) => {
+      hapticFeedback.light();
+      patch({ showPrintLabResult: recordId });
+    },
+    closePrintLabResult: () => patch({ showPrintLabResult: null }),
+
+    openEmailLabResult: (recordId: string) => {
+      hapticFeedback.light();
+      patch({ showEmailLabResult: recordId });
+    },
+    closeEmailLabResult: () => patch({ showEmailLabResult: null }),
+
+    sendEmailReport: (recordId: string, recipientEmail: string, _note?: string) => {
+      hapticFeedback.success();
+      patch({ showEmailLabResult: null });
+      showToast(`Encrypted lab result PDF sent to ${recipientEmail}`);
+    },
+
+    shareViaWhatsApp: async (recordId: string) => {
+      hapticFeedback.success();
+      const record = state.recordsList.find((r) => r.id === recordId);
+      if (!record) return;
+      const owner = state.familyMembers.find((f) => f.id === record.ownerId) || state.familyMembers[0];
+      const bridgeCode = state.bridgeCode || generateBridgeCode();
+
+      let keyValuesText = '';
+      if (record.extractedOcr?.keyValues) {
+        keyValuesText = record.extractedOcr.keyValues
+          .map((kv) => `• ${kv.label}: ${kv.value}`)
+          .join('\n');
+      }
+
+      const message =
+        `🏥 *WelliRecord Verified Health Result*\n\n` +
+        `👤 *Patient:* ${owner.name}\n` +
+        `📄 *Report:* ${record.title}\n` +
+        `🏥 *Provider:* ${record.provider}\n` +
+        `📅 *Date:* ${record.date}\n\n` +
+        (keyValuesText ? `📊 *Key Biomarkers:*\n${keyValuesText}\n\n` : '') +
+        `🔒 *Encrypted Patient-Authorized Access (Valid for 24h):*\n` +
+        `https://${bridgeLinkFor(bridgeCode)}\n\n` +
+        `_Encrypted with zero-knowledge keys · NDPR Compliant_`;
+
+      try {
+        await Clipboard.setStringAsync(message);
+        const whatsappUrl = `whatsapp://send?text=${encodeURIComponent(message)}`;
+        const canOpen = await Linking.canOpenURL(whatsappUrl);
+        if (canOpen) {
+          await Linking.openURL(whatsappUrl);
+          showToast('Opening WhatsApp & link copied');
+        } else {
+          await Share.share({
+            message,
+            title: record.title,
+          });
+          showToast('Result summary copied & shared');
+        }
+      } catch {
+        showToast('Result link & summary copied to clipboard');
+      }
+    },
+
+    openWelcomeHome: (tab: WelcomeTab = 'about') =>
+      patch({ showWelcomeHome: true, welcomeTab: tab }),
+    closeWelcomeHome: () => patch({ showWelcomeHome: false }),
+    setWelcomeTab: (tab: WelcomeTab) => patch({ welcomeTab: tab }),
+
+    signInWithDemo: (memberId = 'me') => {
+      hapticFeedback.success();
+      patch({
+        loggedOut: false,
+        showWelcomeHome: false,
+        activeFamilyId: memberId,
+        tab: 'home',
+      });
+      showToast('Welcome back to WelliRecord');
+    },
+
+    signInWithCredentials: (identifier: string) => {
+      hapticFeedback.success();
+      const trimmed = identifier.trim();
+      patch({
+        loggedOut: false,
+        showWelcomeHome: false,
+        activeFamilyId: 'me',
+        tab: 'home',
+      });
+      showToast(`Signed in as ${trimmed || 'Amara Nwosu'}`);
+    },
+
+    signUpWithData: (data: SignUpFormData) => {
+      hapticFeedback.success();
+      const initials = data.name
+        .split(' ')
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((p) => p[0])
+        .join('')
+        .toUpperCase() || 'U';
+
+      const newOwner: FamilyMember = {
+        id: 'me',
+        name: data.name.trim() || 'New User',
+        initials,
+        role: 'owner',
+        dob: data.dob || '1990-01-01',
+        gender: '—',
+        bloodType: data.bloodType || 'O+',
+        genotype: data.genotype || 'AA',
+        height: '—',
+        weight: '—',
+        allergies: 'None reported',
+        conditions: 'None reported',
+        contact: data.phone || '+234 800 000 0000',
+        email: data.email || 'user@example.com',
+        phone: data.phone || '+234 800 000 0000',
+        address: 'Lagos, Nigeria',
+        insuranceProvider: data.insuranceProvider || 'Private Self-Pay',
+        insuranceId: data.insuranceId || `WELLI-${Math.floor(100000 + Math.random() * 900000)}`,
+      };
+
+      patch((s) => ({
+        familyMembers: [newOwner, ...s.familyMembers.filter((f) => f.id !== 'me')],
+        activeFamilyId: 'me',
+        loggedOut: false,
+        showWelcomeHome: false,
+        tab: 'home',
+      }));
+      showToast(`Welcome to WelliRecord, ${newOwner.name.split(' ')[0]}!`);
+    },
+
+    addRecord: (rec: Omit<HealthRecord, 'id'>) => {
+      hapticFeedback.success();
+      const newRec: HealthRecord = {
+        id: `r_${Date.now()}`,
+        ...rec,
+      };
+      patch((s) => ({
+        recordsList: [newRec, ...s.recordsList],
+        uploadStep: 2,
+      }));
+      showToast(`Added "${rec.title}" to ${rec.ownerId === 'me' ? 'your vault' : 'family vault'}`);
+    },
+
+    deleteRecord: (id: string) => {
+      hapticFeedback.light();
+      patch((s) => ({
+        recordsList: s.recordsList.filter((r) => r.id !== id),
+        recordDetailId: null,
+      }));
+      showToast('Record removed from vault');
+    },
+
+    toggleImmunization: (id: string) => {
+      hapticFeedback.selection();
+      patch((s) => ({
+        immunizationSchedule: s.immunizationSchedule.map((item) => {
+          if (item.id === id) {
+            const nextStatus = item.status === 'completed' ? 'due' : 'completed';
+            return {
+              ...item,
+              status: nextStatus,
+              completedDate: nextStatus === 'completed' ? 'Today' : undefined,
+            };
+          }
+          return item;
+        }),
+      }));
+    },
+
+    addVitalLog: (entry: Omit<VitalLogEntry, 'id'>) => {
+      hapticFeedback.success();
+      const newVital: VitalLogEntry = {
+        id: `v_${Date.now()}`,
+        ...entry,
+      };
+      patch((s) => ({
+        vitalsLogs: [newVital, ...s.vitalsLogs],
+      }));
+      showToast(`Logged vital: ${entry.primaryValue} ${entry.unit}`);
+    },
+
+    revokeActiveShare: (id: string) => {
+      hapticFeedback.warning();
+      patch((s) => ({
+        activeShares: s.activeShares.filter((share) => share.id !== id),
+      }));
+      showToast('Access revoked immediately');
+    },
+
+    payInvoice: (id: string) => {
+      hapticFeedback.success();
+      patch((s) => ({
+        invoices: s.invoices.map((inv) =>
+          inv.id === id ? { ...inv, status: 'paid' } : inv
+        ),
+      }));
+      showToast('Invoice marked as reconciled and settled');
+    },
+
+    openRefillModal: (prescriptionId: string) => {
+      hapticFeedback.light();
+      patch({ showRefillModal: prescriptionId, recordDetailId: null });
+    },
+    closeRefillModal: () => patch({ showRefillModal: null }),
+
+    requestRefill: (data: { prescriptionId: string; deliveryAddress: string; notes?: string }) => {
+      hapticFeedback.success();
+      patch((s) => ({
+        prescriptions: s.prescriptions.map((rx) => {
+          if (rx.id === data.prescriptionId) {
+            return {
+              ...rx,
+              refillsRemaining: Math.max(0, rx.refillsRemaining - 1),
+              status: 'refill_requested',
+              deliveryAddress: data.deliveryAddress,
+              notes: data.notes || rx.notes,
+            };
+          }
+          return rx;
+        }),
+        showRefillModal: null,
+      }));
+      showToast('Prescription refill dispatched via HMO E-Pharmacy');
+    },
+
+    logOut: () => patch({ loggedOut: true, showWelcomeHome: true, welcomeTab: 'signin' }),
+    logBackIn: () => patch({ loggedOut: false, showWelcomeHome: false, tab: 'home' }),
   };
 
   return {
     state,
     actions,
-    records: RECORDS,
+    records: state.recordsList,
+    prescriptions: state.prescriptions,
+    immunizations: state.immunizationSchedule,
+    vitalsLogs: state.vitalsLogs,
     family: state.familyMembers,
     doctors: DOCTORS,
     proxyLog: PROXY_LOG,

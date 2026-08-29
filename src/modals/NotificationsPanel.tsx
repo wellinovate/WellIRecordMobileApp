@@ -1,3 +1,13 @@
+import React from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  StyleSheet,
+  Modal,
+} from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { useTheme } from '../theme/ThemeContext';
 import type { WelliApp } from '../state/useWelliApp';
 
@@ -7,63 +17,201 @@ export function NotificationsPanel({ app }: { app: WelliApp }) {
   if (!state.showNotifications) return null;
 
   return (
-    <div
-      className="overlay-scrim"
-      style={{ zIndex: 55 }}
-      onClick={actions.closeNotifications}
+    <Modal
+      visible={state.showNotifications}
+      transparent
+      animationType="fade"
+      onRequestClose={actions.closeNotifications}
     >
-      <div
-        className="wr-slide-down"
-        style={{
-          position: 'absolute',
-          top: 54,
-          left: 16,
-          right: 16,
-          background: theme.surface,
-          color: theme.text,
-          borderRadius: 18,
-          boxShadow: '0 12px 30px rgba(0,0,0,.25)',
-          overflow: 'hidden',
-        }}
-        onClick={(e) => e.stopPropagation()}
+      <TouchableOpacity
+        style={styles.overlay}
+        activeOpacity={1}
+        onPress={actions.closeNotifications}
       >
-        <div style={{ padding: '14px 16px', fontSize: 14, fontWeight: 700, borderBottom: `1px solid ${theme.border}` }}>Notifications</div>
-        {state.notifications.length === 0 && (
-          <div style={{ padding: '28px 16px', textAlign: 'center', fontSize: 13, color: theme.mutedLight }}>You're all caught up.</div>
-        )}
-        {state.notifications.map((n) => (
-          <div key={n.id} style={{ display: 'flex', gap: 10, padding: '13px 16px', borderBottom: `1px solid ${theme.border}`, alignItems: 'flex-start' }}>
-            <div
-              style={{
-                width: 30,
-                height: 30,
-                borderRadius: 999,
-                background: n.tint,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 14,
-                flexShrink: 0,
-              }}
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={(e) => e.stopPropagation()}
+          style={[
+            styles.panel,
+            { backgroundColor: theme.surface, borderColor: theme.border },
+          ]}
+        >
+          <View style={[styles.header, { borderBottomColor: theme.border }]}>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={actions.closeNotifications}
+              style={[styles.headerBtn, { backgroundColor: theme.darkMode ? 'rgba(255,255,255,0.08)' : '#f1f5f9' }]}
+              accessibilityLabel="Back to previous page"
             >
-              {n.emoji}
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 700 }}>{n.title}</div>
-              <div style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>{n.desc}</div>
-              <div style={{ fontSize: 10.5, color: theme.mutedLight, marginTop: 4 }}>{n.time}</div>
-            </div>
-            <div
-              onClick={() => actions.dismissNotification(n.id)}
-              style={{ width: 22, height: 22, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+              <Svg width={14} height={14} viewBox="0 0 20 20">
+                <Path
+                  d="M12 4l-6 6 6 6"
+                  stroke={theme.text}
+                  strokeWidth={2}
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </Svg>
+            </TouchableOpacity>
+
+            <Text style={[styles.headerTitle, { color: theme.text }]}>
+              Notifications
+            </Text>
+
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={actions.closeNotifications}
+              style={[styles.headerBtn, { backgroundColor: theme.darkMode ? 'rgba(255,255,255,0.08)' : '#f1f5f9' }]}
+              accessibilityLabel="Close notifications"
             >
-              <svg width="11" height="11" viewBox="0 0 20 20">
-                <path d="M4 4l12 12M16 4L4 16" stroke={theme.mutedLight} strokeWidth="2" strokeLinecap="round" />
-              </svg>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
+              <Svg width={14} height={14} viewBox="0 0 20 20">
+                <Path
+                  d="M4 4l12 12M16 4L4 16"
+                  stroke={theme.text}
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                />
+              </Svg>
+            </TouchableOpacity>
+          </View>
+
+          {state.notifications.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Text style={[styles.emptyText, { color: theme.mutedLight }]}>
+                You're all caught up.
+              </Text>
+            </View>
+          ) : (
+            <ScrollView style={{ maxHeight: 380 }}>
+              {state.notifications.map((n) => (
+                <View
+                  key={n.id}
+                  style={[
+                    styles.notifRow,
+                    { borderBottomColor: theme.border },
+                  ]}
+                >
+                  <View
+                    style={[styles.emojiCircle, { backgroundColor: n.tint }]}
+                  >
+                    <Text style={{ fontSize: 15 }}>{n.emoji}</Text>
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.notifTitle, { color: theme.text }]}>
+                      {n.title}
+                    </Text>
+                    <Text style={[styles.notifDesc, { color: theme.muted }]}>
+                      {n.desc}
+                    </Text>
+                    <Text
+                      style={[styles.notifTime, { color: theme.mutedLight }]}
+                    >
+                      {n.time}
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={() => actions.dismissNotification(n.id)}
+                    style={styles.dismissBtn}
+                  >
+                    <Svg width={12} height={12} viewBox="0 0 20 20">
+                      <Path
+                        d="M4 4l12 12M16 4L4 16"
+                        stroke={theme.mutedLight}
+                        strokeWidth={2}
+                        strokeLinecap="round"
+                      />
+                    </Svg>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+          )}
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    paddingTop: 64,
+    paddingHorizontal: 16,
+  },
+  panel: {
+    borderRadius: 18,
+    borderWidth: 1,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+  },
+  headerBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  emptyContainer: {
+    paddingVertical: 28,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 13,
+  },
+  notifRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+  },
+  emojiCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notifTitle: {
+    fontSize: 13.5,
+    fontWeight: '700',
+  },
+  notifDesc: {
+    fontSize: 12,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  notifTime: {
+    fontSize: 10.5,
+    marginTop: 4,
+  },
+  dismissBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});

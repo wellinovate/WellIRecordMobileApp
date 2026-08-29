@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" width="500" height="600">
+  <!-- Shield Background -->
+  <path d="M50 4
+           C52 4, 86 11, 88 12.5
+           C90 14, 91 16, 91 22
+           L91 58
+           C91 82, 72 104, 50 116
+           C28 104, 9 82, 9 58
+           L9 22
+           C9 16, 10 14, 12 12.5
+           C14 11, 48 4, 50 4 Z"
+        fill="#021F50" />
+
+  <!-- Outer Chevron (Upper Arch) -->
+  <path d="M15 98
+           L50 34
+           L85 98"
+        fill="none"
+        stroke="#ffffff"
+        stroke-width="8.5"
+        stroke-linecap="round"
+        stroke-linejoin="round" />
+
+  <!-- Inner Chevron (Lower Arch) -->
+  <path d="M31 106
+           L50 71
+           L69 106"
+        fill="none"
+        stroke="#ffffff"
+        stroke-width="8.5"
+        stroke-linecap="round"
+        stroke-linejoin="round" />
+
+  <!-- Plus Sign in Top Right -->
+  <path d="M78 23 V37 M71 30 H85"
+        stroke="#ffffff"
+        stroke-width="4"
+        stroke-linecap="square" />
+</svg>

@@ -1,5 +1,8 @@
+import React, { useEffect } from 'react';
+import { View, StyleSheet, SafeAreaView, BackHandler, Platform } from 'react-native';
 import { useWelliApp } from './state/useWelliApp';
 import { themeFor, ThemeContext } from './theme/ThemeContext';
+import { PhoneShell } from './components/PhoneShell';
 import { TabBar } from './components/TabBar';
 import { Toast } from './components/Toast';
 
@@ -32,11 +35,144 @@ import { LoggedOutScreen } from './modals/LoggedOutScreen';
 import { BookAppointmentModal } from './modals/BookAppointmentModal';
 import { BillingModal } from './modals/BillingModal';
 import { InvoiceDetailModal } from './modals/InvoiceDetailModal';
+import { WelcomeHomeModal } from './modals/WelcomeHomeModal';
+import { PrintLabResultModal } from './modals/PrintLabResultModal';
+import { EmailReportModal } from './modals/EmailReportModal';
+import { PrescriptionRefillModal } from './modals/PrescriptionRefillModal';
+import { VaultExportModal } from './modals/VaultExportModal';
 
-function App() {
+export default function App() {
   const app = useWelliApp();
   const { state } = app;
   const theme = themeFor(state.darkMode);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    const onBackPress = () => {
+      if (state.showVaultExport) {
+        app.actions.closeVaultExport();
+        return true;
+      }
+      if (state.showRefillModal) {
+        app.actions.closeRefillModal();
+        return true;
+      }
+      if (state.showPrintLabResult) {
+        app.actions.closePrintLabResult();
+        return true;
+      }
+      if (state.showEmailLabResult) {
+        app.actions.closeEmailLabResult();
+        return true;
+      }
+      if (state.showWelcomeHome && !state.loggedOut) {
+        app.actions.closeWelcomeHome();
+        return true;
+      }
+      if (state.showInvoiceDetail) {
+        app.actions.closeInvoiceDetail();
+        return true;
+      }
+      if (state.showAddFamilyMember) {
+        app.actions.closeAddFamilyMember();
+        return true;
+      }
+      if (state.showPrivacyPolicy) {
+        app.actions.closePrivacyPolicy();
+        return true;
+      }
+      if (state.personalInfoEditMode) {
+        app.actions.cancelEditPersonalInfo();
+        return true;
+      }
+      if (state.showShareFlow) {
+        app.actions.shareBack();
+        return true;
+      }
+      if (state.showUpload) {
+        if (state.uploadStep > 0) {
+          app.actions.openUpload();
+        } else {
+          app.actions.closeUpload();
+        }
+        return true;
+      }
+      if (state.showSmartConsent) {
+        app.actions.closeSmartConsent();
+        return true;
+      }
+      if (state.showEmergency) {
+        app.actions.closeEmergency();
+        return true;
+      }
+      if (state.showBookAppointment) {
+        app.actions.closeBookAppointment();
+        return true;
+      }
+      if (state.showBilling) {
+        app.actions.closeBilling();
+        return true;
+      }
+      if (state.showPersonalInfo) {
+        app.actions.closePersonalInfo();
+        return true;
+      }
+      if (state.showFamilyAccess) {
+        app.actions.closeFamilyAccess();
+        return true;
+      }
+      if (state.showPrivacySecurity) {
+        app.actions.closePrivacySecurity();
+        return true;
+      }
+      if (state.showLinkedAccounts) {
+        app.actions.closeLinkedAccounts();
+        return true;
+      }
+      if (state.showNotificationSettings) {
+        app.actions.closeNotificationSettings();
+        return true;
+      }
+      if (state.showProxyLog) {
+        app.actions.closeProxyLog();
+        return true;
+      }
+      if (state.showActivity) {
+        app.actions.closeActivity();
+        return true;
+      }
+      if (state.showLanguage) {
+        app.actions.closeLanguage();
+        return true;
+      }
+      if (state.showNotifications) {
+        app.actions.closeNotifications();
+        return true;
+      }
+      if (state.recordDetailId) {
+        app.actions.closeRecord();
+        return true;
+      }
+      if (state.inCall) {
+        app.actions.endCall();
+        return true;
+      }
+      // Tab navigation history
+      if (state.tabHistory.length > 0) {
+        app.actions.goBackTab();
+        return true;
+      }
+
+      return false;
+    };
+
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      onBackPress
+    );
+    return () => subscription.remove();
+  }, [state, app.actions]);
 
   const screens = {
     home: <HomeScreen app={app} />,
@@ -48,38 +184,58 @@ function App() {
 
   return (
     <ThemeContext.Provider value={theme}>
-      <div className="phone-shell" style={{ background: theme.bg, color: theme.text }}>
-        <div className="app-scroll">{screens[state.tab]}</div>
-        <TabBar active={state.tab} onSelect={app.actions.setTab} />
+      <PhoneShell>
+        <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}>
+          <View style={styles.screenContainer}>
+            {screens[state.tab]}
+          </View>
 
-        <NotificationsPanel app={app} />
-        <RecordDetailSheet app={app} />
-        <UploadModal app={app} />
-        <ShareFlowModal app={app} />
-        <SmartConsentModal app={app} />
-        <EmergencyModal app={app} />
-        <InCallModal app={app} />
-        <OnboardingModal app={app} />
-        <PersonalInfoModal app={app} />
-        <PrivacySecurityModal app={app} />
-        <PrivacyPolicyModal app={app} />
-        <LinkedAccountsModal app={app} />
-        <NotificationSettingsModal app={app} />
-        <FamilyAccessModal app={app} />
-        <AddFamilyMemberModal app={app} />
-        <ProxyLogModal app={app} />
-        <ActivityLogModal app={app} />
-        <LanguageModal app={app} />
-        <FaceIdLockScreen app={app} />
-        <LoggedOutScreen app={app} />
-        <BookAppointmentModal app={app} />
-        <BillingModal app={app} />
-        <InvoiceDetailModal app={app} />
+          <TabBar active={state.tab} onSelect={app.actions.setTab} />
 
-        <Toast message={state.toast} />
-      </div>
+          {/* Overlays & Modals */}
+          <NotificationsPanel app={app} />
+          <RecordDetailSheet app={app} />
+          <UploadModal app={app} />
+          <ShareFlowModal app={app} />
+          <SmartConsentModal app={app} />
+          <EmergencyModal app={app} />
+          <InCallModal app={app} />
+          <OnboardingModal app={app} />
+          <PersonalInfoModal app={app} />
+          <PrivacySecurityModal app={app} />
+          <PrivacyPolicyModal app={app} />
+          <LinkedAccountsModal app={app} />
+          <NotificationSettingsModal app={app} />
+          <FamilyAccessModal app={app} />
+          <AddFamilyMemberModal app={app} />
+          <ProxyLogModal app={app} />
+          <ActivityLogModal app={app} />
+          <LanguageModal app={app} />
+          <FaceIdLockScreen app={app} />
+          <LoggedOutScreen app={app} />
+          <BookAppointmentModal app={app} />
+          <BillingModal app={app} />
+          <InvoiceDetailModal app={app} />
+          <WelcomeHomeModal app={app} />
+          <PrintLabResultModal app={app} />
+          <EmailReportModal app={app} />
+          <PrescriptionRefillModal app={app} />
+          <VaultExportModal app={app} />
+
+          <Toast message={state.toast} />
+        </SafeAreaView>
+      </PhoneShell>
     </ThemeContext.Provider>
   );
 }
 
-export default App;
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    position: 'relative',
+  },
+  screenContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+});

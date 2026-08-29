@@ -1,38 +1,39 @@
+import React from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  Modal,
+  SafeAreaView,
+} from 'react-native';
 import { ModalHeader } from '../components/ModalHeader';
 import type { WelliApp } from '../state/useWelliApp';
 
-const SECTIONS: { heading: string; body: string }[] = [
+const SECTIONS = [
   {
     heading: 'Information We Collect',
     body: 'WelliRecord stores the health records you or your care team add — lab results, prescriptions, imaging, and clinical notes — along with basic profile details like your name, date of birth, blood type, and emergency contact. If you connect a wearable, we also store the vitals it reports.',
   },
   {
     heading: 'How We Use Your Information',
-    body: 'Your records are used only to display your health history back to you and to the people you explicitly grant access to. We do not sell your data, and we do not use it for advertising.',
+    body: 'Your data is used solely to provide and improve the WelliRecord service for you and the family members on your account. We never sell your data, use it for advertising, or share it with third parties without your explicit permission.',
   },
   {
-    heading: 'Sharing & Consent',
-    body: 'Nothing leaves your account until you grant access — by selecting specific records for a doctor, generating a WelliBridge link or QR code, or setting up a Smart Consent grant scoped to a category (like Labs Only) with an auto-expire duration. Every grant can be revoked at any time from the Share tab, and expired grants stop working automatically.',
+    heading: 'Sharing and Smart Consent',
+    body: 'When you share a record with a provider or facility, we generate a time-limited grant that you can revoke at any time. You choose exactly which categories or records are shared.',
   },
   {
-    heading: 'Data Security',
+    heading: 'Security and Encryption',
     body: 'All records are encrypted at rest and in transit. Optional protections — Two-Factor Authentication and Face ID Lock — are available in Privacy & Security and Settings, and are off by default.',
   },
   {
-    heading: 'Family & Dependent Data',
-    body: "If you manage a dependent's records as a guardian, actions you take on their behalf are recorded in the Proxy Access Log, visible to you at any time from your Profile.",
-  },
-  {
-    heading: 'Your Rights',
+    heading: 'Your Rights & Data Portability',
     body: 'You can download a full copy of your data at any time from Privacy & Security. If you’d like your account deleted, contact WelliRecord support and we’ll process the request.',
   },
   {
-    heading: 'Changes to This Policy',
-    body: "If this policy changes in a way that affects how your data is used, we'll notify you in the app before the change takes effect.",
-  },
-  {
     heading: 'Contact Us',
-    body: 'Questions about this policy or your data can be sent to privacy@wellirecord.example.',
+    body: 'Questions about this policy or your data can be sent to privacy@wellirecord.com.',
   },
 ];
 
@@ -41,17 +42,64 @@ export function PrivacyPolicyModal({ app }: { app: WelliApp }) {
   if (!state.showPrivacyPolicy) return null;
 
   return (
-    <div className="overlay-fullscreen">
-      <ModalHeader title="Privacy Policy" onClose={actions.closePrivacyPolicy} />
-      <div style={{ flex: 1, overflowY: 'auto', padding: '6px 20px 32px' }}>
-        <div style={{ fontSize: 11.5, color: '#94a3b8', marginBottom: 20 }}>Last updated August 2026</div>
-        {SECTIONS.map((s) => (
-          <div key={s.heading} style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>{s.heading}</div>
-            <div style={{ fontSize: 13, color: '#475569', lineHeight: 1.6 }}>{s.body}</div>
-          </div>
-        ))}
-      </div>
-    </div>
+    <Modal
+      visible={state.showPrivacyPolicy}
+      animationType="slide"
+      transparent={false}
+      onRequestClose={actions.closePrivacyPolicy}
+    >
+      <SafeAreaView style={styles.container}>
+        <ModalHeader
+          title="Privacy Policy"
+          onClose={actions.closePrivacyPolicy}
+        />
+
+        <ScrollView
+          style={styles.scrollArea}
+          contentContainerStyle={styles.scrollInner}
+        >
+          <Text style={styles.updatedText}>Last updated August 2026</Text>
+          {SECTIONS.map((s) => (
+            <View key={s.heading} style={styles.sectionBlock}>
+              <Text style={styles.sectionHeading}>{s.heading}</Text>
+              <Text style={styles.sectionBody}>{s.body}</Text>
+            </View>
+          ))}
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
+  scrollArea: {
+    flex: 1,
+  },
+  scrollInner: {
+    paddingHorizontal: 20,
+    paddingBottom: 36,
+  },
+  updatedText: {
+    fontSize: 12,
+    color: '#94a3b8',
+    marginBottom: 18,
+  },
+  sectionBlock: {
+    marginBottom: 20,
+  },
+  sectionHeading: {
+    fontSize: 14.5,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 6,
+  },
+  sectionBody: {
+    fontSize: 13.5,
+    color: '#475569',
+    lineHeight: 21,
+  },
+});

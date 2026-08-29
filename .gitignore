@@ -10,7 +10,11 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# Expo & Build
+.expo/
+*.tsbuildinfo
 *.local
+web-build/
 
 # Editor directories and files
 .vscode/*
