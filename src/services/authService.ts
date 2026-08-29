@@ -45,10 +45,7 @@ export const authService = {
     }
 
     return await apiClient.post<SendOtpResponse>('/auth/otp/send', {
-      channel: 'dnd',
-      to: phoneNumber,
-      from: CONFIG.termiiSenderId,
-      type: 'numeric',
+      phoneNumber,
     });
   },
 

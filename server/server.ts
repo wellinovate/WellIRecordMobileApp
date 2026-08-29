@@ -70,14 +70,14 @@ function verifyStoredOtp(identifier: string, code: string): boolean {
 
 // 2. Termii Nigerian SMS OTP Dispatch
 app.post('/api/v1/auth/otp/send', async (req: Request, res: Response) => {
-  const { to, from = 'N-Alert' } = req.body;
+  const targetPhone = req.body.phoneNumber || req.body.phone || req.body.to;
 
-  if (!to) {
+  if (!targetPhone) {
     return res.status(400).json({ success: false, message: 'Phone number is required' });
   }
 
-  const formattedPhone = to.replace(/[^0-9]/g, '');
-  const generatedCode = generateOtp(to);
+  const formattedPhone = targetPhone.replace(/[^0-9]/g, '');
+  const generatedCode = generateOtp(targetPhone);
   generateOtp(formattedPhone);
 
   try {
@@ -89,7 +89,7 @@ app.post('/api/v1/auth/otp/send', async (req: Request, res: Response) => {
           body: JSON.stringify({
             api_key: TERMII_API_KEY,
             to: formattedPhone,
-            from: from || 'N-Alert',
+            from: 'N-Alert',
             sms: `Your WelliRecord authorization code is ${generatedCode}. Valid for 5 minutes. Do not share with anyone.`,
             type: 'plain',
             channel: 'dnd',
@@ -99,7 +99,7 @@ app.post('/api/v1/auth/otp/send', async (req: Request, res: Response) => {
         if (data.code === 'ok' || data.message?.includes('Successfully')) {
           return res.json({
             success: true,
-            message: `Verification code sent to ${to} via SMS.`,
+            message: `Verification code sent to ${targetPhone} via SMS.`,
             termiiResponse: data,
             expiresInSeconds: 300,
           });
@@ -111,7 +111,7 @@ app.post('/api/v1/auth/otp/send', async (req: Request, res: Response) => {
 
     return res.json({
       success: true,
-      message: `Verification code dispatched to ${to}.`,
+      message: `Verification code dispatched to ${targetPhone}.`,
       otpId: `otp_${Date.now()}`,
       expiresInSeconds: 300,
     });
