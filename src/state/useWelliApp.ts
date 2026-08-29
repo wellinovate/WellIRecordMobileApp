@@ -887,6 +887,7 @@ export function useWelliApp() {
     sendAuthOtp: async (identifier: string, explicitChannel?: 'phone' | 'email') => {
       hapticFeedback.light();
       const res = await authService.sendAuthOtp(identifier, explicitChannel);
+      const code = res?.code || '849201';
       
       // Dispatch in-app security notification
       const securityNotif: Notification = {
@@ -894,14 +895,14 @@ export function useWelliApp() {
         emoji: '🔐',
         tint: '#0284c7',
         title: 'WelliRecord Security Code',
-        desc: `Your 6-digit authorization code is 849201. Sent to ${identifier}. Valid for 5 minutes.`,
+        desc: `Your 6-digit authorization code is ${code}. Sent to ${identifier}. Valid for 5 minutes.`,
         time: 'Just now',
       };
 
       patch((s) => ({
         notifications: [securityNotif, ...s.notifications],
       }));
-      showToast(`Verification code sent to ${identifier}`);
+      showToast(`Verification code dispatched to ${identifier}`);
       return res;
     },
 

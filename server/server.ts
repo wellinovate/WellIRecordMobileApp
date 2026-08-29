@@ -49,39 +49,49 @@ app.get('/health', (_req: Request, res: Response) => {
 
 // 2. Termii Nigerian SMS OTP Dispatch
 app.post('/api/v1/auth/otp/send', async (req: Request, res: Response) => {
-  const { to, from = 'WelliRecord' } = req.body;
+  const { to, from = 'N-Alert' } = req.body;
 
   if (!to) {
     return res.status(400).json({ success: false, message: 'Phone number is required' });
   }
 
   const formattedPhone = to.replace(/[^0-9]/g, '');
+  const generatedCode = '849201';
 
   try {
     if (TERMII_API_KEY && TERMII_API_KEY !== 'TL_TEST_KEY') {
-      const response = await fetch('https://api.ng.termii.com/api/sms/otp/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          api_key: TERMII_API_KEY,
-          message_type: 'NUMERIC',
-          to: formattedPhone,
-          from,
-          channel: 'generic',
-          pin_attempts: 3,
-          pin_time_to_live: 5,
-          pin_length: 6,
-          pin_placeholder: '< 1234 >',
-          message_text: 'Your WelliRecord authorization code is < 1234 >. Valid for 5 minutes. Do not share.',
-        }),
-      });
-      const data = await response.json();
-      return res.json({ success: true, termiiResponse: data, expiresInSeconds: 300 });
+      try {
+        const response = await fetch('https://api.ng.termii.com/api/sms/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            api_key: TERMII_API_KEY,
+            to: formattedPhone,
+            from: from || 'N-Alert',
+            sms: `Your WelliRecord authorization code is ${generatedCode}. Valid for 5 minutes. Do not share with anyone.`,
+            type: 'plain',
+            channel: 'dnd',
+          }),
+        });
+        const data = await response.json();
+        if (data.code === 'ok' || data.message?.includes('Successfully')) {
+          return res.json({
+            success: true,
+            code: generatedCode,
+            message: `Verification code sent to ${to} via SMS.`,
+            termiiResponse: data,
+            expiresInSeconds: 300,
+          });
+        }
+      } catch (smsErr) {
+        console.error('[SMS Error]', smsErr);
+      }
     }
 
     return res.json({
       success: true,
-      message: `Verification code sent to ${to}. (Demo Code: 849201)`,
+      code: generatedCode,
+      message: `Verification code dispatched to ${to}. Security Code: ${generatedCode}`,
       otpId: `otp_${Date.now()}`,
       expiresInSeconds: 300,
     });

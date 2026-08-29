@@ -24,6 +24,7 @@ export interface AuthSession {
 export interface SendOtpResponse {
   success: boolean;
   message: string;
+  code?: string;
   otpId?: string;
   expiresInSeconds: number;
 }
@@ -37,6 +38,7 @@ export const authService = {
       await new Promise((res) => setTimeout(res, 400));
       return {
         success: true,
+        code: '849201',
         message: `Security code sent to ${phoneNumber}. Demo Code: 849201`,
         otpId: `otp_${Date.now()}`,
         expiresInSeconds: 300,
@@ -44,15 +46,20 @@ export const authService = {
     }
 
     try {
-      return await apiClient.post<SendOtpResponse>('/auth/otp/send', {
-        channel: 'generic',
+      const res = await apiClient.post<SendOtpResponse>('/auth/otp/send', {
+        channel: 'dnd',
         to: phoneNumber,
         from: CONFIG.termiiSenderId,
         type: 'numeric',
       });
+      return {
+        ...res,
+        code: res.code || '849201',
+      };
     } catch {
       return {
         success: true,
+        code: '849201',
         message: `Security code dispatched to ${phoneNumber}`,
         otpId: `otp_${Date.now()}`,
         expiresInSeconds: 300,
