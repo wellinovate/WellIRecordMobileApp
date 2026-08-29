@@ -25,6 +25,11 @@ const TERMII_API_KEY = process.env.TERMII_API_KEY || 'TL_TEST_KEY';
 app.use(cors());
 app.use(express.json());
 
+app.use((req, res, next) => {
+  console.log(`[REQUEST] ${req.method} ${req.path}`, JSON.stringify(req.body));
+  next();
+});
+
 // Connect to MongoDB
 mongoose
   .connect(MONGODB_URI)
@@ -172,7 +177,7 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
     const userId = user ? user._id.toString() : 'u_amara_nwosu';
     const token = jwt.sign({ userId, phoneNumber, role: 'patient' }, JWT_SECRET, { expiresIn: '30d' });
 
-    return res.json({
+    const userSessionData = {
       token,
       user: {
         id: userId,
@@ -184,7 +189,10 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
         hmoProvider: user?.hmoProvider || 'Hygeia HMO',
         hmoPolicyNumber: user?.hmoPolicyNumber || 'HYG-992014-LAG',
       },
-    });
+    };
+
+    console.log('[VERIFY RESPONSE]', JSON.stringify(userSessionData));
+    return res.json(userSessionData);
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Authentication error', error: err });
   }

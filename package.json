@@ -7,8 +7,9 @@
     "start": "expo start",
     "web": "expo start --web",
     "android": "expo run:android",
-    "ios": "expo start --ios",
-    "ios11": "xcrun simctl boot 4353D57C-F11D-40C2-823D-29C40D8F1E67 2>/dev/null; expo start --ios",
+    "ios": "expo start --ios --localhost",
+    "ios11": "xcrun simctl boot 4353D57C-F11D-40C2-823D-29C40D8F1E67 2>/dev/null; expo start --ios --localhost",
+    "ios:tunnel": "expo start --ios --tunnel",
     "dev": "expo start",
     "build": "tsc -b",
     "lint": "oxlint"
