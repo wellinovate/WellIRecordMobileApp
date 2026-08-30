@@ -121,7 +121,7 @@ export interface Doctor {
   initials: string;
 }
 
-export type FacilityType = 'Hospital' | 'Pharmacy' | 'Laboratory' | 'Private Practice';
+export type FacilityType = 'Hospital' | 'Pharmacy' | 'Laboratory' | 'Private Practice' | 'Clinic';
 
 export interface CareFacility {
   id: string;
