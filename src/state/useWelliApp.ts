@@ -40,7 +40,7 @@ import { bridgeLinkFor, generateBridgeCode } from '../utils/bridgeCode';
 import { EXPIRY_SHORT_LABEL_MAP } from '../utils/expiry';
 import { hapticFeedback } from '../utils/haptics';
 import { storage } from '../utils/storage';
-import { authService } from '../services/authService';
+import { authService, type AuthSession } from '../services/authService';
 import { apiClient, setAuthToken } from '../services/apiClient';
 import { recordsService } from '../services/recordsService';
 import { profileService } from '../services/profileService';
@@ -127,6 +127,8 @@ export interface AppState {
   showLanguage: boolean;
   language: string;
   notifPermission: 'granted' | 'skipped' | null;
+  isAuthenticated: boolean;
+  user: AuthSession['user'] | null;
   loggedOut: boolean;
   showWelcomeHome: boolean;
   welcomeTab: WelcomeTab;
@@ -160,6 +162,11 @@ const initialState: AppState = {
   tabHistory: [],
   activeFamilyId: 'me',
   familyMembers: [DEFAULT_PRIMARY_USER],
+  isAuthenticated: false,
+  user: null,
+  loggedOut: false,
+  showWelcomeHome: false,
+  welcomeTab: 'signin',
   recordsList: [],
   immunizationSchedule: [],
   vitalsLogs: [],
@@ -277,6 +284,8 @@ export function useWelliApp() {
         const savedSession = await authService.getSavedSession();
         if (savedSession?.user && savedSession?.token) {
           patch((s) => ({
+            isAuthenticated: true,
+            user: savedSession.user,
             loggedOut: false,
             showWelcomeHome: false,
             familyMembers: s.familyMembers.map((f) =>
@@ -366,7 +375,9 @@ export function useWelliApp() {
         } else {
           // No valid session: ensure logged out state and show sign-in screen
           patch({
-            loggedOut: true,
+            isAuthenticated: false,
+            user: null,
+            loggedOut: false,
             showWelcomeHome: true,
             welcomeTab: 'signin',
             familyMembers: [DEFAULT_PRIMARY_USER],
@@ -1128,6 +1139,8 @@ export function useWelliApp() {
       patch((s) => ({
         familyMembers: [newOwner, ...s.familyMembers.filter((f) => f.id !== 'me')],
         activeFamilyId: 'me',
+        isAuthenticated: true,
+        user: session.user,
         loggedOut: false,
         showWelcomeHome: false,
         tab: 'home',
@@ -1154,6 +1167,8 @@ export function useWelliApp() {
       const session = await authService.loginWithPassword(trimmed, password);
       
       patch((s) => ({
+        isAuthenticated: true,
+        user: session.user,
         loggedOut: false,
         showWelcomeHome: false,
         activeFamilyId: 'me',
@@ -1319,6 +1334,8 @@ export function useWelliApp() {
       await authService.logout();
       setAuthToken(null);
       patch({
+        isAuthenticated: false,
+        user: null,
         loggedOut: true,
         showWelcomeHome: false,
         familyMembers: [DEFAULT_PRIMARY_USER],
@@ -1330,6 +1347,8 @@ export function useWelliApp() {
     logBackIn: () => {
       hapticFeedback.selection();
       patch({
+        isAuthenticated: false,
+        user: null,
         loggedOut: false,
         showWelcomeHome: true,
         welcomeTab: 'signin',

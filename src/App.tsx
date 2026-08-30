@@ -11,6 +11,7 @@ import { RecordsScreen } from './screens/RecordsScreen';
 import { ShareScreen } from './screens/ShareScreen';
 import { CareScreen } from './screens/CareScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
+import { WelcomeHomeScreen } from './screens/WelcomeHomeScreen';
 
 import { NotificationsPanel } from './modals/NotificationsPanel';
 import { RecordDetailSheet } from './modals/RecordDetailSheet';
@@ -182,6 +183,33 @@ export default function App() {
     profile: <ProfileScreen app={app} />,
   };
 
+  // 1. Explicit Logged Out State -> Show LoggedOutScreen
+  if (state.loggedOut) {
+    return (
+      <ThemeContext.Provider value={theme}>
+        <PhoneShell>
+          <LoggedOutScreen app={app} />
+          <Toast message={state.toast} />
+        </PhoneShell>
+      </ThemeContext.Provider>
+    );
+  }
+
+  // 2. Unauthenticated / Sign-In State -> Show WelcomeHomeScreen
+  if (!state.isAuthenticated || state.showWelcomeHome) {
+    return (
+      <ThemeContext.Provider value={theme}>
+        <PhoneShell>
+          <SafeAreaView style={[styles.safeArea, { backgroundColor: '#ffffff' }]}>
+            <WelcomeHomeScreen app={app} />
+            <Toast message={state.toast} />
+          </SafeAreaView>
+        </PhoneShell>
+      </ThemeContext.Provider>
+    );
+  }
+
+  // 3. Authenticated Active Session -> Show MainApp Dashboard
   return (
     <ThemeContext.Provider value={theme}>
       <PhoneShell>
@@ -212,11 +240,9 @@ export default function App() {
           <ActivityLogModal app={app} />
           <LanguageModal app={app} />
           <FaceIdLockScreen app={app} />
-          <LoggedOutScreen app={app} />
           <BookAppointmentModal app={app} />
           <BillingModal app={app} />
           <InvoiceDetailModal app={app} />
-          <WelcomeHomeModal app={app} />
           <PrintLabResultModal app={app} />
           <EmailReportModal app={app} />
           <PrescriptionRefillModal app={app} />
