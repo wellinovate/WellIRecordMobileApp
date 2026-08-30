@@ -43,6 +43,7 @@ import { storage } from '../utils/storage';
 import { authService } from '../services/authService';
 import { apiClient } from '../services/apiClient';
 import { recordsService } from '../services/recordsService';
+import { profileService } from '../services/profileService';
 
 export interface AppState {
   tab: Tab;
@@ -293,6 +294,65 @@ export function useWelliApp() {
                 : f
             ),
           }));
+        }
+
+        // Fetch live cloud profile from backend /profile/me
+        try {
+          const liveProfile = await profileService.fetchMyProfile();
+          if (liveProfile) {
+            const serverName = liveProfile.fullName || liveProfile.name;
+            const serverDob = liveProfile.dateOfBirth
+              ? String(liveProfile.dateOfBirth).split('T')[0]
+              : liveProfile.dob;
+            const dynamicInitials = serverName
+              ? serverName
+                  .split(' ')
+                  .filter(Boolean)
+                  .slice(0, 2)
+                  .map((p: string) => p[0])
+                  .join('')
+                  .toUpperCase()
+              : 'U';
+
+            patch((s) => ({
+              familyMembers: s.familyMembers.map((f) =>
+                f.id === 'me'
+                  ? {
+                      ...f,
+                      name: serverName || f.name,
+                      initials: dynamicInitials || f.initials,
+                      dob: serverDob || f.dob,
+                      gender: liveProfile.gender || f.gender,
+                      bloodType: liveProfile.bloodType || f.bloodType,
+                      genotype: liveProfile.genotype || f.genotype,
+                      email: liveProfile.email || f.email,
+                      phone: liveProfile.phone || liveProfile.phoneNumber || f.phone,
+                      insuranceProvider:
+                        liveProfile.hmoProvider ||
+                        liveProfile.insuranceProvider ||
+                        f.insuranceProvider,
+                      insuranceId:
+                        liveProfile.hmoPolicyNumber ||
+                        liveProfile.policyNumber ||
+                        liveProfile.insuranceId ||
+                        f.insuranceId,
+                      allergies:
+                        liveProfile.allergies !== undefined
+                          ? liveProfile.allergies
+                          : f.allergies,
+                      conditions:
+                        liveProfile.conditions !== undefined
+                          ? liveProfile.conditions
+                          : f.conditions,
+                      address: liveProfile.address || f.address,
+                      contact: liveProfile.contact || f.contact,
+                    }
+                  : f
+              ),
+            }));
+          }
+        } catch {
+          // Keep local cached session
         }
 
         // Fetch genuine health records for active user

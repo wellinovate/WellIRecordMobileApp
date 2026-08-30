@@ -310,6 +310,62 @@ app.all('/api/v1/profile/update', async (req: Request, res: Response) => {
   }
 });
 
+// 3e. Fetch Current Patient Profile (by JWT or Query)
+app.get(['/api/v1/profile/me', '/api/v1/profile'], async (req: Request, res: Response) => {
+  try {
+    const authHeader = req.headers.authorization;
+    let tokenData: any = null;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      try {
+        tokenData = jwt.verify(token, JWT_SECRET);
+      } catch {
+        // invalid token
+      }
+    }
+
+    const { userId, email, phone, phoneNumber, accountId } = req.query;
+
+    const searchConditions: any[] = [];
+    if (tokenData?.userId) {
+      searchConditions.push({ accountId: tokenData.userId }, { userId: tokenData.userId }, { _id: tokenData.userId });
+    }
+    if (tokenData?.email) {
+      searchConditions.push({ email: String(tokenData.email).toLowerCase().trim() });
+    }
+    if (tokenData?.phoneNumber) {
+      const p = String(tokenData.phoneNumber);
+      const clean = p.replace(/[^0-9]/g, '');
+      const local = p.replace('+234', '0');
+      searchConditions.push({ phone: p }, { phone: local }, { phone: clean }, { phoneNumber: p });
+    }
+
+    if (userId) searchConditions.push({ userId }, { accountId: userId }, { _id: userId });
+    if (accountId) searchConditions.push({ accountId }, { userId: accountId }, { _id: accountId });
+    if (email) searchConditions.push({ email: String(email).toLowerCase().trim() });
+    const rawPhone = phone || phoneNumber;
+    if (rawPhone) {
+      const p = String(rawPhone);
+      const clean = p.replace(/[^0-9]/g, '');
+      const local = p.replace('+234', '0');
+      searchConditions.push({ phone: p }, { phone: local }, { phone: clean }, { phoneNumber: p });
+    }
+
+    let profile: any = null;
+    if (mongoose.connection.readyState === 1 && searchConditions.length > 0) {
+      profile = await Profile.findOne({ $or: searchConditions });
+    }
+
+    console.log('[GET PROFILE RESPONSE]', JSON.stringify(profile));
+    return res.json({
+      success: true,
+      profile: profile || null,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch profile', error: err });
+  }
+});
+
 // 3b. Sign In with Email / Phone and Password
 app.post('/api/v1/auth/login', async (req: Request, res: Response) => {
   const { identifier, password: _password } = req.body;
