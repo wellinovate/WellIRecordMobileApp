@@ -156,6 +156,8 @@ const DEFAULT_PRIMARY_USER: FamilyMember = {
   address: '',
   insuranceProvider: '',
   insuranceId: '',
+  wrId: '',
+  memberId: '',
 };
 
 const initialState: AppState = {
@@ -295,8 +297,10 @@ export function useWelliApp() {
                     phone: savedSession.user.phoneNumber || f.phone,
                     bloodType: savedSession.user.bloodType || f.bloodType,
                     genotype: savedSession.user.genotype || f.genotype,
-                    insuranceProvider: savedSession.user.hmoProvider || f.insuranceProvider,
-                    insuranceId: savedSession.user.hmoPolicyNumber || f.insuranceId,
+                    insuranceProvider: savedSession.user.hmoProvider || f.insuranceProvider || '',
+                    insuranceId: savedSession.user.hmoPolicyNumber || '',
+                    wrId: savedSession.user.wrId || savedSession.user.memberId || f.wrId || '',
+                    memberId: savedSession.user.wrId || savedSession.user.memberId || f.memberId || '',
                   }
                 : f
             ),
@@ -336,14 +340,21 @@ export function useWelliApp() {
                         insuranceProvider:
                           liveProfile.hmoProvider ||
                           liveProfile.insuranceProvider ||
-                          f.insuranceProvider,
+                          '',
                         insuranceId:
-                          liveProfile.wrId ||
-                          liveProfile.memberId ||
                           liveProfile.hmoPolicyNumber ||
                           liveProfile.policyNumber ||
-                          liveProfile.insuranceId ||
-                          f.insuranceId,
+                          '',
+                        wrId:
+                          liveProfile.wrId ||
+                          liveProfile.memberId ||
+                          f.wrId ||
+                          '',
+                        memberId:
+                          liveProfile.wrId ||
+                          liveProfile.memberId ||
+                          f.memberId ||
+                          '',
                         allergies:
                           liveProfile.allergies !== undefined
                             ? liveProfile.allergies
@@ -848,8 +859,10 @@ export function useWelliApp() {
             genotype: serverProfile?.genotype || draft.genotype,
             email: serverProfile?.email || draft.email,
             phone: serverProfile?.phone || serverProfile?.phoneNumber || draft.phone,
-            insuranceProvider: serverProfile?.hmoProvider || serverProfile?.insuranceProvider || draft.insuranceProvider,
-            insuranceId: serverProfile?.wrId || serverProfile?.memberId || serverProfile?.hmoPolicyNumber || serverProfile?.policyNumber || serverProfile?.insuranceId || draft.insuranceId,
+            insuranceProvider: serverProfile?.hmoProvider || serverProfile?.insuranceProvider || draft.insuranceProvider || '',
+            insuranceId: serverProfile?.hmoPolicyNumber || serverProfile?.policyNumber || draft.insuranceId || '',
+            wrId: serverProfile?.wrId || serverProfile?.memberId || draft.wrId || '',
+            memberId: serverProfile?.wrId || serverProfile?.memberId || draft.memberId || '',
             allergies: serverProfile?.allergies !== undefined ? serverProfile.allergies : draft.allergies,
           };
 
@@ -1271,7 +1284,9 @@ export function useWelliApp() {
         phone: session.user.phoneNumber || userData?.phone || '',
         address: '',
         insuranceProvider: session.user.hmoProvider || userData?.insuranceProvider || '',
-        insuranceId: session.user.hmoPolicyNumber || userData?.insuranceId || session.user.memberId || '',
+        insuranceId: session.user.hmoPolicyNumber || userData?.insuranceId || '',
+        wrId: session.user.wrId || session.user.memberId || '',
+        memberId: session.user.wrId || session.user.memberId || '',
       };
 
       patch((s) => ({
@@ -1353,8 +1368,10 @@ export function useWelliApp() {
                 phone: session.user.phoneNumber || f.phone,
                 bloodType: session.user.bloodType || f.bloodType,
                 genotype: session.user.genotype || f.genotype,
-                insuranceProvider: session.user.hmoProvider || f.insuranceProvider,
-                insuranceId: session.user.hmoPolicyNumber || f.insuranceId,
+                insuranceProvider: session.user.hmoProvider || f.insuranceProvider || '',
+                insuranceId: session.user.hmoPolicyNumber || '',
+                wrId: session.user.wrId || session.user.memberId || f.wrId || '',
+                memberId: session.user.wrId || session.user.memberId || f.memberId || '',
               }
             : f
         ),

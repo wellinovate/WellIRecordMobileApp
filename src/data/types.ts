@@ -105,6 +105,8 @@ export interface FamilyMember {
   address: string;
   insuranceProvider: string;
   insuranceId: string;
+  wrId?: string;
+  memberId?: string;
   avatarUrl?: string;
   isChild?: boolean;
   isElderly?: boolean;

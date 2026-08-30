@@ -62,6 +62,11 @@ export function EmergencyModal({ app }: { app: WelliApp }) {
             </View>
 
             <Text style={styles.memberName}>{emergencyMember.name}</Text>
+            {emergencyMember.wrId ? (
+              <Text style={[styles.dobText, { color: '#38bdf8', fontWeight: '700', marginBottom: 2 }]}>
+                ID: {emergencyMember.wrId}
+              </Text>
+            ) : null}
             <Text style={styles.dobText}>DOB: {formatDob(emergencyMember.dob)}</Text>
             {guardianLine ? (
               <Text style={styles.guardianText}>{guardianLine}</Text>

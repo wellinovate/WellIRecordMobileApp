@@ -199,6 +199,7 @@ export function PersonalInfoModal({ app }: { app: WelliApp }) {
   const draft = state.personalInfoDraft;
 
   const displayFields = [
+    { label: 'Member ID (WelliRecord)', value: activeMember.wrId || activeMember.memberId || 'Not assigned' },
     { label: 'Full Name', value: activeMember.name || 'Not set' },
     { label: 'Date of Birth', value: formatDob(activeMember.dob) },
     { label: 'Gender', value: activeMember.gender || 'Not set' },

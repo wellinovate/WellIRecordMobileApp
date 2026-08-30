@@ -74,9 +74,15 @@ export function ProfileScreen({ app }: { app: WelliApp }) {
           <Text style={[styles.ownerName, { color: theme.text }]}>
             {owner.name}
           </Text>
-          <Text style={[styles.memberSince, { color: theme.muted }]}>
-            Member since 2022
-          </Text>
+          {owner.wrId ? (
+            <Text style={[styles.memberSince, { color: '#0284c7', fontWeight: '600' }]}>
+              Member ID: {owner.wrId}
+            </Text>
+          ) : (
+            <Text style={[styles.memberSince, { color: theme.muted }]}>
+              Verified Health Vault
+            </Text>
+          )}
         </View>
       </View>
 

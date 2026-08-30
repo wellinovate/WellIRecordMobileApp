@@ -44,6 +44,7 @@ export const profileService = {
       insuranceProvider: draft.insuranceProvider,
       hmoPolicyNumber: draft.insuranceId,
       insuranceId: draft.insuranceId,
+      wrId: draft.wrId,
       allergies: draft.allergies,
       conditions: draft.conditions,
       address: draft.address,

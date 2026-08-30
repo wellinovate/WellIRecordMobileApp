@@ -269,7 +269,7 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
         bloodType: profile?.bloodType || user.bloodType || null,
         genotype: profile?.genotype || user.genotype || null,
         hmoProvider: profile?.hmoProvider || profile?.insuranceProvider || user.hmoProvider || null,
-        hmoPolicyNumber: profile?.hmoPolicyNumber || profile?.policyNumber || profile?.insuranceId || user.hmoPolicyNumber || null,
+        hmoPolicyNumber: profile?.hmoPolicyNumber || profile?.policyNumber || user.hmoPolicyNumber || null,
       },
     };
 
