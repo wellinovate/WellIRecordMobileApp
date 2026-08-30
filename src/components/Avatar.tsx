@@ -26,6 +26,16 @@ export function Avatar({ member, size = 40, fontSize = 14 }: AvatarProps) {
   }
 
   const bg = member.role === 'owner' ? '#041E42' : '#0EA5E9';
+  const dynamicInitials =
+    member.name && member.name !== 'You'
+      ? member.name
+          .split(' ')
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((p) => p[0])
+          .join('')
+          .toUpperCase()
+      : member.initials || 'U';
 
   return (
     <View
@@ -48,7 +58,7 @@ export function Avatar({ member, size = 40, fontSize = 14 }: AvatarProps) {
           letterSpacing: 0.5,
         }}
       >
-        {member.initials}
+        {dynamicInitials}
       </Text>
     </View>
   );

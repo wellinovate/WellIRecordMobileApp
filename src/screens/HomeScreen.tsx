@@ -25,7 +25,10 @@ export function HomeScreen({ app }: { app: WelliApp }) {
   const recentRecords = ownedRecords.slice(0, 3);
   const hasUpcomingVisit = Boolean(state.bookingFacilityId && state.bookingDate);
   const vitals = state.vitalsLogs || [];
-  const unreadCount = state.notifications.length;
+  const memberName =
+    activeMember.name && activeMember.name !== 'You'
+      ? activeMember.name
+      : activeMember.email || activeMember.phone || 'You';
 
   return (
     <ScrollView
@@ -77,7 +80,7 @@ export function HomeScreen({ app }: { app: WelliApp }) {
       <View style={styles.greetingContainer}>
         <Text style={[styles.greetingSub, { color: theme.muted }]}>Good day</Text>
         <Text style={[styles.greetingName, { color: theme.text }]}>
-          {activeMember.name || 'You'}
+          {memberName}
         </Text>
       </View>
 
