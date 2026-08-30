@@ -19,6 +19,7 @@ import { EXPIRY_LABEL_MAP } from '../utils/expiry';
 import { hapticFeedback } from '../utils/haptics';
 import { CONFIG } from '../services/config';
 import { authService } from '../services/authService';
+import { normalizeNigerianPhone } from '../utils/phone';
 import type { WelliApp } from '../state/useWelliApp';
 import type { ShareExpiry } from '../data/types';
 
@@ -56,7 +57,7 @@ export function ShareFlowModal({ app }: { app: WelliApp }) {
   const [recipientTab, setRecipientTab] = useState<RecipientFilterTab>('all');
 
   const currentUser = family.find((f) => f.id === 'me') ?? family[0];
-  const userPhone = currentUser?.phone || state.user?.phoneNumber || '';
+  const userPhone = normalizeNigerianPhone(currentUser?.phone || state.user?.phoneNumber || '');
   const userEmail = currentUser?.email || state.user?.email || '';
 
   // Custom provider invitation state

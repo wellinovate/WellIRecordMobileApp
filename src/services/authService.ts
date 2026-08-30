@@ -6,6 +6,7 @@
 import { CONFIG } from './config';
 import { apiClient, setAuthToken } from './apiClient';
 import { storage } from '../utils/storage';
+import { normalizeNigerianPhone } from '../utils/phone';
 
 export interface AuthSession {
   token: string;
@@ -40,18 +41,19 @@ export const authService = {
    * Dispatches a 6-digit verification code to a Nigerian phone number via Termii SMS Gateway
    */
   async sendPhoneOtp(phoneNumber: string): Promise<SendOtpResponse> {
+    const normalized = normalizeNigerianPhone(phoneNumber);
     if (CONFIG.demoMode) {
       await new Promise((res) => setTimeout(res, 400));
       return {
         success: true,
-        message: `Security code sent to ${phoneNumber}`,
+        message: `Security code sent to ${normalized || phoneNumber}`,
         otpId: `otp_${Date.now()}`,
         expiresInSeconds: 300,
       };
     }
 
     return await apiClient.post<SendOtpResponse>('/auth/otp/send', {
-      phoneNumber,
+      phoneNumber: normalized || phoneNumber,
     });
   },
 
@@ -59,6 +61,7 @@ export const authService = {
    * Verifies the 6-digit OTP and initiates a secure session
    */
   async verifyPhoneOtp(phoneNumber: string, code: string): Promise<AuthSession> {
+    const normalized = normalizeNigerianPhone(phoneNumber);
     if (CONFIG.demoMode) {
       await new Promise((res) => setTimeout(res, 400));
       const session: AuthSession = {
@@ -66,7 +69,7 @@ export const authService = {
         user: {
           id: 'me',
           fullName: 'Amara Nwosu',
-          phoneNumber: phoneNumber || '+234 805 335 5504',
+          phoneNumber: normalized || phoneNumber || '+2348053355504',
           email: 'amara.nwosu@gmail.com',
           bloodType: 'O+',
           genotype: 'AA',
@@ -79,7 +82,7 @@ export const authService = {
     }
 
     const session = await apiClient.post<AuthSession>('/auth/otp/verify', {
-      phoneNumber,
+      phoneNumber: normalized || phoneNumber,
       code,
     });
     await this.saveSession(session);
