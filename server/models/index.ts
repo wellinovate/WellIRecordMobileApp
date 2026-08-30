@@ -327,9 +327,62 @@ const AccountSchema = new Schema<IAccount>(
   { timestamps: true, strict: false }
 );
 
+// 10. Profile Model (Matching 'profiles' collection)
+export interface IProfile extends Document {
+  accountId?: mongoose.Types.ObjectId;
+  userId?: mongoose.Types.ObjectId;
+  patientIdentityId?: string;
+  email?: string;
+  phone?: string;
+  fullName?: string;
+  firstName?: string;
+  lastName?: string;
+  name?: string;
+  dateOfBirth?: Date | string;
+  dob?: Date | string;
+  memberId?: string;
+  gender?: string;
+  bloodType?: string;
+  genotype?: string;
+  hmoProvider?: string;
+  insuranceProvider?: string;
+  hmoPolicyNumber?: string;
+  policyNumber?: string;
+  insuranceId?: string;
+  allergies?: string;
+}
+
+const ProfileSchema = new Schema<IProfile>(
+  {
+    accountId: { type: Schema.Types.ObjectId, index: true },
+    userId: { type: Schema.Types.ObjectId, index: true },
+    patientIdentityId: { type: String, index: true },
+    email: { type: String, index: true },
+    phone: { type: String, index: true },
+    fullName: { type: String },
+    firstName: { type: String },
+    lastName: { type: String },
+    name: { type: String },
+    dateOfBirth: { type: Schema.Types.Mixed },
+    dob: { type: Schema.Types.Mixed },
+    memberId: { type: String },
+    gender: { type: String },
+    bloodType: { type: String },
+    genotype: { type: String },
+    hmoProvider: { type: String },
+    insuranceProvider: { type: String },
+    hmoPolicyNumber: { type: String },
+    policyNumber: { type: String },
+    insuranceId: { type: String },
+    allergies: { type: String },
+  },
+  { timestamps: true, strict: false }
+);
+
 // Export Mongoose Models
 export const User: Model<IUser> = mongoose.models.User || mongoose.model<IUser>('User', UserSchema);
 export const Account: Model<IAccount> = mongoose.models.Account || mongoose.model<IAccount>('Account', AccountSchema, 'accounts');
+export const Profile: Model<IProfile> = mongoose.models.Profile || mongoose.model<IProfile>('Profile', ProfileSchema, 'profiles');
 export const FamilyMember: Model<IFamilyMember> = mongoose.models.FamilyMember || mongoose.model<IFamilyMember>('FamilyMember', FamilyMemberSchema);
 export const HealthRecord: Model<IHealthRecord> = mongoose.models.HealthRecord || mongoose.model<IHealthRecord>('HealthRecord', HealthRecordSchema);
 export const Prescription: Model<IPrescription> = mongoose.models.Prescription || mongoose.model<IPrescription>('Prescription', PrescriptionSchema);

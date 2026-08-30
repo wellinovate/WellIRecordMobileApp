@@ -10,6 +10,7 @@ import mongoose from 'mongoose';
 import {
   User,
   Account,
+  Profile,
   HealthRecord,
   Prescription,
   Facility,
@@ -180,21 +181,38 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'No account found for this phone number' });
     }
 
+    // 2nd lookup: Fetch matching profile document by email, patientIdentityId, accountId, or phone
+    let profile: any = null;
+    if (user.email) {
+      profile = await Profile.findOne({ email: user.email });
+    }
+    if (!profile && user.patientIdentityId) {
+      profile = await Profile.findOne({ patientIdentityId: user.patientIdentityId });
+    }
+    if (!profile && user._id) {
+      profile = await Profile.findOne({ $or: [{ accountId: user._id }, { userId: user._id }] });
+    }
+    if (!profile) {
+      profile = await Profile.findOne({ $or: [{ phone: normalizedLocal }, { phone: phoneNumber }] });
+    }
+
     const userId = user._id.toString();
-    const phone = user.phone || user.phoneNumber || phoneNumber;
+    const phone = user.phoneNumber || user.phone || phoneNumber;
     const token = jwt.sign({ userId, phoneNumber: phone, role: 'patient' }, JWT_SECRET, { expiresIn: '30d' });
 
     const userSessionData = {
       token,
       user: {
         id: userId,
-        fullName: user.fullName || user.email, // fallback display name for accounts without one
-        phoneNumber: user.phoneNumber || user.phone,
-        email: user.email,
-        bloodType: user.bloodType || null,
-        genotype: user.genotype || null,
-        hmoProvider: user.hmoProvider || null,
-        hmoPolicyNumber: user.hmoPolicyNumber || null,
+        fullName: profile?.fullName || (profile?.firstName && profile?.lastName ? `${profile.firstName} ${profile.lastName}` : null) || profile?.name || user.fullName || user.email,
+        dateOfBirth: profile?.dateOfBirth || profile?.dob || null,
+        memberId: profile?.memberId || profile?.patientIdentityId || user.patientIdentityId || null,
+        phoneNumber: user.phoneNumber || user.phone || profile?.phone || phone,
+        email: user.email || profile?.email || null,
+        bloodType: profile?.bloodType || user.bloodType || null,
+        genotype: profile?.genotype || user.genotype || null,
+        hmoProvider: profile?.hmoProvider || profile?.insuranceProvider || user.hmoProvider || null,
+        hmoPolicyNumber: profile?.hmoPolicyNumber || profile?.policyNumber || profile?.insuranceId || user.hmoPolicyNumber || null,
       },
     };
 
