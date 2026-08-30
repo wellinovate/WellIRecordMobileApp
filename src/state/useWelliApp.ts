@@ -665,65 +665,123 @@ export function useWelliApp() {
     setNewMemberGender: (v: string) => patch({ newMemberGender: v }),
     setNewMemberBloodType: (v: string) => patch({ newMemberBloodType: v }),
     setNewMemberGenotype: (v: string) => patch({ newMemberGenotype: v }),
-    addFamilyMember: async () => {
-      const name = state.newMemberName.trim();
+    addFamilyMember: async (customDraft?: {
+      fullName?: string;
+      name?: string;
+      relationship?: string;
+      dateOfBirth?: string;
+      dob?: string;
+      gender?: string;
+      bloodType?: string;
+      genotype?: string;
+    }): Promise<boolean> => {
+      const name = (customDraft?.fullName || customDraft?.name || state.newMemberName || '').trim();
       if (!name) {
         showToast('Enter a name for the family member');
-        return;
+        return false;
       }
+      const relationship = customDraft?.relationship || state.newMemberRelationship || 'Child';
+      const dateOfBirth = customDraft?.dateOfBirth || customDraft?.dob || state.newMemberDob;
+      const gender = customDraft?.gender || state.newMemberGender;
+      const bloodType = customDraft?.bloodType || state.newMemberBloodType;
+      const genotype = customDraft?.genotype || state.newMemberGenotype;
+
       try {
         const saved = await familyService.addFamilyMember({
           fullName: name,
-          relationship: state.newMemberRelationship || 'Child',
-          dateOfBirth: state.newMemberDob,
-          gender: state.newMemberGender,
-          bloodType: state.newMemberBloodType,
-          genotype: state.newMemberGenotype,
+          relationship,
+          dateOfBirth,
+          gender,
+          bloodType,
+          genotype,
         });
 
-        const initials = name
-          .split(' ')
-          .filter(Boolean)
-          .slice(0, 2)
-          .map((p) => p[0])
-          .join('')
-          .toUpperCase() || 'FM';
+        // Re-fetch all dependents directly from Atlas backend
+        try {
+          const remoteFamily = await familyService.fetchFamilyMembers();
+          if (Array.isArray(remoteFamily) && remoteFamily.length > 0) {
+            patch((s) => ({
+              familyMembers: [
+                s.familyMembers[0], // primary user
+                ...remoteFamily.map((m: any) => ({
+                  id: m.id || m._id,
+                  name: m.fullName || m.name,
+                  initials: m.initials,
+                  role: 'dependent' as const,
+                  relationship: m.relationship || 'Dependent',
+                  dob: m.dateOfBirth || m.dob || '',
+                  gender: m.gender || '',
+                  bloodType: m.bloodType || '',
+                  genotype: m.genotype || '',
+                  height: m.height || '',
+                  weight: m.weight || '',
+                  allergies: m.allergies || '',
+                  conditions: m.conditions || '',
+                  contact: m.contact || '',
+                  email: m.email || '',
+                  phone: m.phone || '',
+                  address: m.address || '',
+                  insuranceProvider: m.insuranceProvider || '',
+                  insuranceId: m.insuranceId || '',
+                })),
+              ],
+              showAddFamilyMember: false,
+              newMemberName: '',
+              newMemberRelationship: '',
+              newMemberDob: '',
+              newMemberGender: '',
+              newMemberBloodType: '',
+              newMemberGenotype: '',
+            }));
+          }
+        } catch {
+          // Fallback appending saved member
+          const initials = name
+            .split(' ')
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((p) => p[0])
+            .join('')
+            .toUpperCase() || 'FM';
 
-        const memberToAdd: FamilyMember = {
-          id: saved?.id || (saved as any)?._id || 'fm_' + Date.now(),
-          name: saved?.name || name,
-          initials: saved?.initials || initials,
-          role: 'dependent',
-          dob: saved?.dob || state.newMemberDob,
-          gender: saved?.gender || state.newMemberGender || '—',
-          bloodType: saved?.bloodType || state.newMemberBloodType || 'Unknown',
-          genotype: saved?.genotype || state.newMemberGenotype || 'Unknown',
-          height: '—',
-          weight: '—',
-          allergies: 'None on file',
-          conditions: 'None on file',
-          contact: `${state.familyMembers[0].name} (${state.newMemberRelationship || 'Guardian'})`,
-          email: '—',
-          phone: '—',
-          address: state.familyMembers[0].address,
-          insuranceProvider: `${state.familyMembers[0].insuranceProvider} (dependent)`,
-          insuranceId: `${state.familyMembers[0].insuranceId}-DEP`,
-        };
+          const memberToAdd: FamilyMember = {
+            id: saved?.id || (saved as any)?._id || 'fm_' + Date.now(),
+            name: saved?.name || name,
+            initials: saved?.initials || initials,
+            role: 'dependent',
+            dob: saved?.dob || dateOfBirth,
+            gender: saved?.gender || gender || '—',
+            bloodType: saved?.bloodType || bloodType || 'Unknown',
+            genotype: saved?.genotype || genotype || 'Unknown',
+            height: '—',
+            weight: '—',
+            allergies: 'None on file',
+            conditions: 'None on file',
+            contact: `${state.familyMembers[0].name} (${relationship || 'Guardian'})`,
+            email: '—',
+            phone: '—',
+            address: state.familyMembers[0].address,
+            insuranceProvider: `${state.familyMembers[0].insuranceProvider} (dependent)`,
+            insuranceId: `${state.familyMembers[0].insuranceId}-DEP`,
+          };
 
-        patch((s) => ({
-          familyMembers: [...s.familyMembers, memberToAdd],
-          activeFamilyId: memberToAdd.id,
-          showAddFamilyMember: false,
-          newMemberName: '',
-          newMemberRelationship: '',
-          newMemberDob: '',
-          newMemberGender: '',
-          newMemberBloodType: '',
-          newMemberGenotype: '',
-        }));
+          patch((s) => ({
+            familyMembers: [...s.familyMembers, memberToAdd],
+            showAddFamilyMember: false,
+            newMemberName: '',
+            newMemberRelationship: '',
+            newMemberDob: '',
+            newMemberGender: '',
+            newMemberBloodType: '',
+            newMemberGenotype: '',
+          }));
+        }
+
         showToast(`${name} added to your family vault`);
+        return true;
       } catch (err: any) {
         showToast(err?.message || 'Failed to add family member');
+        return false;
       }
     },
     removeFamilyMember: async (id: string) => {

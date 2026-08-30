@@ -38,9 +38,12 @@ export const familyService = {
    */
   async fetchFamilyMembers(): Promise<FamilyMember[]> {
     try {
+      console.log('[FAMILY FETCH] Requesting /family/list');
       const res = await apiClient.get<FamilyListResponse>('/family/list');
+      console.log('[FAMILY FETCH RESULT]', JSON.stringify(res));
       return res?.familyMembers || [];
-    } catch {
+    } catch (err) {
+      console.error('[FAMILY FETCH ERROR]', err);
       return [];
     }
   },
@@ -49,14 +52,23 @@ export const familyService = {
    * Adds a new dependent family member document under the authenticated account
    */
   async addFamilyMember(data: AddFamilyMemberData): Promise<FamilyMember | null> {
+    const payload = {
+      ...data,
+      fullName: (data.fullName || data.name || '').trim(),
+      dateOfBirth: data.dateOfBirth || data.dob,
+      dob: data.dateOfBirth || data.dob,
+    };
+    console.log('[FAMILY ADD PAYLOAD]', JSON.stringify(payload));
     try {
-      const res = await apiClient.post<FamilyMemberResponse>('/family/add', {
-        ...data,
-        fullName: data.fullName || data.name,
-      });
-      return res?.member || null;
+      const res = await apiClient.post<FamilyMemberResponse>('/family/add', payload);
+      console.log('[FAMILY ADD RESPONSE]', JSON.stringify(res));
+      if (!res || !res.success) {
+        throw new Error(res?.message || 'Server rejected family member creation');
+      }
+      return res.member || null;
     } catch (err: any) {
-      throw new Error(err?.message || 'Failed to add family member');
+      console.error('[FAMILY ADD ERROR]', err);
+      throw new Error(err?.message || 'Failed to add family member to server');
     }
   },
 
@@ -68,9 +80,12 @@ export const familyService = {
     data: Partial<AddFamilyMemberData>
   ): Promise<FamilyMember | null> {
     try {
+      console.log(`[FAMILY UPDATE PAYLOAD] ${id}`, JSON.stringify(data));
       const res = await apiClient.patch<FamilyMemberResponse>(`/family/${id}`, data);
+      console.log('[FAMILY UPDATE RESPONSE]', JSON.stringify(res));
       return res?.member || null;
     } catch (err: any) {
+      console.error('[FAMILY UPDATE ERROR]', err);
       throw new Error(err?.message || 'Failed to update family member');
     }
   },
@@ -80,9 +95,12 @@ export const familyService = {
    */
   async deleteFamilyMember(id: string): Promise<boolean> {
     try {
+      console.log(`[FAMILY DELETE] Requesting DELETE /family/${id}`);
       const res = await apiClient.delete<{ success: boolean; message?: string }>(`/family/${id}`);
+      console.log('[FAMILY DELETE RESPONSE]', JSON.stringify(res));
       return res?.success ?? true;
     } catch (err: any) {
+      console.error('[FAMILY DELETE ERROR]', err);
       throw new Error(err?.message || 'Failed to remove family member');
     }
   },
