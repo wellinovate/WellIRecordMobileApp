@@ -41,7 +41,9 @@ export function ProfileScreen({ app }: { app: WelliApp }) {
     <ScrollView
       style={{ flex: 1, backgroundColor: theme.bg }}
       contentContainerStyle={styles.scrollContent}
-      showsVerticalScrollIndicator={false}
+      showsVerticalScrollIndicator={true}
+      alwaysBounceVertical={true}
+      keyboardShouldPersistTaps="handled"
     >
       {/* Profile Header */}
       <View style={styles.profileHeader}>
@@ -301,7 +303,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 16,
-    paddingBottom: 36,
+    paddingBottom: 120,
   },
   profileHeader: {
     flexDirection: 'row',

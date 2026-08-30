@@ -10,6 +10,8 @@ import {
   SafeAreaView,
   ActivityIndicator,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { ModalHeader } from '../components/ModalHeader';
@@ -298,57 +300,67 @@ export function PersonalInfoModal({ app }: { app: WelliApp }) {
       onRequestClose={editing ? handleCancel : actions.closePersonalInfo}
     >
       <SafeAreaView style={styles.container}>
-        <ModalHeader
-          title={
-            editing
-              ? 'Edit Personal Info'
-              : isGuardianView
-              ? `${activeMember.name}'s Info`
-              : 'Personal Info'
-          }
-          onClose={editing ? handleCancel : actions.closePersonalInfo}
-          onBack={editing ? handleCancel : actions.closePersonalInfo}
-        />
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <ModalHeader
+            title={
+              editing
+                ? 'Edit Personal Info'
+                : isGuardianView
+                ? `${activeMember.name}'s Info`
+                : 'Personal Info'
+            }
+            onClose={editing ? handleCancel : actions.closePersonalInfo}
+            onBack={editing ? handleCancel : actions.closePersonalInfo}
+          />
 
-        {/* Top Action Subheader Row */}
-        <View style={styles.topActionRow}>
-          <View style={styles.subTextContainer}>
-            <Text style={styles.sectionSubtitle}>
-              {editing
-                ? 'Update patient demographic and clinical parameters'
-                : 'Verified health passport and cloud profile'}
-            </Text>
+          {/* Top Action Subheader Row */}
+          <View style={styles.topActionRow}>
+            <View style={styles.subTextContainer}>
+              <Text style={styles.sectionSubtitle}>
+                {editing
+                  ? 'Update patient demographic and clinical parameters'
+                  : 'Verified health passport and cloud profile'}
+              </Text>
+            </View>
+
+            {!editing && (
+              <TouchableOpacity
+                activeOpacity={0.75}
+                onPress={() => {
+                  hapticFeedback.selection();
+                  setSaveError(null);
+                  actions.startEditPersonalInfo();
+                }}
+                style={styles.editPillBtn}
+              >
+                <Svg width={13} height={13} viewBox="0 0 24 24" fill="none">
+                  <Path
+                    d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"
+                    stroke="#0EA5E9"
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </Svg>
+                <Text style={styles.editActionText}>Edit</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
-          {!editing && (
-            <TouchableOpacity
-              activeOpacity={0.75}
-              onPress={() => {
-                hapticFeedback.selection();
-                setSaveError(null);
-                actions.startEditPersonalInfo();
-              }}
-              style={styles.editPillBtn}
-            >
-              <Svg width={13} height={13} viewBox="0 0 24 24" fill="none">
-                <Path
-                  d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"
-                  stroke="#0EA5E9"
-                  strokeWidth={2}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </Svg>
-              <Text style={styles.editActionText}>Edit</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        <ScrollView
-          style={styles.scrollArea}
-          contentContainerStyle={styles.scrollInner}
-          keyboardShouldPersistTaps="handled"
-        >
+          <ScrollView
+            style={styles.scrollArea}
+            contentContainerStyle={[
+              styles.scrollInner,
+              { paddingBottom: editing ? 140 : 80 },
+            ]}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            showsVerticalScrollIndicator={true}
+            alwaysBounceVertical={true}
+          >
           {/* Avatar Section */}
           <View style={styles.avatarSection}>
             <View style={styles.avatarWrapper}>
@@ -503,46 +515,47 @@ export function PersonalInfoModal({ app }: { app: WelliApp }) {
           )}
         </ScrollView>
 
-        {/* Sticky Edit Mode Action Footer */}
-        {editing && (
-          <View style={styles.footerBtns}>
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={handleCancel}
-              disabled={isSaving}
-              style={[styles.cancelBtn, isSaving && { opacity: 0.6 }]}
-            >
-              <Text style={styles.cancelBtnText}>Cancel</Text>
-            </TouchableOpacity>
+          {/* Sticky Edit Mode Action Footer */}
+          {editing && (
+            <View style={styles.footerBtns}>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={handleCancel}
+                disabled={isSaving}
+                style={[styles.cancelBtn, isSaving && { opacity: 0.6 }]}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={handleSave}
-              disabled={isSaving}
-              style={[styles.saveBtn, isSaving && styles.saveBtnDisabled]}
-            >
-              {isSaving ? (
-                <View style={styles.savingRow}>
-                  <ActivityIndicator size="small" color="#ffffff" />
-                  <Text style={styles.saveBtnText}>Saving to Cloud...</Text>
-                </View>
-              ) : (
-                <View style={styles.savingRow}>
-                  <Svg width={15} height={15} viewBox="0 0 24 24" fill="none">
-                    <Path
-                      d="M20 6L9 17l-5-5"
-                      stroke="#ffffff"
-                      strokeWidth={2.2}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </Svg>
-                  <Text style={styles.saveBtnText}>Save Changes</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          </View>
-        )}
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={handleSave}
+                disabled={isSaving}
+                style={[styles.saveBtn, isSaving && styles.saveBtnDisabled]}
+              >
+                {isSaving ? (
+                  <View style={styles.savingRow}>
+                    <ActivityIndicator size="small" color="#ffffff" />
+                    <Text style={styles.saveBtnText}>Saving to Cloud...</Text>
+                  </View>
+                ) : (
+                  <View style={styles.savingRow}>
+                    <Svg width={15} height={15} viewBox="0 0 24 24" fill="none">
+                      <Path
+                        d="M20 6L9 17l-5-5"
+                        stroke="#ffffff"
+                        strokeWidth={2.2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </Svg>
+                    <Text style={styles.saveBtnText}>Save Changes</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+        </KeyboardAvoidingView>
 
         {/* Interactive Visual Date Picker Modal */}
         <Modal
