@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Modal,
   SafeAreaView,
   ActivityIndicator,
+  FlatList,
 } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { ModalHeader } from '../components/ModalHeader';
@@ -157,12 +158,35 @@ const EDITABLE_FIELDS: FieldDef[] = [
   },
 ];
 
+const MONTH_NAMES = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+];
+
+const YEARS = Array.from({ length: 105 }, (_, i) => String(2026 - i));
+const MONTHS = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
+const DAYS = Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0'));
+
+function formatDobInput(text: string): string {
+  const digits = text.replace(/[^0-9]/g, '');
+  if (digits.length <= 4) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 4)}-${digits.slice(4)}`;
+  return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
+}
+
 export function PersonalInfoModal({ app }: { app: WelliApp }) {
   const { state, actions, family } = app;
   const [showPhotoOptions, setShowPhotoOptions] = useState(false);
   const [pickingPhoto, setPickingPhoto] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Visual Date Picker Modal State
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [pickerYear, setPickerYear] = useState('1990');
+  const [pickerMonth, setPickerMonth] = useState('01');
+  const [pickerDay, setPickerDay] = useState('01');
+  const [activePickerTab, setActivePickerTab] = useState<'year' | 'month' | 'day'>('year');
 
   if (!state.showPersonalInfo) return null;
 
@@ -194,6 +218,25 @@ export function PersonalInfoModal({ app }: { app: WelliApp }) {
     { label: 'Insurance Provider', value: activeMember.insuranceProvider || 'Not set' },
     { label: 'Insurance ID', value: activeMember.insuranceId || 'Not set' },
   ];
+
+  const openVisualDatePicker = () => {
+    hapticFeedback.light();
+    if (draft?.dob && draft.dob.includes('-')) {
+      const parts = draft.dob.split('-');
+      if (parts[0]) setPickerYear(parts[0]);
+      if (parts[1]) setPickerMonth(parts[1].padStart(2, '0'));
+      if (parts[2]) setPickerDay(parts[2].padStart(2, '0'));
+    }
+    setActivePickerTab('year');
+    setShowDatePicker(true);
+  };
+
+  const handleConfirmDatePicker = () => {
+    hapticFeedback.selection();
+    const formatted = `${pickerYear}-${pickerMonth}-${pickerDay}`;
+    actions.updatePersonalInfoDraft('dob', formatted);
+    setShowDatePicker(false);
+  };
 
   const handleSave = async () => {
     if (isSaving || !draft) return;
@@ -396,24 +439,31 @@ export function PersonalInfoModal({ app }: { app: WelliApp }) {
                           value={rawVal}
                           placeholder={f.placeholder || 'YYYY-MM-DD'}
                           placeholderTextColor="#94a3b8"
-                          onChangeText={(v) =>
-                            actions.updatePersonalInfoDraft(f.key, v)
-                          }
-                          style={styles.formInput}
+                          onChangeText={(v) => {
+                            const formatted = formatDobInput(v);
+                            actions.updatePersonalInfoDraft(f.key, formatted);
+                          }}
+                          style={styles.formDateInput}
                           keyboardType="numbers-and-punctuation"
                           autoCapitalize="none"
+                          maxLength={10}
                         />
-                        <View style={styles.inputEndIcon}>
-                          <Svg width={15} height={15} viewBox="0 0 24 24" fill="none">
+                        <TouchableOpacity
+                          activeOpacity={0.7}
+                          onPress={openVisualDatePicker}
+                          style={styles.datePickerTriggerBtn}
+                        >
+                          <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
                             <Path
                               d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z"
-                              stroke="#64748b"
-                              strokeWidth={1.8}
+                              stroke="#0284c7"
+                              strokeWidth={2}
                               strokeLinecap="round"
                               strokeLinejoin="round"
                             />
                           </Svg>
-                        </View>
+                          <Text style={styles.datePickerTriggerText}>Pick</Text>
+                        </TouchableOpacity>
                       </View>
                     ) : (
                       <TextInput
@@ -493,6 +543,152 @@ export function PersonalInfoModal({ app }: { app: WelliApp }) {
             </TouchableOpacity>
           </View>
         )}
+
+        {/* Interactive Visual Date Picker Modal */}
+        <Modal
+          visible={showDatePicker}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowDatePicker(false)}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setShowDatePicker(false)}
+          >
+            <View style={styles.datePickerCard}>
+              <View style={styles.pickerHeaderRow}>
+                <Text style={styles.pickerHeaderTitle}>Select Date of Birth</Text>
+                <Text style={styles.pickerHeaderPreview}>
+                  {pickerYear}-{pickerMonth}-{pickerDay}
+                </Text>
+              </View>
+
+              {/* Segmented Picker Tabs */}
+              <View style={styles.pickerTabRow}>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => setActivePickerTab('year')}
+                  style={[styles.pickerTabBtn, activePickerTab === 'year' && styles.pickerTabBtnActive]}
+                >
+                  <Text style={[styles.pickerTabText, activePickerTab === 'year' && styles.pickerTabTextActive]}>
+                    Year ({pickerYear})
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => setActivePickerTab('month')}
+                  style={[styles.pickerTabBtn, activePickerTab === 'month' && styles.pickerTabBtnActive]}
+                >
+                  <Text style={[styles.pickerTabText, activePickerTab === 'month' && styles.pickerTabTextActive]}>
+                    Month ({MONTH_NAMES[parseInt(pickerMonth, 10) - 1] || pickerMonth})
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => setActivePickerTab('day')}
+                  style={[styles.pickerTabBtn, activePickerTab === 'day' && styles.pickerTabBtnActive]}
+                >
+                  <Text style={[styles.pickerTabText, activePickerTab === 'day' && styles.pickerTabTextActive]}>
+                    Day ({pickerDay})
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Options Grid */}
+              <View style={styles.pickerOptionsContainer}>
+                {activePickerTab === 'year' && (
+                  <FlatList
+                    data={YEARS}
+                    keyExtractor={(item) => item}
+                    numColumns={3}
+                    contentContainerStyle={styles.gridContent}
+                    renderItem={({ item }) => (
+                      <TouchableOpacity
+                        style={[styles.gridChip, pickerYear === item && styles.gridChipActive]}
+                        onPress={() => {
+                          hapticFeedback.selection();
+                          setPickerYear(item);
+                          setActivePickerTab('month');
+                        }}
+                      >
+                        <Text style={[styles.gridChipText, pickerYear === item && styles.gridChipTextActive]}>
+                          {item}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  />
+                )}
+
+                {activePickerTab === 'month' && (
+                  <FlatList
+                    data={MONTHS}
+                    keyExtractor={(item) => item}
+                    numColumns={3}
+                    contentContainerStyle={styles.gridContent}
+                    renderItem={({ item, index }) => (
+                      <TouchableOpacity
+                        style={[styles.gridChip, pickerMonth === item && styles.gridChipActive]}
+                        onPress={() => {
+                          hapticFeedback.selection();
+                          setPickerMonth(item);
+                          setActivePickerTab('day');
+                        }}
+                      >
+                        <Text style={[styles.gridChipText, pickerMonth === item && styles.gridChipTextActive]}>
+                          {MONTH_NAMES[index]} ({item})
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  />
+                )}
+
+                {activePickerTab === 'day' && (
+                  <FlatList
+                    data={DAYS}
+                    keyExtractor={(item) => item}
+                    numColumns={4}
+                    contentContainerStyle={styles.gridContent}
+                    renderItem={({ item }) => (
+                      <TouchableOpacity
+                        style={[styles.gridChip, pickerDay === item && styles.gridChipActive]}
+                        onPress={() => {
+                          hapticFeedback.selection();
+                          setPickerDay(item);
+                        }}
+                      >
+                        <Text style={[styles.gridChipText, pickerDay === item && styles.gridChipTextActive]}>
+                          {item}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  />
+                )}
+              </View>
+
+              {/* Action Buttons */}
+              <View style={styles.pickerActionRow}>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => setShowDatePicker(false)}
+                  style={styles.pickerCancelBtn}
+                >
+                  <Text style={styles.pickerCancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={handleConfirmDatePicker}
+                  style={styles.pickerConfirmBtn}
+                >
+                  <Text style={styles.pickerConfirmBtnText}>Apply Date</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </Modal>
 
         {/* Photo Options Modal */}
         <Modal
@@ -678,8 +874,36 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
   },
   dateInputWrapper: {
-    position: 'relative',
-    justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  formDateInput: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    color: '#0f172a',
+  },
+  datePickerTriggerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#f0f9ff',
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+  },
+  datePickerTriggerText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0284c7',
   },
   formInput: {
     backgroundColor: '#ffffff',
@@ -690,10 +914,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     fontSize: 14,
     color: '#0f172a',
-  },
-  inputEndIcon: {
-    position: 'absolute',
-    right: 12,
   },
   displayCard: {
     backgroundColor: '#f8fafc',
@@ -772,11 +992,134 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.45)',
-    justifyContent: 'flex-end',
-    padding: 16,
-    paddingBottom: 34,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  datePickerCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 18,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  pickerHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  pickerHeaderTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  pickerHeaderPreview: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0284c7',
+  },
+  pickerTabRow: {
+    flexDirection: 'row',
+    backgroundColor: '#f1f5f9',
+    borderRadius: 10,
+    padding: 3,
+    gap: 4,
+  },
+  pickerTabBtn: {
+    flex: 1,
+    paddingVertical: 7,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  pickerTabBtnActive: {
+    backgroundColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  pickerTabText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  pickerTabTextActive: {
+    color: '#0284c7',
+    fontWeight: '700',
+  },
+  pickerOptionsContainer: {
+    height: 180,
+  },
+  gridContent: {
+    gap: 6,
+    paddingVertical: 4,
+  },
+  gridChip: {
+    flex: 1,
+    margin: 3,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#f8fafc',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gridChipActive: {
+    backgroundColor: '#0284c7',
+    borderColor: '#0284c7',
+  },
+  gridChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#334155',
+  },
+  gridChipTextActive: {
+    color: '#ffffff',
+    fontWeight: '700',
+  },
+  pickerActionRow: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  pickerCancelBtn: {
+    flex: 1,
+    paddingVertical: 11,
+    borderRadius: 10,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+  },
+  pickerCancelBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  pickerConfirmBtn: {
+    flex: 2,
+    paddingVertical: 11,
+    borderRadius: 10,
+    backgroundColor: '#041E42',
+    alignItems: 'center',
+  },
+  pickerConfirmBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#ffffff',
   },
   optionsCard: {
+    width: '100%',
+    maxWidth: 340,
     backgroundColor: '#ffffff',
     borderRadius: 20,
     padding: 16,
