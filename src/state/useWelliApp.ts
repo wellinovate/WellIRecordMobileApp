@@ -1038,7 +1038,8 @@ export function useWelliApp() {
             : f
         ),
       }));
-      showToast(`Welcome back, ${session.user.fullName.split(' ')[0]}!`);
+      const userFirst = (session.user.fullName || 'User').split(' ')[0];
+      showToast(`Welcome back, ${userFirst}!`);
     },
 
     signUpWithData: async (data: SignUpFormData) => {
