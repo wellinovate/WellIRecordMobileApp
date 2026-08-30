@@ -395,10 +395,83 @@ const ProfileSchema = new Schema<IProfile>(
   { timestamps: true, strict: false }
 );
 
+// 11. UserProfile Model (Matching shared 'userprofiles' collection in Atlas)
+export interface IUserProfile extends Document {
+  accountId: mongoose.Types.ObjectId;
+  fullName?: string;
+  username?: string;
+  firstName?: string;
+  middleName?: string;
+  lastName?: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  gender?: string;
+  dateOfBirth?: Date | string;
+  dob?: Date | string;
+  homeAddress?: string;
+  address?: string;
+  avatar?: string;
+  avatarUrl?: string;
+  wrId?: string;
+  memberId?: string;
+  bloodType?: string;
+  genotype?: string;
+  allergies?: string;
+  conditions?: string;
+  contact?: string;
+  hmoProvider?: string;
+  insuranceProvider?: string;
+  hmoPolicyNumber?: string;
+  policyNumber?: string;
+  insuranceId?: string;
+  authProvider?: string;
+  isEmailVerified?: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const UserProfileSchema = new Schema<IUserProfile>(
+  {
+    accountId: { type: Schema.Types.ObjectId, ref: 'Account', required: true, index: true },
+    fullName: { type: String },
+    username: { type: String },
+    firstName: { type: String },
+    middleName: { type: String },
+    lastName: { type: String },
+    name: { type: String },
+    email: { type: String, index: true },
+    phone: { type: String, index: true },
+    gender: { type: String },
+    dateOfBirth: { type: Schema.Types.Mixed },
+    dob: { type: Schema.Types.Mixed },
+    homeAddress: { type: String },
+    address: { type: String },
+    avatar: { type: String },
+    avatarUrl: { type: String },
+    wrId: { type: String, index: true },
+    memberId: { type: String },
+    bloodType: { type: String },
+    genotype: { type: String },
+    allergies: { type: String },
+    conditions: { type: String },
+    contact: { type: String },
+    hmoProvider: { type: String },
+    insuranceProvider: { type: String },
+    hmoPolicyNumber: { type: String },
+    policyNumber: { type: String },
+    insuranceId: { type: String },
+    authProvider: { type: String },
+    isEmailVerified: { type: Boolean },
+  },
+  { timestamps: true, strict: false }
+);
+
 // Export Mongoose Models
 export const User: Model<IUser> = mongoose.models.User || mongoose.model<IUser>('User', UserSchema);
 export const Account: Model<IAccount> = mongoose.models.Account || mongoose.model<IAccount>('Account', AccountSchema, 'accounts');
 export const Profile: Model<IProfile> = mongoose.models.Profile || mongoose.model<IProfile>('Profile', ProfileSchema, 'profiles');
+export const UserProfile: Model<IUserProfile> = mongoose.models.UserProfile || mongoose.model<IUserProfile>('UserProfile', UserProfileSchema, 'userprofiles');
 export const FamilyMember: Model<IFamilyMember> = mongoose.models.FamilyMember || mongoose.model<IFamilyMember>('FamilyMember', FamilyMemberSchema);
 export const HealthRecord: Model<IHealthRecord> = mongoose.models.HealthRecord || mongoose.model<IHealthRecord>('HealthRecord', HealthRecordSchema);
 export const Prescription: Model<IPrescription> = mongoose.models.Prescription || mongoose.model<IPrescription>('Prescription', PrescriptionSchema);

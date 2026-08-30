@@ -338,6 +338,8 @@ export function useWelliApp() {
                           liveProfile.insuranceProvider ||
                           f.insuranceProvider,
                         insuranceId:
+                          liveProfile.wrId ||
+                          liveProfile.memberId ||
                           liveProfile.hmoPolicyNumber ||
                           liveProfile.policyNumber ||
                           liveProfile.insuranceId ||
@@ -847,7 +849,7 @@ export function useWelliApp() {
             email: serverProfile?.email || draft.email,
             phone: serverProfile?.phone || serverProfile?.phoneNumber || draft.phone,
             insuranceProvider: serverProfile?.hmoProvider || serverProfile?.insuranceProvider || draft.insuranceProvider,
-            insuranceId: serverProfile?.hmoPolicyNumber || serverProfile?.policyNumber || serverProfile?.insuranceId || draft.insuranceId,
+            insuranceId: serverProfile?.wrId || serverProfile?.memberId || serverProfile?.hmoPolicyNumber || serverProfile?.policyNumber || serverProfile?.insuranceId || draft.insuranceId,
             allergies: serverProfile?.allergies !== undefined ? serverProfile.allergies : draft.allergies,
           };
 

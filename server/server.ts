@@ -11,6 +11,7 @@ import {
   User,
   Account,
   Profile,
+  UserProfile,
   FamilyMember,
   HealthRecord,
   Prescription,
@@ -182,31 +183,65 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'No account found for this phone number' });
     }
 
-    // 2nd lookup: Fetch matching profile document by email, patientIdentityId, accountId, or phone
+    // 2nd lookup: Fetch matching profile from shared 'userprofiles' collection
     let profile: any = null;
-    if (user.email) {
-      profile = await Profile.findOne({ email: user.email });
-    }
-    if (!profile && user.patientIdentityId) {
-      profile = await Profile.findOne({ patientIdentityId: user.patientIdentityId });
-    }
-    if (!profile && user._id) {
-      profile = await Profile.findOne({ $or: [{ accountId: user._id }, { userId: user._id }] });
-    }
-    if (!profile && mongoose.connection.readyState === 1) {
-      try {
-        profile = await Profile.create({
-          accountId: user._id,
-          email: user.email,
-          phone: user.phone || user.phoneNumber || phoneNumber,
-          fullName: null,      // to be filled in by the user
-          dateOfBirth: null,
-          gender: null,
-          isAccountLinked: true,
-          isProvisional: false,
+    if (mongoose.connection.readyState === 1) {
+      profile = await UserProfile.findOne({
+        $or: [
+          { accountId: user._id },
+          ...(user.email ? [{ email: user.email.toLowerCase().trim() }] : []),
+          ...(user.phone ? [{ phone: user.phone }, { phone: user.phoneNumber }] : []),
+        ],
+      });
+
+      // Migration: If no UserProfile exists, check legacy 'profiles' collection and copy over
+      if (!profile) {
+        const legacyProfile = await Profile.findOne({
+          $or: [
+            { accountId: user._id },
+            ...(user.email ? [{ email: user.email.toLowerCase().trim() }] : []),
+          ],
         });
-      } catch (createErr) {
-        console.warn('[Profile Create Notice]', createErr);
+
+        if (legacyProfile) {
+          console.log('[MIGRATION] Transferring profile from legacy profiles to userprofiles collection:', user.email || user._id);
+          profile = new UserProfile({
+            accountId: user._id,
+            fullName: legacyProfile.fullName || legacyProfile.name,
+            email: legacyProfile.email || user.email,
+            phone: legacyProfile.phone || user.phone,
+            gender: legacyProfile.gender,
+            dateOfBirth: legacyProfile.dateOfBirth || legacyProfile.dob,
+            bloodType: legacyProfile.bloodType,
+            genotype: legacyProfile.genotype,
+            hmoProvider: legacyProfile.hmoProvider || legacyProfile.insuranceProvider,
+            hmoPolicyNumber: legacyProfile.hmoPolicyNumber || legacyProfile.insuranceId,
+            allergies: legacyProfile.allergies,
+            wrId: legacyProfile.memberId || generateWelliRecordId(),
+          });
+          await profile.save();
+        }
+      }
+
+      // If still no profile exists, create a genuine UserProfile document with wrId
+      if (!profile) {
+        const newWrId = generateWelliRecordId();
+        profile = new UserProfile({
+          accountId: user._id,
+          fullName: user.fullName || null,
+          email: user.email || null,
+          phone: user.phone || user.phoneNumber || phoneNumber,
+          wrId: newWrId,
+          authProvider: 'phone_otp',
+          isEmailVerified: Boolean(user.isEmailVerified),
+        });
+        await profile.save();
+        console.log('[USERPROFILE CREATED]', JSON.stringify(profile));
+      } else if (!profile.wrId) {
+        // Ensure wrId is generated and saved if missing
+        profile.wrId = generateWelliRecordId();
+        await profile.save();
+        console.log('[USERPROFILE ASSIGNED WRID]', profile.wrId);
       }
     }
 
@@ -220,7 +255,8 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
         id: userId,
         fullName: profile?.fullName || (profile?.firstName && profile?.lastName ? `${profile.firstName} ${profile.lastName}` : null) || profile?.name || user.fullName || user.email,
         dateOfBirth: profile?.dateOfBirth || profile?.dob || null,
-        memberId: profile?.memberId || profile?.patientIdentityId || user.patientIdentityId || null,
+        memberId: profile?.wrId || profile?.memberId || user.patientIdentityId || null,
+        wrId: profile?.wrId || null,
         phoneNumber: user.phoneNumber || user.phone || profile?.phone || phone,
         email: user.email || profile?.email || null,
         bloodType: profile?.bloodType || user.bloodType || null,
@@ -237,7 +273,7 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
   }
 });
 
-// 3d. Update Patient Profile
+// 3d. Update Patient Profile (writes directly to shared 'userprofiles' collection)
 app.all('/api/v1/profile/update', async (req: Request, res: Response) => {
   const {
     accountId,
@@ -257,61 +293,87 @@ app.all('/api/v1/profile/update', async (req: Request, res: Response) => {
     hmoPolicyNumber,
     insuranceId,
     memberId,
+    wrId,
     allergies,
+    conditions,
+    address,
+    homeAddress,
+    contact,
   } = req.body;
 
   try {
     const searchConditions: any[] = [];
-    if (accountId) searchConditions.push({ accountId }, { _id: accountId }, { userId: accountId });
-    if (userId) searchConditions.push({ userId }, { accountId: userId }, { _id: userId });
+    if (accountId) searchConditions.push({ accountId }, { _id: accountId });
+    if (userId) searchConditions.push({ accountId: userId }, { _id: userId });
     if (email) searchConditions.push({ email: email.toLowerCase().trim() });
     const rawPhone = phone || phoneNumber;
     if (rawPhone) {
       const clean = rawPhone.replace(/[^0-9]/g, '');
       const local = rawPhone.replace('+234', '0');
-      searchConditions.push({ phone: rawPhone }, { phone: local }, { phone: clean }, { phoneNumber: rawPhone });
+      searchConditions.push({ phone: rawPhone }, { phone: local }, { phone: clean });
     }
 
     let profile: any = null;
-    if (searchConditions.length > 0) {
-      profile = await Profile.findOne({ $or: searchConditions });
+    if (mongoose.connection.readyState === 1 && searchConditions.length > 0) {
+      profile = await UserProfile.findOne({ $or: searchConditions });
     }
 
-    if (!profile) {
-      profile = new Profile({
+    if (!profile && mongoose.connection.readyState === 1) {
+      profile = new UserProfile({
         accountId: accountId || userId,
-        userId: userId || accountId,
         email,
         phone: rawPhone,
-        isAccountLinked: true,
-        isProvisional: false,
+        wrId: wrId || memberId || generateWelliRecordId(),
       });
     }
 
-    const resolvedName = fullName !== undefined ? fullName : name;
-    if (resolvedName !== undefined) profile.fullName = resolvedName;
-    const resolvedDob = dateOfBirth !== undefined ? dateOfBirth : dob;
-    if (resolvedDob !== undefined) profile.dateOfBirth = resolvedDob;
-    if (gender !== undefined) profile.gender = gender;
-    if (bloodType !== undefined) profile.bloodType = bloodType;
-    if (genotype !== undefined) profile.genotype = genotype;
-    const resolvedHmo = hmoProvider !== undefined ? hmoProvider : insuranceProvider;
-    if (resolvedHmo !== undefined) profile.hmoProvider = resolvedHmo;
-    const resolvedPolicy = hmoPolicyNumber !== undefined ? hmoPolicyNumber : insuranceId;
-    if (resolvedPolicy !== undefined) profile.hmoPolicyNumber = resolvedPolicy;
-    if (memberId !== undefined) profile.memberId = memberId;
-    if (allergies !== undefined) profile.allergies = allergies;
+    if (profile) {
+      const resolvedName = fullName !== undefined ? fullName : name;
+      if (resolvedName !== undefined) {
+        profile.fullName = resolvedName;
+        profile.name = resolvedName;
+      }
+      const resolvedDob = dateOfBirth !== undefined ? dateOfBirth : dob;
+      if (resolvedDob !== undefined) {
+        profile.dateOfBirth = resolvedDob;
+        profile.dob = resolvedDob;
+      }
+      if (gender !== undefined) profile.gender = gender;
+      if (bloodType !== undefined) profile.bloodType = bloodType;
+      if (genotype !== undefined) profile.genotype = genotype;
+      const resolvedHmo = hmoProvider !== undefined ? hmoProvider : insuranceProvider;
+      if (resolvedHmo !== undefined) {
+        profile.hmoProvider = resolvedHmo;
+        profile.insuranceProvider = resolvedHmo;
+      }
+      const resolvedPolicy = hmoPolicyNumber !== undefined ? hmoPolicyNumber : insuranceId;
+      if (resolvedPolicy !== undefined) {
+        profile.hmoPolicyNumber = resolvedPolicy;
+        profile.insuranceId = resolvedPolicy;
+      }
+      if (allergies !== undefined) profile.allergies = allergies;
+      if (conditions !== undefined) profile.conditions = conditions;
+      const resolvedAddress = homeAddress !== undefined ? homeAddress : address;
+      if (resolvedAddress !== undefined) {
+        profile.homeAddress = resolvedAddress;
+        profile.address = resolvedAddress;
+      }
+      if (contact !== undefined) profile.contact = contact;
+      if (!profile.wrId) {
+        profile.wrId = wrId || memberId || generateWelliRecordId();
+      }
 
-    await profile.save();
+      await profile.save();
+    }
 
-    console.log('[PROFILE UPDATE RESPONSE]', JSON.stringify(profile));
+    console.log('[USERPROFILE UPDATE RESPONSE]', JSON.stringify(profile));
     return res.json({ success: true, message: 'Profile updated successfully', profile });
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Failed to update profile', error: err });
   }
 });
 
-// 3e. Fetch Current Patient Profile (by JWT or Query)
+// 3e. Fetch Current Patient Profile (reads from shared 'userprofiles' collection)
 app.get(['/api/v1/profile/me', '/api/v1/profile'], async (req: Request, res: Response) => {
   try {
     const authHeader = req.headers.authorization;
@@ -329,7 +391,7 @@ app.get(['/api/v1/profile/me', '/api/v1/profile'], async (req: Request, res: Res
 
     const searchConditions: any[] = [];
     if (tokenData?.userId) {
-      searchConditions.push({ accountId: tokenData.userId }, { userId: tokenData.userId }, { _id: tokenData.userId });
+      searchConditions.push({ accountId: tokenData.userId }, { _id: tokenData.userId });
     }
     if (tokenData?.email) {
       searchConditions.push({ email: String(tokenData.email).toLowerCase().trim() });
@@ -338,26 +400,54 @@ app.get(['/api/v1/profile/me', '/api/v1/profile'], async (req: Request, res: Res
       const p = String(tokenData.phoneNumber);
       const clean = p.replace(/[^0-9]/g, '');
       const local = p.replace('+234', '0');
-      searchConditions.push({ phone: p }, { phone: local }, { phone: clean }, { phoneNumber: p });
+      searchConditions.push({ phone: p }, { phone: local }, { phone: clean });
     }
 
-    if (userId) searchConditions.push({ userId }, { accountId: userId }, { _id: userId });
-    if (accountId) searchConditions.push({ accountId }, { userId: accountId }, { _id: accountId });
+    if (userId) searchConditions.push({ accountId: userId }, { _id: userId });
+    if (accountId) searchConditions.push({ accountId: accountId }, { _id: accountId });
     if (email) searchConditions.push({ email: String(email).toLowerCase().trim() });
     const rawPhone = phone || phoneNumber;
     if (rawPhone) {
       const p = String(rawPhone);
       const clean = p.replace(/[^0-9]/g, '');
       const local = p.replace('+234', '0');
-      searchConditions.push({ phone: p }, { phone: local }, { phone: clean }, { phoneNumber: p });
+      searchConditions.push({ phone: p }, { phone: local }, { phone: clean });
     }
 
     let profile: any = null;
     if (mongoose.connection.readyState === 1 && searchConditions.length > 0) {
-      profile = await Profile.findOne({ $or: searchConditions });
+      profile = await UserProfile.findOne({ $or: searchConditions });
+
+      // Auto-migration check: If not found in UserProfile, check legacy 'profiles'
+      if (!profile) {
+        const legacyProfile = await Profile.findOne({ $or: searchConditions });
+        if (legacyProfile) {
+          console.log('[MIGRATION GET] Migrating legacy profile to userprofiles for account:', tokenData?.userId || accountId);
+          profile = new UserProfile({
+            accountId: legacyProfile.accountId || legacyProfile.userId || (tokenData?.userId ? new mongoose.Types.ObjectId(tokenData.userId) : undefined),
+            fullName: legacyProfile.fullName || legacyProfile.name,
+            email: legacyProfile.email,
+            phone: legacyProfile.phone,
+            gender: legacyProfile.gender,
+            dateOfBirth: legacyProfile.dateOfBirth || legacyProfile.dob,
+            bloodType: legacyProfile.bloodType,
+            genotype: legacyProfile.genotype,
+            hmoProvider: legacyProfile.hmoProvider || legacyProfile.insuranceProvider,
+            hmoPolicyNumber: legacyProfile.hmoPolicyNumber || legacyProfile.insuranceId,
+            allergies: legacyProfile.allergies,
+            wrId: legacyProfile.memberId || generateWelliRecordId(),
+          });
+          await profile.save();
+        }
+      }
+
+      if (profile && !profile.wrId) {
+        profile.wrId = generateWelliRecordId();
+        await profile.save();
+      }
     }
 
-    console.log('[GET PROFILE RESPONSE]', JSON.stringify(profile));
+    console.log('[GET USERPROFILE RESPONSE]', JSON.stringify(profile));
     return res.json({
       success: true,
       profile: profile || null,
