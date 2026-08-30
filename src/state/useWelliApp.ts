@@ -42,6 +42,7 @@ import { hapticFeedback } from '../utils/haptics';
 import { storage } from '../utils/storage';
 import { authService } from '../services/authService';
 import { apiClient } from '../services/apiClient';
+import { recordsService } from '../services/recordsService';
 
 export interface AppState {
   tab: Tab;
@@ -132,14 +133,35 @@ export interface AppState {
   toast: string | null;
 }
 
+const DEFAULT_PRIMARY_USER: FamilyMember = {
+  id: 'me',
+  name: 'You',
+  initials: 'U',
+  role: 'owner',
+  dob: '',
+  gender: '',
+  bloodType: '',
+  genotype: '',
+  height: '',
+  weight: '',
+  allergies: '',
+  conditions: '',
+  contact: '',
+  email: '',
+  phone: '',
+  address: '',
+  insuranceProvider: '',
+  insuranceId: '',
+};
+
 const initialState: AppState = {
   tab: 'home',
   tabHistory: [],
   activeFamilyId: 'me',
-  familyMembers: FAMILY,
-  recordsList: RECORDS,
-  immunizationSchedule: IMMUNIZATION_SCHEDULE,
-  vitalsLogs: VITALS_LOGS,
+  familyMembers: [DEFAULT_PRIMARY_USER],
+  recordsList: [],
+  immunizationSchedule: [],
+  vitalsLogs: [],
   recordFilter: 'All',
   recordQuery: '',
   recordDetailId: null,
@@ -271,6 +293,16 @@ export function useWelliApp() {
                 : f
             ),
           }));
+        }
+
+        // Fetch genuine health records for active user
+        try {
+          const remoteRecords = await recordsService.fetchRecords('me');
+          if (Array.isArray(remoteRecords) && remoteRecords.length > 0) {
+            patch({ recordsList: remoteRecords });
+          }
+        } catch {
+          // Keep clean empty state
         }
       } catch {
         // ignore corrupt local storage

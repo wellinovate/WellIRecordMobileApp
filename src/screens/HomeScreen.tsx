@@ -19,12 +19,12 @@ export function HomeScreen({ app }: { app: WelliApp }) {
   const theme = useTheme();
   const { state, actions, records, family } = app;
 
-  const activeMember = family.find((f) => f.id === state.activeFamilyId) ?? family[0];
+  const activeMember = family.find((f) => f.id === state.activeFamilyId) ?? family[0] ?? { id: 'me', name: 'You', initials: 'U' };
   const isGuardianView = state.activeFamilyId !== 'me';
-  const ownedRecords = records.filter((r) => r.ownerId === state.activeFamilyId);
+  const ownedRecords = records.filter((r) => r.ownerId === state.activeFamilyId || r.ownerId === 'me');
   const recentRecords = ownedRecords.slice(0, 3);
-  const hasUpcomingVisit = state.activeFamilyId === 'me';
-  const vitals = state.activeFamilyId === 'me' ? VITALS : [];
+  const hasUpcomingVisit = Boolean(state.bookingFacilityId && state.bookingDate);
+  const vitals = state.vitalsLogs || [];
   const unreadCount = state.notifications.length;
 
   return (
@@ -64,32 +64,24 @@ export function HomeScreen({ app }: { app: WelliApp }) {
         </View>
       </View>
 
-      {/* Family Switcher */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.familyScroll}
-        contentContainerStyle={{ paddingRight: 10 }}
-      >
-        {family.map((m) => (
-          <Chip
-            key={m.id}
-            label={m.id === 'me' ? 'You' : m.name.split(' ')[0]}
-            active={state.activeFamilyId === m.id}
-            onClick={() => actions.setFamily(m.id)}
-          />
-        ))}
-      </ScrollView>
+      {/* Active Profile - Single "You" Profile Tab */}
+      <View style={styles.familyScroll}>
+        <Chip
+          label="You"
+          active={true}
+          onClick={() => {}}
+        />
+      </View>
 
       {/* Greeting */}
       <View style={styles.greetingContainer}>
-        <Text style={[styles.greetingSub, { color: theme.muted }]}>Good afternoon</Text>
+        <Text style={[styles.greetingSub, { color: theme.muted }]}>Good day</Text>
         <Text style={[styles.greetingName, { color: theme.text }]}>
-          {activeMember.name}
+          {activeMember.name || 'You'}
         </Text>
       </View>
 
-      {/* Guardian Notice */}
+      {/* Guardian Notice (if active) */}
       {isGuardianView && (
         <View style={styles.guardianBanner}>
           <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
@@ -100,81 +92,8 @@ export function HomeScreen({ app }: { app: WelliApp }) {
             />
           </Svg>
           <Text style={styles.guardianText}>
-            Managing {activeMember.name.split(' ')[0]}'s vault as guardian · {activeMember.insuranceProvider}
+            Managing {activeMember.name}'s vault as guardian
           </Text>
-        </View>
-      )}
-
-      {/* Child Immunization Schedule Card (if Child Active) */}
-      {activeMember.isChild && (
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => actions.setTab('records')}
-          style={styles.childImmCard}
-        >
-          <View style={styles.childImmHeader}>
-            <View style={styles.childImmIconCircle}>
-              <Text style={{ fontSize: 20 }}>💉</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.childImmTitle}>NPI Immunization Schedule</Text>
-              <Text style={styles.childImmSub}>7 of 8 Milestones Completed (88%)</Text>
-            </View>
-            <View style={styles.dueBadge}>
-              <Text style={styles.dueBadgeText}>1 Due</Text>
-            </View>
-          </View>
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressBar, { width: '88%' }]} />
-          </View>
-          <Text style={styles.nextDueText}>
-            Next: School Entry MMR / Tdap Booster · Recommended at 6-8 yrs
-          </Text>
-        </TouchableOpacity>
-      )}
-
-      {/* Senior Vitals & Chronic Care Log (if Senior Active) */}
-      {activeMember.isElderly && (
-        <View style={styles.seniorCareCard}>
-          <View style={styles.seniorCareHeader}>
-            <View style={styles.seniorCareIconCircle}>
-              <Text style={{ fontSize: 20 }}>❤️</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.seniorCareTitle}>Hypertension & Vitals Log</Text>
-              <Text style={styles.seniorCareSub}>Daily BP & Fasting Glucose Control</Text>
-            </View>
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => {
-                actions.addVitalLog({
-                  ownerId: activeMember.id,
-                  type: 'bp',
-                  timestamp: 'Just now',
-                  primaryValue: '124/80',
-                  unit: 'mmHg',
-                  tag: 'Optimal Reading',
-                  tagColor: '#10b981',
-                  note: 'Afternoon log reading',
-                });
-              }}
-              style={styles.logReadingBtn}
-            >
-              <Text style={styles.logReadingBtnText}>+ Log Reading</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.vitalMetricsGrid}>
-            <View style={styles.seniorVitalMetric}>
-              <Text style={styles.svmLabel}>Latest Blood Pressure</Text>
-              <Text style={styles.svmValue}>126/80 <Text style={styles.svmUnit}>mmHg</Text></Text>
-              <Text style={styles.svmTagGreen}>● Controlled</Text>
-            </View>
-            <View style={styles.seniorVitalMetric}>
-              <Text style={styles.svmLabel}>Fasting Glucose</Text>
-              <Text style={styles.svmValue}>102 <Text style={styles.svmUnit}>mg/dL</Text></Text>
-              <Text style={styles.svmTagGreen}>● Normal Range</Text>
-            </View>
-          </View>
         </View>
       )}
 
@@ -269,7 +188,7 @@ export function HomeScreen({ app }: { app: WelliApp }) {
         </TouchableOpacity>
       </View>
 
-      {/* Upcoming Visit Card */}
+      {/* Upcoming Visit Card (if booked) */}
       {hasUpcomingVisit && (
         <TouchableOpacity
           activeOpacity={0.7}
@@ -278,22 +197,44 @@ export function HomeScreen({ app }: { app: WelliApp }) {
         >
           <View style={styles.pulseDot} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.upcomingTitle}>Video visit with Dr. Chen</Text>
-            <Text style={styles.upcomingTime}>Today, 3:00 PM</Text>
+            <Text style={styles.upcomingTitle}>Upcoming Healthcare Consultation</Text>
+            <Text style={styles.upcomingTime}>{state.bookingDate} · {state.bookingTimeSlot || 'Confirmed'}</Text>
           </View>
-          <Text style={styles.joinText}>Join ›</Text>
+          <Text style={styles.joinText}>View ›</Text>
         </TouchableOpacity>
       )}
 
       {/* Vitals Section */}
       <View style={styles.sectionHeader}>
         <Text style={[styles.sectionTitle, { color: theme.text }]}>Vitals & Biometrics</Text>
-        <Text style={[styles.sectionMeta, { color: theme.mutedLight }]}>Synced 2h ago</Text>
+        {vitals.length > 0 ? (
+          <Text style={[styles.sectionMeta, { color: theme.mutedLight }]}>Synced</Text>
+        ) : null}
       </View>
+
       {vitals.length === 0 ? (
-        <Text style={[styles.emptyVitals, { color: theme.mutedLight }]}>
-          No wearable data for {activeMember.name} yet.
-        </Text>
+        <View
+          style={[
+            styles.emptySectionBox,
+            { backgroundColor: theme.surface, borderColor: theme.border },
+          ]}
+        >
+          <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+            <Path
+              d="M22 12h-4l-3 9L9 3l-3 9H2"
+              stroke={theme.mutedLight}
+              strokeWidth={1.8}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </Svg>
+          <Text style={[styles.emptySectionTitle, { color: theme.text }]}>
+            No vitals recorded yet
+          </Text>
+          <Text style={[styles.emptySectionSub, { color: theme.muted }]}>
+            Blood pressure, glucose, and heart rate metrics will appear here once recorded.
+          </Text>
+        </View>
       ) : (
         <ScrollView
           horizontal
@@ -303,15 +244,17 @@ export function HomeScreen({ app }: { app: WelliApp }) {
         >
           {vitals.map((v) => (
             <View
-              key={v.label}
+              key={v.id || v.timestamp}
               style={[
                 styles.vitalCard,
                 { backgroundColor: theme.surface, borderColor: theme.border },
               ]}
             >
-              <Text style={[styles.vitalLabel, { color: theme.muted }]}>{v.label}</Text>
+              <Text style={[styles.vitalLabel, { color: theme.muted }]}>
+                {v.type === 'bp' ? 'Blood Pressure' : v.type === 'glucose' ? 'Fasting Glucose' : 'Heart Rate'}
+              </Text>
               <Text style={[styles.vitalValue, { color: theme.text }]}>
-                {v.value}
+                {v.primaryValue}
                 <Text style={[styles.vitalUnit, { color: theme.mutedLight }]}> {v.unit}</Text>
               </Text>
             </View>
@@ -322,19 +265,35 @@ export function HomeScreen({ app }: { app: WelliApp }) {
       {/* Recent Records Section */}
       <View style={styles.sectionHeader}>
         <Text style={[styles.sectionTitle, { color: theme.text }]}>Recent Records</Text>
-        <TouchableOpacity onPress={() => actions.setTab('records')}>
-          <Text style={styles.seeAllText}>See all</Text>
-        </TouchableOpacity>
+        {recentRecords.length > 0 && (
+          <TouchableOpacity onPress={() => actions.setTab('records')}>
+            <Text style={styles.seeAllText}>See all</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {recentRecords.length === 0 ? (
-        <Text style={[styles.emptyRecords, { color: theme.mutedLight }]}>
-          No records for {activeMember.name} yet.
-        </Text>
+        <View
+          style={[
+            styles.emptySectionBox,
+            { backgroundColor: theme.surface, borderColor: theme.border },
+          ]}
+        >
+          <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+            <Rect x={4} y={3} width={16} height={18} rx={2} stroke={theme.mutedLight} strokeWidth={1.8} />
+            <Path d="M8 8h8M8 12h8M8 16h5" stroke={theme.mutedLight} strokeWidth={1.6} strokeLinecap="round" />
+          </Svg>
+          <Text style={[styles.emptySectionTitle, { color: theme.text }]}>
+            No records in your vault yet
+          </Text>
+          <Text style={[styles.emptySectionSub, { color: theme.muted }]}>
+            Upload a lab result, prescription, or clinical note to secure it in your vault.
+          </Text>
+        </View>
       ) : (
         <View style={styles.recordsList}>
           {recentRecords.map((r) => {
-            const meta = RECORD_META[r.type];
+            const meta = RECORD_META[r.type] || { tint: '#e0f2fe', emoji: '📋' };
             return (
               <TouchableOpacity
                 key={r.id}
@@ -542,6 +501,27 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     fontWeight: '600',
     color: '#0EA5E9',
+  },
+  emptySectionBox: {
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginBottom: 18,
+  },
+  emptySectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  emptySectionSub: {
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 17,
   },
   emptyVitals: {
     fontSize: 12.5,
