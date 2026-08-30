@@ -175,8 +175,6 @@ const initialState: AppState = {
   recordDetailId: null,
   showUpload: false,
   uploadStep: 0,
-  showWelcomeHome: false,
-  welcomeTab: 'about',
   showVaultExport: false,
   showShareFlow: false,
   shareStep: 0,
@@ -247,7 +245,6 @@ const initialState: AppState = {
   showLanguage: false,
   language: 'English',
   notifPermission: null,
-  loggedOut: false,
   toast: null,
 };
 
