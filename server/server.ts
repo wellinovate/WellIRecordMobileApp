@@ -11,6 +11,7 @@ import {
   User,
   Account,
   Profile,
+  FamilyMember,
   HealthRecord,
   Prescription,
   Facility,
