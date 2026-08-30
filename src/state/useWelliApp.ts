@@ -275,7 +275,7 @@ export function useWelliApp() {
         
         // Restore active user session from secure storage
         const savedSession = await authService.getSavedSession();
-        if (savedSession?.user) {
+        if (savedSession?.user && savedSession?.token) {
           patch((s) => ({
             loggedOut: false,
             showWelcomeHome: false,
@@ -294,75 +294,85 @@ export function useWelliApp() {
                 : f
             ),
           }));
-        }
 
-        // Fetch live cloud profile from backend /profile/me
-        try {
-          const liveProfile = await profileService.fetchMyProfile();
-          if (liveProfile) {
-            const serverName = liveProfile.fullName || liveProfile.name;
-            const serverDob = liveProfile.dateOfBirth
-              ? String(liveProfile.dateOfBirth).split('T')[0]
-              : liveProfile.dob;
-            const dynamicInitials = serverName
-              ? serverName
-                  .split(' ')
-                  .filter(Boolean)
-                  .slice(0, 2)
-                  .map((p: string) => p[0])
-                  .join('')
-                  .toUpperCase()
-              : 'U';
+          // Fetch live cloud profile from backend /profile/me
+          try {
+            const liveProfile = await profileService.fetchMyProfile();
+            if (liveProfile) {
+              const serverName = liveProfile.fullName || liveProfile.name;
+              const serverDob = liveProfile.dateOfBirth
+                ? String(liveProfile.dateOfBirth).split('T')[0]
+                : liveProfile.dob;
+              const dynamicInitials = serverName
+                ? serverName
+                    .split(' ')
+                    .filter(Boolean)
+                    .slice(0, 2)
+                    .map((p: string) => p[0])
+                    .join('')
+                    .toUpperCase()
+                : 'U';
 
-            patch((s) => ({
-              familyMembers: s.familyMembers.map((f) =>
-                f.id === 'me'
-                  ? {
-                      ...f,
-                      name: serverName || f.name,
-                      initials: dynamicInitials || f.initials,
-                      dob: serverDob || f.dob,
-                      gender: liveProfile.gender || f.gender,
-                      bloodType: liveProfile.bloodType || f.bloodType,
-                      genotype: liveProfile.genotype || f.genotype,
-                      email: liveProfile.email || f.email,
-                      phone: liveProfile.phone || liveProfile.phoneNumber || f.phone,
-                      insuranceProvider:
-                        liveProfile.hmoProvider ||
-                        liveProfile.insuranceProvider ||
-                        f.insuranceProvider,
-                      insuranceId:
-                        liveProfile.hmoPolicyNumber ||
-                        liveProfile.policyNumber ||
-                        liveProfile.insuranceId ||
-                        f.insuranceId,
-                      allergies:
-                        liveProfile.allergies !== undefined
-                          ? liveProfile.allergies
-                          : f.allergies,
-                      conditions:
-                        liveProfile.conditions !== undefined
-                          ? liveProfile.conditions
-                          : f.conditions,
-                      address: liveProfile.address || f.address,
-                      contact: liveProfile.contact || f.contact,
-                    }
-                  : f
-              ),
-            }));
+              patch((s) => ({
+                familyMembers: s.familyMembers.map((f) =>
+                  f.id === 'me'
+                    ? {
+                        ...f,
+                        name: serverName || f.name,
+                        initials: dynamicInitials || f.initials,
+                        dob: serverDob || f.dob,
+                        gender: liveProfile.gender || f.gender,
+                        bloodType: liveProfile.bloodType || f.bloodType,
+                        genotype: liveProfile.genotype || f.genotype,
+                        email: liveProfile.email || f.email,
+                        phone: liveProfile.phone || liveProfile.phoneNumber || f.phone,
+                        insuranceProvider:
+                          liveProfile.hmoProvider ||
+                          liveProfile.insuranceProvider ||
+                          f.insuranceProvider,
+                        insuranceId:
+                          liveProfile.hmoPolicyNumber ||
+                          liveProfile.policyNumber ||
+                          liveProfile.insuranceId ||
+                          f.insuranceId,
+                        allergies:
+                          liveProfile.allergies !== undefined
+                            ? liveProfile.allergies
+                            : f.allergies,
+                        conditions:
+                          liveProfile.conditions !== undefined
+                            ? liveProfile.conditions
+                            : f.conditions,
+                        address: liveProfile.address || f.address,
+                        contact: liveProfile.contact || f.contact,
+                      }
+                    : f
+                ),
+              }));
+            }
+          } catch {
+            // Keep local cached session
           }
-        } catch {
-          // Keep local cached session
-        }
 
-        // Fetch genuine health records for active user
-        try {
-          const remoteRecords = await recordsService.fetchRecords('me');
-          if (Array.isArray(remoteRecords) && remoteRecords.length > 0) {
-            patch({ recordsList: remoteRecords });
+          // Fetch genuine health records for active user
+          try {
+            const remoteRecords = await recordsService.fetchRecords('me');
+            if (Array.isArray(remoteRecords) && remoteRecords.length > 0) {
+              patch({ recordsList: remoteRecords });
+            }
+          } catch {
+            // Keep clean empty state
           }
-        } catch {
-          // Keep clean empty state
+        } else {
+          // No valid session: ensure logged out state and show sign-in screen
+          patch({
+            loggedOut: true,
+            showWelcomeHome: true,
+            welcomeTab: 'signin',
+            familyMembers: [DEFAULT_PRIMARY_USER],
+            recordsList: [],
+            vitalsLogs: [],
+          });
         }
       } catch {
         // ignore corrupt local storage
@@ -1307,10 +1317,24 @@ export function useWelliApp() {
     logOut: async () => {
       hapticFeedback.light();
       await authService.logout();
-      patch({ loggedOut: true, showWelcomeHome: true, welcomeTab: 'signin' });
+      setAuthToken(null);
+      patch({
+        loggedOut: true,
+        showWelcomeHome: false,
+        familyMembers: [DEFAULT_PRIMARY_USER],
+        recordsList: [],
+        vitalsLogs: [],
+      });
       showToast('Logged out of vault');
     },
-    logBackIn: () => patch({ loggedOut: false, showWelcomeHome: false, tab: 'home' }),
+    logBackIn: () => {
+      hapticFeedback.selection();
+      patch({
+        loggedOut: false,
+        showWelcomeHome: true,
+        welcomeTab: 'signin',
+      });
+    },
   };
 
   return {
