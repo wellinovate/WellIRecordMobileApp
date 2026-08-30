@@ -68,14 +68,38 @@ export function HomeScreen({ app }: { app: WelliApp }) {
         </View>
       </View>
 
-      {/* Active Profile - Single "You" Profile Tab */}
-      <View style={styles.familyScroll}>
-        <Chip
-          label="You"
-          active={true}
-          onClick={() => {}}
-        />
-      </View>
+      {/* Active Profile - Dynamic Family Tab Row (You + Dependents) */}
+      {family.length > 1 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.familyScroll}
+        >
+          {family.map((f) => {
+            const isSelected = state.activeFamilyId === f.id;
+            const label = f.id === 'me' ? 'You' : (f.name ? f.name.split(' ')[0] : 'Dependent');
+            return (
+              <Chip
+                key={f.id}
+                label={label}
+                active={isSelected}
+                onClick={() => {
+                  hapticFeedback.selection();
+                  actions.selectFamilyMember(f.id);
+                }}
+              />
+            );
+          })}
+        </ScrollView>
+      ) : (
+        <View style={styles.familyScroll}>
+          <Chip
+            label="You"
+            active={true}
+            onClick={() => {}}
+          />
+        </View>
+      )}
 
       {/* Greeting */}
       <View style={styles.greetingContainer}>

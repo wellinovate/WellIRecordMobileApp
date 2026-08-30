@@ -44,6 +44,7 @@ import { authService, type AuthSession } from '../services/authService';
 import { apiClient, setAuthToken } from '../services/apiClient';
 import { recordsService } from '../services/recordsService';
 import { profileService } from '../services/profileService';
+import { familyService } from '../services/familyService';
 
 export interface AppState {
   tab: Tab;
@@ -369,6 +370,41 @@ export function useWelliApp() {
           } catch {
             // Keep clean empty state
           }
+
+          // Fetch genuine dependents & family members from cloud
+          try {
+            const remoteFamily = await familyService.fetchFamilyMembers();
+            if (Array.isArray(remoteFamily) && remoteFamily.length > 0) {
+              patch((s) => ({
+                familyMembers: [
+                  s.familyMembers[0], // primary user
+                  ...remoteFamily.map((m: any) => ({
+                    id: m.id || m._id,
+                    name: m.fullName || m.name,
+                    initials: m.initials,
+                    role: 'dependent' as const,
+                    relationship: m.relationship || 'Dependent',
+                    dob: m.dateOfBirth || m.dob || '',
+                    gender: m.gender || '',
+                    bloodType: m.bloodType || '',
+                    genotype: m.genotype || '',
+                    height: m.height || '',
+                    weight: m.weight || '',
+                    allergies: m.allergies || '',
+                    conditions: m.conditions || '',
+                    contact: m.contact || '',
+                    email: m.email || '',
+                    phone: m.phone || '',
+                    address: m.address || '',
+                    insuranceProvider: m.insuranceProvider || '',
+                    insuranceId: m.insuranceId || '',
+                  })),
+                ],
+              }));
+            }
+          } catch {
+            // Keep local primary user
+          }
         } else {
           // No valid session: ensure logged out state and show sign-in screen
           patch({
@@ -629,50 +665,79 @@ export function useWelliApp() {
     setNewMemberGender: (v: string) => patch({ newMemberGender: v }),
     setNewMemberBloodType: (v: string) => patch({ newMemberBloodType: v }),
     setNewMemberGenotype: (v: string) => patch({ newMemberGenotype: v }),
-    addFamilyMember: () => {
+    addFamilyMember: async () => {
       const name = state.newMemberName.trim();
       if (!name) {
         showToast('Enter a name for the family member');
         return;
       }
-      const owner = state.familyMembers.find((f) => f.role === 'owner') ?? state.familyMembers[0];
-      const reciprocalRelationship: Record<string, string> =
-        { Child: 'Parent', Spouse: 'Spouse', Parent: 'Child', Other: 'Guardian' };
-      const ownerLabel = reciprocalRelationship[state.newMemberRelationship] ?? 'Guardian';
-      const initials = name
-        .split(' ')
-        .filter(Boolean)
-        .slice(0, 2)
-        .map((p) => p[0])
-        .join('')
-        .toUpperCase();
-      const dependentCount = state.familyMembers.filter((f) => f.role === 'dependent').length;
-      const newMember: FamilyMember = {
-        id: 'fam-' + Date.now(),
-        name,
-        initials: initials || '?',
-        role: 'dependent',
-        dob: state.newMemberDob,
-        gender: state.newMemberGender || '—',
-        bloodType: state.newMemberBloodType || 'Unknown',
-        genotype: state.newMemberGenotype || 'Unknown',
-        height: '—',
-        weight: '—',
-        allergies: 'None on file',
-        conditions: 'None on file',
-        contact: `${owner.name} (${ownerLabel})`,
-        email: '—',
-        phone: '—',
-        address: owner.address,
-        insuranceProvider: `${owner.insuranceProvider} (dependent)`,
-        insuranceId: `${owner.insuranceId}-D${dependentCount + 1}`,
-      };
-      patch((s) => ({
-        familyMembers: [...s.familyMembers, newMember],
-        activeFamilyId: newMember.id,
-        showAddFamilyMember: false,
-      }));
-      showToast(`${name} added to your family`);
+      try {
+        const saved = await familyService.addFamilyMember({
+          fullName: name,
+          relationship: state.newMemberRelationship || 'Child',
+          dateOfBirth: state.newMemberDob,
+          gender: state.newMemberGender,
+          bloodType: state.newMemberBloodType,
+          genotype: state.newMemberGenotype,
+        });
+
+        const initials = name
+          .split(' ')
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((p) => p[0])
+          .join('')
+          .toUpperCase() || 'FM';
+
+        const memberToAdd: FamilyMember = {
+          id: saved?.id || (saved as any)?._id || 'fm_' + Date.now(),
+          name: saved?.name || name,
+          initials: saved?.initials || initials,
+          role: 'dependent',
+          dob: saved?.dob || state.newMemberDob,
+          gender: saved?.gender || state.newMemberGender || '—',
+          bloodType: saved?.bloodType || state.newMemberBloodType || 'Unknown',
+          genotype: saved?.genotype || state.newMemberGenotype || 'Unknown',
+          height: '—',
+          weight: '—',
+          allergies: 'None on file',
+          conditions: 'None on file',
+          contact: `${state.familyMembers[0].name} (${state.newMemberRelationship || 'Guardian'})`,
+          email: '—',
+          phone: '—',
+          address: state.familyMembers[0].address,
+          insuranceProvider: `${state.familyMembers[0].insuranceProvider} (dependent)`,
+          insuranceId: `${state.familyMembers[0].insuranceId}-DEP`,
+        };
+
+        patch((s) => ({
+          familyMembers: [...s.familyMembers, memberToAdd],
+          activeFamilyId: memberToAdd.id,
+          showAddFamilyMember: false,
+          newMemberName: '',
+          newMemberRelationship: '',
+          newMemberDob: '',
+          newMemberGender: '',
+          newMemberBloodType: '',
+          newMemberGenotype: '',
+        }));
+        showToast(`${name} added to your family vault`);
+      } catch (err: any) {
+        showToast(err?.message || 'Failed to add family member');
+      }
+    },
+    removeFamilyMember: async (id: string) => {
+      hapticFeedback.warning();
+      try {
+        await familyService.deleteFamilyMember(id);
+        patch((s) => ({
+          familyMembers: s.familyMembers.filter((f) => f.id !== id),
+          activeFamilyId: s.activeFamilyId === id ? 'me' : s.activeFamilyId,
+        }));
+        showToast('Family member removed');
+      } catch (err: any) {
+        showToast(err?.message || 'Failed to remove family member');
+      }
     },
     openProxyLog: () => patch({ showProxyLog: true }),
     closeProxyLog: () => patch({ showProxyLog: false }),
@@ -743,13 +808,29 @@ export function useWelliApp() {
         }
       } else {
         // Dependent member update
-        patch((s) => ({
-          familyMembers: s.familyMembers.map((f) => (f.id === draft.id ? draft : f)),
-          personalInfoEditMode: false,
-          personalInfoDraft: null,
-        }));
-        showToast('Dependent info updated');
-        return true;
+        try {
+          await familyService.updateFamilyMember(draft.id, {
+            fullName: draft.name,
+            dateOfBirth: draft.dob,
+            gender: draft.gender,
+            bloodType: draft.bloodType,
+            genotype: draft.genotype,
+            allergies: draft.allergies,
+            phone: draft.phone,
+          });
+
+          patch((s) => ({
+            familyMembers: s.familyMembers.map((f) => (f.id === draft.id ? draft : f)),
+            personalInfoEditMode: false,
+            personalInfoDraft: null,
+          }));
+          showToast(`${draft.name}'s profile updated`);
+          return true;
+        } catch (err: any) {
+          const errorMsg = err?.message || 'Failed to update dependent on server';
+          showToast(errorMsg);
+          throw new Error(errorMsg);
+        }
       }
     },
     setAvatar: (memberId: string, dataUrl: string, sizeBytes: number) => {
@@ -1155,6 +1236,39 @@ export function useWelliApp() {
       } else {
         showToast(`Welcome back, ${displayName.split(' ')[0]}!`);
       }
+
+      // Fetch dependents in background
+      familyService.fetchFamilyMembers().then((remoteFamily) => {
+        if (Array.isArray(remoteFamily) && remoteFamily.length > 0) {
+          patch((s) => ({
+            familyMembers: [
+              s.familyMembers[0],
+              ...remoteFamily.map((m: any) => ({
+                id: m.id || m._id,
+                name: m.fullName || m.name,
+                initials: m.initials,
+                role: 'dependent' as const,
+                relationship: m.relationship || 'Dependent',
+                dob: m.dateOfBirth || m.dob || '',
+                gender: m.gender || '',
+                bloodType: m.bloodType || '',
+                genotype: m.genotype || '',
+                height: m.height || '',
+                weight: m.weight || '',
+                allergies: m.allergies || '',
+                conditions: m.conditions || '',
+                contact: m.contact || '',
+                email: m.email || '',
+                phone: m.phone || '',
+                address: m.address || '',
+                insuranceProvider: m.insuranceProvider || '',
+                insuranceId: m.insuranceId || '',
+              })),
+            ],
+          }));
+        }
+      }).catch(() => {});
+
       return session;
     },
 
@@ -1185,6 +1299,39 @@ export function useWelliApp() {
             : f
         ),
       }));
+
+      // Fetch dependents in background
+      familyService.fetchFamilyMembers().then((remoteFamily) => {
+        if (Array.isArray(remoteFamily) && remoteFamily.length > 0) {
+          patch((s) => ({
+            familyMembers: [
+              s.familyMembers[0],
+              ...remoteFamily.map((m: any) => ({
+                id: m.id || m._id,
+                name: m.fullName || m.name,
+                initials: m.initials,
+                role: 'dependent' as const,
+                relationship: m.relationship || 'Dependent',
+                dob: m.dateOfBirth || m.dob || '',
+                gender: m.gender || '',
+                bloodType: m.bloodType || '',
+                genotype: m.genotype || '',
+                height: m.height || '',
+                weight: m.weight || '',
+                allergies: m.allergies || '',
+                conditions: m.conditions || '',
+                contact: m.contact || '',
+                email: m.email || '',
+                phone: m.phone || '',
+                address: m.address || '',
+                insuranceProvider: m.insuranceProvider || '',
+                insuranceId: m.insuranceId || '',
+              })),
+            ],
+          }));
+        }
+      }).catch(() => {});
+
       const userFirst = (session.user.fullName || 'User').split(' ')[0];
       showToast(`Welcome back, ${userFirst}!`);
     },

@@ -366,6 +366,281 @@ app.get(['/api/v1/profile/me', '/api/v1/profile'], async (req: Request, res: Res
   }
 });
 
+// -------------------------------------------------------------
+// 3f. FAMILY & DEPENDENTS MANAGEMENT ENDPOINTS
+// -------------------------------------------------------------
+
+// Helper to extract authenticated user ID from Authorization header
+function getAuthUserId(req: Request): string | null {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    try {
+      const decoded: any = jwt.verify(authHeader.substring(7), JWT_SECRET);
+      return decoded.userId || decoded.id || null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+// GET /api/v1/family/list — returns all family members for authenticated user
+app.get(['/api/v1/family/list', '/api/v1/family'], async (req: Request, res: Response) => {
+  try {
+    const authUserId = getAuthUserId(req);
+    const queryUserId = (req.query.accountId || req.query.userId || authUserId || '') as string;
+
+    let familyMembers: any[] = [];
+    if (mongoose.connection.readyState === 1 && (authUserId || queryUserId)) {
+      const targetId = authUserId || queryUserId;
+      const conditions: any[] = [];
+      if (mongoose.isValidObjectId(targetId)) {
+        conditions.push({ accountId: new mongoose.Types.ObjectId(targetId) });
+        conditions.push({ userId: new mongoose.Types.ObjectId(targetId) });
+      }
+      conditions.push({ accountId: targetId });
+      conditions.push({ userId: targetId });
+
+      familyMembers = await FamilyMember.find({ $or: conditions }).sort({ createdAt: 1 });
+    }
+
+    console.log(`[FAMILY LIST] Found ${familyMembers.length} dependents for ${authUserId || queryUserId}`);
+    return res.json({
+      success: true,
+      familyMembers: familyMembers.map((m) => ({
+        id: m._id.toString(),
+        _id: m._id.toString(),
+        accountId: m.accountId?.toString() || m.userId?.toString(),
+        fullName: m.fullName || m.name,
+        name: m.fullName || m.name,
+        initials: m.initials,
+        relationship: m.relationship || 'Dependent',
+        role: m.role || 'dependent',
+        dateOfBirth: m.dateOfBirth || (m.dob ? String(m.dob).split('T')[0] : null),
+        dob: m.dateOfBirth || (m.dob ? String(m.dob).split('T')[0] : null),
+        gender: m.gender || '',
+        bloodType: m.bloodType || '',
+        genotype: m.genotype || '',
+        height: m.height || (m.heightCm ? `${m.heightCm} cm` : ''),
+        weight: m.weight || (m.weightKg ? `${m.weightKg} kg` : ''),
+        allergies: m.allergies || '',
+        phone: m.phone || '',
+        linkedAccountId: m.linkedAccountId?.toString() || null,
+        createdAt: m.createdAt,
+        updatedAt: m.updatedAt,
+      })),
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch family members', error: err });
+  }
+});
+
+// POST /api/v1/family/add — creates a new family member document under the authenticated account
+app.post(['/api/v1/family/add', '/api/v1/family'], async (req: Request, res: Response) => {
+  try {
+    const authUserId = getAuthUserId(req);
+    const {
+      accountId,
+      userId,
+      fullName,
+      name,
+      relationship,
+      dateOfBirth,
+      dob,
+      gender,
+      bloodType,
+      genotype,
+      height,
+      weight,
+      allergies,
+      phone,
+      linkedAccountId,
+    } = req.body;
+
+    const resolvedAccountId = authUserId || accountId || userId;
+    const resolvedName = (fullName || name || '').trim();
+    if (!resolvedName) {
+      return res.status(400).json({ success: false, message: 'Family member full name is required' });
+    }
+
+    const initials = resolvedName
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((p: string) => p[0])
+      .join('')
+      .toUpperCase() || 'FM';
+
+    let savedMember: any = null;
+    if (mongoose.connection.readyState === 1) {
+      const newDoc = new FamilyMember({
+        accountId: resolvedAccountId && mongoose.isValidObjectId(resolvedAccountId) ? new mongoose.Types.ObjectId(resolvedAccountId) : undefined,
+        userId: resolvedAccountId && mongoose.isValidObjectId(resolvedAccountId) ? new mongoose.Types.ObjectId(resolvedAccountId) : undefined,
+        fullName: resolvedName,
+        name: resolvedName,
+        initials,
+        relationship: relationship || 'Dependent',
+        role: 'dependent',
+        dateOfBirth: dateOfBirth || dob,
+        dob: dateOfBirth || dob,
+        gender: gender || '',
+        bloodType: bloodType || '',
+        genotype: genotype || '',
+        height: height || '',
+        weight: weight || '',
+        allergies: allergies || '',
+        phone: phone || '',
+        linkedAccountId: linkedAccountId && mongoose.isValidObjectId(linkedAccountId) ? new mongoose.Types.ObjectId(linkedAccountId) : null,
+      });
+
+      savedMember = await newDoc.save();
+    } else {
+      savedMember = {
+        _id: `fm_${Date.now()}`,
+        accountId: resolvedAccountId,
+        fullName: resolvedName,
+        name: resolvedName,
+        initials,
+        relationship: relationship || 'Dependent',
+        role: 'dependent',
+        dateOfBirth: dateOfBirth || dob,
+        dob: dateOfBirth || dob,
+        gender,
+        bloodType,
+        genotype,
+        allergies,
+        phone,
+      };
+    }
+
+    console.log('[FAMILY ADD]', JSON.stringify(savedMember));
+    return res.status(201).json({
+      success: true,
+      message: 'Family member added successfully',
+      member: {
+        id: savedMember._id.toString(),
+        _id: savedMember._id.toString(),
+        accountId: resolvedAccountId,
+        fullName: savedMember.fullName || savedMember.name,
+        name: savedMember.fullName || savedMember.name,
+        initials: savedMember.initials,
+        relationship: savedMember.relationship,
+        role: 'dependent',
+        dateOfBirth: savedMember.dateOfBirth || savedMember.dob,
+        dob: savedMember.dateOfBirth || savedMember.dob,
+        gender: savedMember.gender,
+        bloodType: savedMember.bloodType,
+        genotype: savedMember.genotype,
+        allergies: savedMember.allergies,
+        phone: savedMember.phone,
+        createdAt: savedMember.createdAt || new Date(),
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to add family member', error: err });
+  }
+});
+
+// PATCH /api/v1/family/:id — updates a dependent's details
+app.patch('/api/v1/family/:id', async (req: Request, res: Response) => {
+  try {
+    const authUserId = getAuthUserId(req);
+    const memberId = req.params.id;
+
+    if (!mongoose.isValidObjectId(memberId)) {
+      return res.status(400).json({ success: false, message: 'Invalid family member ID' });
+    }
+
+    const member = await FamilyMember.findById(memberId);
+    if (!member) {
+      return res.status(404).json({ success: false, message: 'Family member not found' });
+    }
+
+    // Ownership check (if authenticated)
+    if (authUserId && member.accountId && member.accountId.toString() !== authUserId && member.userId?.toString() !== authUserId) {
+      return res.status(403).json({ success: false, message: 'Unauthorized to modify this family member' });
+    }
+
+    const {
+      fullName,
+      name,
+      relationship,
+      dateOfBirth,
+      dob,
+      gender,
+      bloodType,
+      genotype,
+      height,
+      weight,
+      allergies,
+      phone,
+    } = req.body;
+
+    const resolvedName = fullName !== undefined ? fullName : name;
+    if (resolvedName !== undefined) {
+      member.fullName = resolvedName;
+      member.name = resolvedName;
+      member.initials = resolvedName
+        .split(' ')
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((p: string) => p[0])
+        .join('')
+        .toUpperCase();
+    }
+    if (relationship !== undefined) member.relationship = relationship;
+    const resolvedDob = dateOfBirth !== undefined ? dateOfBirth : dob;
+    if (resolvedDob !== undefined) {
+      member.dateOfBirth = resolvedDob;
+      member.dob = resolvedDob;
+    }
+    if (gender !== undefined) member.gender = gender;
+    if (bloodType !== undefined) member.bloodType = bloodType;
+    if (genotype !== undefined) member.genotype = genotype;
+    if (height !== undefined) member.height = height;
+    if (weight !== undefined) member.weight = weight;
+    if (allergies !== undefined) member.allergies = allergies;
+    if (phone !== undefined) member.phone = phone;
+
+    await member.save();
+    return res.json({
+      success: true,
+      message: 'Family member updated successfully',
+      member,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to update family member', error: err });
+  }
+});
+
+// DELETE /api/v1/family/:id — removes a dependent
+app.delete('/api/v1/family/:id', async (req: Request, res: Response) => {
+  try {
+    const authUserId = getAuthUserId(req);
+    const memberId = req.params.id;
+
+    if (!mongoose.isValidObjectId(memberId)) {
+      return res.status(400).json({ success: false, message: 'Invalid family member ID' });
+    }
+
+    const member = await FamilyMember.findById(memberId);
+    if (!member) {
+      return res.status(404).json({ success: false, message: 'Family member not found' });
+    }
+
+    // Ownership check (if authenticated)
+    if (authUserId && member.accountId && member.accountId.toString() !== authUserId && member.userId?.toString() !== authUserId) {
+      return res.status(403).json({ success: false, message: 'Unauthorized to delete this family member' });
+    }
+
+    await FamilyMember.findByIdAndDelete(memberId);
+    console.log(`[FAMILY DELETE] Removed dependent ${memberId}`);
+    return res.json({ success: true, message: 'Family member deleted successfully' });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to delete family member', error: err });
+  }
+});
+
 // 3b. Sign In with Email / Phone and Password
 app.post('/api/v1/auth/login', async (req: Request, res: Response) => {
   const { identifier, password: _password } = req.body;

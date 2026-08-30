@@ -39,34 +39,50 @@ const UserSchema = new Schema<IUser>(
 
 // 2. Family Member Model (Dependents, Spouse, Senior Parents)
 export interface IFamilyMember extends Document {
-  userId: mongoose.Types.ObjectId;
-  name: string;
+  accountId?: mongoose.Types.ObjectId;
+  userId?: mongoose.Types.ObjectId;
+  fullName: string;
+  name?: string;
   initials: string;
-  relationship: 'Self' | 'Spouse' | 'Child' | 'Parent';
+  relationship: string;
   role: 'owner' | 'dependent';
-  dob?: Date;
+  dateOfBirth?: string;
+  dob?: string | Date;
   gender?: string;
   bloodType?: string;
   genotype?: string;
+  height?: string;
   heightCm?: number;
+  weight?: string;
   weightKg?: number;
   allergies?: string;
+  phone?: string;
+  linkedAccountId?: mongoose.Types.ObjectId | null;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 const FamilyMemberSchema = new Schema<IFamilyMember>(
   {
-    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-    name: { type: String, required: true },
+    accountId: { type: Schema.Types.ObjectId, index: true },
+    userId: { type: Schema.Types.ObjectId, index: true },
+    fullName: { type: String, required: true },
+    name: { type: String },
     initials: { type: String, required: true },
-    relationship: { type: String, required: true, enum: ['Self', 'Spouse', 'Child', 'Parent'] },
-    role: { type: String, default: 'dependent', enum: ['owner', 'dependent'] },
-    dob: { type: Date },
+    relationship: { type: String, required: true },
+    role: { type: String, default: 'dependent' },
+    dateOfBirth: { type: String },
+    dob: { type: Schema.Types.Mixed },
     gender: { type: String },
     bloodType: { type: String },
     genotype: { type: String },
+    height: { type: String },
     heightCm: { type: Number },
+    weight: { type: String },
     weightKg: { type: Number },
     allergies: { type: String },
+    phone: { type: String },
+    linkedAccountId: { type: Schema.Types.ObjectId, default: null },
   },
   { timestamps: true }
 );
