@@ -21,6 +21,9 @@ export interface AuthSession {
     genotype?: string;
     hmoProvider?: string;
     hmoPolicyNumber?: string;
+    contact?: string;
+    emergencyContact?: any;
+    emergencyContacts?: any[];
   };
 }
 

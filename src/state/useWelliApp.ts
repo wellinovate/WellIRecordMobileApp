@@ -137,6 +137,54 @@ export interface AppState {
   toast: string | null;
 }
 
+// Helper to format emergency contact array/object from Atlas userprofiles into display string
+export function formatEmergencyContact(profile: any): string {
+  if (!profile) return '';
+  // 1. Check emergencyContacts array
+  if (Array.isArray(profile.emergencyContacts) && profile.emergencyContacts.length > 0) {
+    const primary = profile.emergencyContacts[0];
+    if (typeof primary === 'string' && primary.trim()) return primary.trim();
+    if (typeof primary === 'object' && primary !== null) {
+      const name = (primary.name || primary.fullName || '').trim();
+      const rel = (primary.relationship || primary.relation || '').trim();
+      const phone = (primary.phone || primary.phoneNumber || '').trim();
+      if (name && rel && phone) return `${name} (${rel}) · ${phone}`;
+      if (name && phone) return `${name} · ${phone}`;
+      if (name && rel) return `${name} (${rel})`;
+      if (phone) return phone;
+      if (name) return name;
+    }
+  }
+  // 2. Check emergencyContact field (object or string)
+  if (profile.emergencyContact) {
+    if (typeof profile.emergencyContact === 'string' && profile.emergencyContact.trim()) {
+      return profile.emergencyContact.trim();
+    }
+    if (typeof profile.emergencyContact === 'object') {
+      const name = (profile.emergencyContact.name || profile.emergencyContact.fullName || '').trim();
+      const rel = (profile.emergencyContact.relationship || profile.emergencyContact.relation || '').trim();
+      const phone = (profile.emergencyContact.phone || profile.emergencyContact.phoneNumber || '').trim();
+      if (name && rel && phone) return `${name} (${rel}) · ${phone}`;
+      if (name && phone) return `${name} · ${phone}`;
+      if (name && rel) return `${name} (${rel})`;
+      if (phone) return phone;
+      if (name) return name;
+    }
+  }
+  // 3. Check profile.contact
+  if (profile.contact) {
+    if (typeof profile.contact === 'string' && profile.contact.trim()) return profile.contact.trim();
+    if (typeof profile.contact === 'object') {
+      const name = (profile.contact.name || '').trim();
+      const phone = (profile.contact.phone || '').trim();
+      if (name && phone) return `${name} · ${phone}`;
+      if (name) return name;
+      if (phone) return phone;
+    }
+  }
+  return '';
+}
+
 const DEFAULT_PRIMARY_USER: FamilyMember = {
   id: 'me',
   name: 'You',
@@ -151,6 +199,7 @@ const DEFAULT_PRIMARY_USER: FamilyMember = {
   allergies: '',
   conditions: '',
   contact: '',
+  emergencyContacts: [],
   email: '',
   phone: '',
   address: '',
@@ -301,6 +350,8 @@ export function useWelliApp() {
                     insuranceId: savedSession.user.hmoPolicyNumber || '',
                     wrId: savedSession.user.wrId || savedSession.user.memberId || f.wrId || '',
                     memberId: savedSession.user.wrId || savedSession.user.memberId || f.memberId || '',
+                    contact: formatEmergencyContact(savedSession.user) || f.contact,
+                    emergencyContacts: (savedSession.user as any).emergencyContacts || f.emergencyContacts || [],
                   }
                 : f
             ),
@@ -364,7 +415,8 @@ export function useWelliApp() {
                             ? liveProfile.conditions
                             : f.conditions,
                         address: liveProfile.address || f.address,
-                        contact: liveProfile.contact || f.contact,
+                        contact: formatEmergencyContact(liveProfile) || f.contact,
+                        emergencyContacts: liveProfile.emergencyContacts || f.emergencyContacts || [],
                       }
                     : f
                 ),
@@ -864,6 +916,8 @@ export function useWelliApp() {
             wrId: serverProfile?.wrId || serverProfile?.memberId || draft.wrId || '',
             memberId: serverProfile?.wrId || serverProfile?.memberId || draft.memberId || '',
             allergies: serverProfile?.allergies !== undefined ? serverProfile.allergies : draft.allergies,
+            contact: formatEmergencyContact(serverProfile) || draft.contact,
+            emergencyContacts: serverProfile?.emergencyContacts || draft.emergencyContacts || [],
           };
 
           patch((s) => ({
@@ -1279,7 +1333,8 @@ export function useWelliApp() {
         weight: '',
         allergies: '',
         conditions: '',
-        contact: session.user.phoneNumber || userData?.phone || '',
+        contact: formatEmergencyContact(session.user) || userData?.phone || '',
+        emergencyContacts: (session.user as any).emergencyContacts || [],
         email: session.user.email || userData?.email || '',
         phone: session.user.phoneNumber || userData?.phone || '',
         address: '',
@@ -1372,6 +1427,8 @@ export function useWelliApp() {
                 insuranceId: session.user.hmoPolicyNumber || '',
                 wrId: session.user.wrId || session.user.memberId || f.wrId || '',
                 memberId: session.user.wrId || session.user.memberId || f.memberId || '',
+                contact: formatEmergencyContact(session.user) || f.contact,
+                emergencyContacts: (session.user as any).emergencyContacts || f.emergencyContacts || [],
               }
             : f
         ),

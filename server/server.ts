@@ -270,6 +270,9 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
         genotype: profile?.genotype || user.genotype || null,
         hmoProvider: profile?.hmoProvider || profile?.insuranceProvider || user.hmoProvider || null,
         hmoPolicyNumber: profile?.hmoPolicyNumber || profile?.policyNumber || user.hmoPolicyNumber || null,
+        emergencyContacts: profile?.emergencyContacts || null,
+        emergencyContact: profile?.emergencyContact || profile?.contact || null,
+        contact: profile?.contact || null,
       },
     };
 

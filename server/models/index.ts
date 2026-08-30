@@ -420,6 +420,8 @@ export interface IUserProfile extends Document {
   allergies?: string;
   conditions?: string;
   contact?: string;
+  emergencyContact?: any;
+  emergencyContacts?: any[];
   hmoProvider?: string;
   insuranceProvider?: string;
   hmoPolicyNumber?: string;

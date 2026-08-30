@@ -100,6 +100,7 @@ export interface FamilyMember {
   allergies: string;
   conditions: string;
   contact: string;
+  emergencyContacts?: { name?: string; relationship?: string; phone?: string }[];
   email: string;
   phone: string;
   address: string;
