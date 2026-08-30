@@ -575,20 +575,14 @@ export function useWelliApp() {
     cancelEditPersonalInfo: () => patch({ personalInfoEditMode: false, personalInfoDraft: null }),
     updatePersonalInfoDraft: (field: keyof FamilyMember, value: string) =>
       patch((s) => (s.personalInfoDraft ? { personalInfoDraft: { ...s.personalInfoDraft, [field]: value } } : {})),
-    savePersonalInfo: async () => {
-      const draft = state.personalInfoDraft;
-      if (!draft) return;
-      patch((s) => ({
-        familyMembers: s.familyMembers.map((f) => (f.id === draft.id ? draft : f)),
-        personalInfoEditMode: false,
-        personalInfoDraft: null,
-      }));
-      showToast('Personal info updated');
+    savePersonalInfo: async (customDraft?: FamilyMember): Promise<boolean> => {
+      const draft = customDraft || state.personalInfoDraft;
+      if (!draft) return false;
 
-      // If editing primary user ('me'), sync to backend profiles collection
+      // If editing primary user ('me'), sync with live backend
       if (draft.id === 'me') {
         try {
-          await apiClient.patch('/profile/update', {
+          const res = await apiClient.patch<{ success: boolean; profile?: any; message?: string }>('/profile/update', {
             fullName: draft.name,
             name: draft.name,
             dob: draft.dob,
@@ -598,15 +592,54 @@ export function useWelliApp() {
             genotype: draft.genotype,
             email: draft.email,
             phone: draft.phone,
+            phoneNumber: draft.phone,
             hmoProvider: draft.insuranceProvider,
             insuranceProvider: draft.insuranceProvider,
             hmoPolicyNumber: draft.insuranceId,
             insuranceId: draft.insuranceId,
             allergies: draft.allergies,
+            conditions: draft.conditions,
+            address: draft.address,
+            contact: draft.contact,
           });
-        } catch (syncErr) {
-          console.warn('[Profile Sync Notice]', syncErr);
+
+          const serverProfile = res?.profile;
+          const updatedMember: FamilyMember = {
+            ...draft,
+            name: serverProfile?.fullName || serverProfile?.name || draft.name,
+            dob: serverProfile?.dateOfBirth ? String(serverProfile.dateOfBirth).split('T')[0] : (serverProfile?.dob || draft.dob),
+            gender: serverProfile?.gender || draft.gender,
+            bloodType: serverProfile?.bloodType || draft.bloodType,
+            genotype: serverProfile?.genotype || draft.genotype,
+            email: serverProfile?.email || draft.email,
+            phone: serverProfile?.phone || serverProfile?.phoneNumber || draft.phone,
+            insuranceProvider: serverProfile?.hmoProvider || serverProfile?.insuranceProvider || draft.insuranceProvider,
+            insuranceId: serverProfile?.hmoPolicyNumber || serverProfile?.policyNumber || serverProfile?.insuranceId || draft.insuranceId,
+            allergies: serverProfile?.allergies !== undefined ? serverProfile.allergies : draft.allergies,
+          };
+
+          patch((s) => ({
+            familyMembers: s.familyMembers.map((f) => (f.id === draft.id ? updatedMember : f)),
+            personalInfoEditMode: false,
+            personalInfoDraft: null,
+          }));
+          showToast('Personal info saved & verified');
+          return true;
+        } catch (syncErr: any) {
+          console.error('[Profile Sync Error]', syncErr);
+          const errorMsg = syncErr?.message || 'Failed to save changes to server. Please try again.';
+          showToast(errorMsg);
+          throw new Error(errorMsg);
         }
+      } else {
+        // Dependent member update
+        patch((s) => ({
+          familyMembers: s.familyMembers.map((f) => (f.id === draft.id ? draft : f)),
+          personalInfoEditMode: false,
+          personalInfoDraft: null,
+        }));
+        showToast('Dependent info updated');
+        return true;
       }
     },
     setAvatar: (memberId: string, dataUrl: string, sizeBytes: number) => {

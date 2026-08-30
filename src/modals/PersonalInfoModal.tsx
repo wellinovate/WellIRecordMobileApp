@@ -14,7 +14,6 @@ import Svg, { Path, Circle } from 'react-native-svg';
 import { ModalHeader } from '../components/ModalHeader';
 import { FormSelect } from '../components/FormSelect';
 import { Avatar } from '../components/Avatar';
-import { BLOOD_TYPES, GENDER_OPTIONS, GENOTYPES } from '../data/mockData';
 import { formatDob } from '../utils/formatDate';
 import {
   pickImageFromCamera,
@@ -30,37 +29,140 @@ type EditableKey = Exclude<
 >;
 
 type FieldDef =
-  | { key: EditableKey; label: string; type: 'text' }
-  | { key: 'dob'; label: string; type: 'date' }
+  | {
+      key: EditableKey;
+      label: string;
+      type: 'text';
+      placeholder?: string;
+      keyboardType?: 'default' | 'numeric' | 'email-address' | 'phone-pad';
+      autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+      helper?: string;
+    }
+  | {
+      key: 'dob';
+      label: string;
+      type: 'date';
+      placeholder?: string;
+      helper?: string;
+    }
   | {
       key: 'gender' | 'bloodType' | 'genotype';
       label: string;
       type: 'select';
       options: string[];
+      placeholder?: string;
+      helper?: string;
     };
 
 const EDITABLE_FIELDS: FieldDef[] = [
-  { key: 'name', label: 'Full Name', type: 'text' },
-  { key: 'dob', label: 'Date of Birth (YYYY-MM-DD)', type: 'date' },
-  { key: 'gender', label: 'Gender', type: 'select', options: GENDER_OPTIONS },
-  { key: 'bloodType', label: 'Blood Type', type: 'select', options: BLOOD_TYPES },
-  { key: 'genotype', label: 'Genotype', type: 'select', options: GENOTYPES },
-  { key: 'height', label: 'Height', type: 'text' },
-  { key: 'weight', label: 'Weight', type: 'text' },
-  { key: 'allergies', label: 'Allergies', type: 'text' },
-  { key: 'conditions', label: 'Conditions', type: 'text' },
-  { key: 'contact', label: 'Emergency Contact', type: 'text' },
-  { key: 'email', label: 'Email', type: 'text' },
-  { key: 'phone', label: 'Phone', type: 'text' },
-  { key: 'address', label: 'Address', type: 'text' },
-  { key: 'insuranceProvider', label: 'Insurance Provider', type: 'text' },
-  { key: 'insuranceId', label: 'Insurance ID', type: 'text' },
+  {
+    key: 'name',
+    label: 'Full Name',
+    type: 'text',
+    placeholder: 'e.g. Chibuike Joshua Nwogha',
+    autoCapitalize: 'words',
+  },
+  {
+    key: 'dob',
+    label: 'Date of Birth',
+    type: 'date',
+    placeholder: 'YYYY-MM-DD (e.g. 1986-09-16)',
+    helper: 'Format: YYYY-MM-DD',
+  },
+  {
+    key: 'gender',
+    label: 'Gender',
+    type: 'select',
+    options: ['Male', 'Female', 'Other'],
+    placeholder: 'Select Gender',
+  },
+  {
+    key: 'bloodType',
+    label: 'Blood Type',
+    type: 'select',
+    options: ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'],
+    placeholder: 'Select Blood Type',
+  },
+  {
+    key: 'genotype',
+    label: 'Genotype',
+    type: 'select',
+    options: ['AA', 'AS', 'SS', 'AC', 'SC'],
+    placeholder: 'Select Genotype',
+  },
+  {
+    key: 'height',
+    label: 'Height',
+    type: 'text',
+    keyboardType: 'numeric',
+    placeholder: 'e.g. 178 cm',
+  },
+  {
+    key: 'weight',
+    label: 'Weight',
+    type: 'text',
+    keyboardType: 'numeric',
+    placeholder: 'e.g. 75 kg',
+  },
+  {
+    key: 'allergies',
+    label: 'Allergies',
+    type: 'text',
+    placeholder: 'e.g. Penicillin, Peanuts, None',
+  },
+  {
+    key: 'conditions',
+    label: 'Conditions & Chronic Diagnoses',
+    type: 'text',
+    placeholder: 'e.g. Hypertension, Asthma, None',
+  },
+  {
+    key: 'contact',
+    label: 'Emergency Contact & Next of Kin',
+    type: 'text',
+    placeholder: 'e.g. Next of Kin name & phone number',
+  },
+  {
+    key: 'email',
+    label: 'Email Address',
+    type: 'text',
+    keyboardType: 'email-address',
+    autoCapitalize: 'none',
+    placeholder: 'e.g. user@gmail.com',
+  },
+  {
+    key: 'phone',
+    label: 'Phone Number',
+    type: 'text',
+    keyboardType: 'phone-pad',
+    placeholder: 'e.g. 07030144923',
+  },
+  {
+    key: 'address',
+    label: 'Residential Address',
+    type: 'text',
+    placeholder: 'e.g. Admiralty Way, Lekki Phase 1, Lagos',
+  },
+  {
+    key: 'insuranceProvider',
+    label: 'HMO / Insurance Provider',
+    type: 'text',
+    placeholder: 'e.g. Hygeia HMO',
+  },
+  {
+    key: 'insuranceId',
+    label: 'HMO Policy / Enrollee ID',
+    type: 'text',
+    placeholder: 'e.g. HYG-992014-LAG',
+  },
 ];
 
 export function PersonalInfoModal({ app }: { app: WelliApp }) {
   const { state, actions, family } = app;
   const [showPhotoOptions, setShowPhotoOptions] = useState(false);
   const [pickingPhoto, setPickingPhoto] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   if (!state.showPersonalInfo) return null;
 
@@ -92,6 +194,28 @@ export function PersonalInfoModal({ app }: { app: WelliApp }) {
     { label: 'Insurance Provider', value: activeMember.insuranceProvider || 'Not set' },
     { label: 'Insurance ID', value: activeMember.insuranceId || 'Not set' },
   ];
+
+  const handleSave = async () => {
+    if (isSaving || !draft) return;
+    setIsSaving(true);
+    setSaveError(null);
+    hapticFeedback.light();
+    try {
+      await actions.savePersonalInfo(draft);
+      hapticFeedback.success();
+    } catch (err: any) {
+      hapticFeedback.error();
+      setSaveError(err?.message || 'Failed to save changes. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setSaveError(null);
+    hapticFeedback.light();
+    actions.cancelEditPersonalInfo();
+  };
 
   const handleTakePhoto = async () => {
     setShowPhotoOptions(false);
@@ -128,24 +252,50 @@ export function PersonalInfoModal({ app }: { app: WelliApp }) {
       visible={state.showPersonalInfo}
       animationType="slide"
       transparent={false}
-      onRequestClose={actions.closePersonalInfo}
+      onRequestClose={editing ? handleCancel : actions.closePersonalInfo}
     >
       <SafeAreaView style={styles.container}>
         <ModalHeader
-          title={isGuardianView ? `${activeMember.name}'s Info` : 'Personal Info'}
-          onClose={actions.closePersonalInfo}
-          onBack={editing ? actions.cancelEditPersonalInfo : actions.closePersonalInfo}
+          title={
+            editing
+              ? 'Edit Personal Info'
+              : isGuardianView
+              ? `${activeMember.name}'s Info`
+              : 'Personal Info'
+          }
+          onClose={editing ? handleCancel : actions.closePersonalInfo}
+          onBack={editing ? handleCancel : actions.closePersonalInfo}
         />
 
-        <View style={styles.editTopRow}>
+        {/* Top Action Subheader Row */}
+        <View style={styles.topActionRow}>
+          <View style={styles.subTextContainer}>
+            <Text style={styles.sectionSubtitle}>
+              {editing
+                ? 'Update patient demographic and clinical parameters'
+                : 'Verified health passport and cloud profile'}
+            </Text>
+          </View>
+
           {!editing && (
             <TouchableOpacity
-              activeOpacity={0.7}
+              activeOpacity={0.75}
               onPress={() => {
                 hapticFeedback.selection();
+                setSaveError(null);
                 actions.startEditPersonalInfo();
               }}
+              style={styles.editPillBtn}
             >
+              <Svg width={13} height={13} viewBox="0 0 24 24" fill="none">
+                <Path
+                  d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"
+                  stroke="#0EA5E9"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </Svg>
               <Text style={styles.editActionText}>Edit</Text>
             </TouchableOpacity>
           )}
@@ -154,11 +304,12 @@ export function PersonalInfoModal({ app }: { app: WelliApp }) {
         <ScrollView
           style={styles.scrollArea}
           contentContainerStyle={styles.scrollInner}
+          keyboardShouldPersistTaps="handled"
         >
           {/* Avatar Section */}
           <View style={styles.avatarSection}>
             <View style={styles.avatarWrapper}>
-              <Avatar member={activeMember} size={84} fontSize={26} />
+              <Avatar member={editing && draft ? draft : activeMember} size={84} fontSize={26} />
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={() => {
@@ -203,31 +354,83 @@ export function PersonalInfoModal({ app }: { app: WelliApp }) {
             </View>
           )}
 
+          {/* Error Banner when Save Fails */}
+          {editing && saveError ? (
+            <View style={styles.errorBanner}>
+              <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+                <Circle cx={12} cy={12} r={10} stroke="#dc2626" strokeWidth={2} />
+                <Path d="M12 8v4M12 16h.01" stroke="#dc2626" strokeWidth={2} strokeLinecap="round" />
+              </Svg>
+              <Text style={styles.errorBannerText}>{saveError}</Text>
+            </View>
+          ) : null}
+
+          {/* Form / Read-only Fields */}
           {editing && draft ? (
             <View style={styles.editForm}>
-              {EDITABLE_FIELDS.map((f) => (
-                <View key={f.key} style={styles.formGroup}>
-                  <Text style={styles.fieldLabel}>{f.label}</Text>
-                  {f.type === 'select' ? (
-                    <FormSelect
-                      value={draft[f.key] as string}
-                      onChange={(v) => {
-                        hapticFeedback.selection();
-                        actions.updatePersonalInfoDraft(f.key, v);
-                      }}
-                      options={f.options}
-                    />
-                  ) : (
-                    <TextInput
-                      value={draft[f.key] as string}
-                      onChangeText={(v) =>
-                        actions.updatePersonalInfoDraft(f.key, v)
-                      }
-                      style={styles.formInput}
-                    />
-                  )}
-                </View>
-              ))}
+              {EDITABLE_FIELDS.map((f) => {
+                const rawVal = (draft[f.key] as string) || '';
+
+                return (
+                  <View key={f.key} style={styles.formGroup}>
+                    <View style={styles.labelRow}>
+                      <Text style={styles.fieldLabel}>{f.label}</Text>
+                      {f.helper ? (
+                        <Text style={styles.fieldHelper}>{f.helper}</Text>
+                      ) : null}
+                    </View>
+
+                    {f.type === 'select' ? (
+                      <FormSelect
+                        value={rawVal}
+                        placeholder={f.placeholder || `Select ${f.label}`}
+                        onChange={(v) => {
+                          hapticFeedback.selection();
+                          actions.updatePersonalInfoDraft(f.key, v);
+                        }}
+                        options={f.options}
+                      />
+                    ) : f.type === 'date' ? (
+                      <View style={styles.dateInputWrapper}>
+                        <TextInput
+                          value={rawVal}
+                          placeholder={f.placeholder || 'YYYY-MM-DD'}
+                          placeholderTextColor="#94a3b8"
+                          onChangeText={(v) =>
+                            actions.updatePersonalInfoDraft(f.key, v)
+                          }
+                          style={styles.formInput}
+                          keyboardType="numbers-and-punctuation"
+                          autoCapitalize="none"
+                        />
+                        <View style={styles.inputEndIcon}>
+                          <Svg width={15} height={15} viewBox="0 0 24 24" fill="none">
+                            <Path
+                              d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z"
+                              stroke="#64748b"
+                              strokeWidth={1.8}
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </Svg>
+                        </View>
+                      </View>
+                    ) : (
+                      <TextInput
+                        value={rawVal}
+                        placeholder={f.placeholder || `Enter ${f.label.toLowerCase()}`}
+                        placeholderTextColor="#94a3b8"
+                        keyboardType={f.keyboardType || 'default'}
+                        autoCapitalize={f.autoCapitalize || 'sentences'}
+                        onChangeText={(v) =>
+                          actions.updatePersonalInfoDraft(f.key, v)
+                        }
+                        style={styles.formInput}
+                      />
+                    )}
+                  </View>
+                );
+              })}
             </View>
           ) : (
             <View style={styles.displayCard}>
@@ -243,35 +446,50 @@ export function PersonalInfoModal({ app }: { app: WelliApp }) {
                   ]}
                 >
                   <Text style={styles.rowLabel}>{f.label}</Text>
-                  <Text style={styles.rowValue}>{f.value || '—'}</Text>
+                  <Text style={styles.rowValue}>{f.value || 'Not set'}</Text>
                 </View>
               ))}
             </View>
           )}
         </ScrollView>
 
+        {/* Sticky Edit Mode Action Footer */}
         {editing && (
           <View style={styles.footerBtns}>
             <TouchableOpacity
               activeOpacity={0.7}
-              onPress={() => {
-                hapticFeedback.light();
-                actions.cancelEditPersonalInfo();
-              }}
-              style={styles.cancelBtn}
+              onPress={handleCancel}
+              disabled={isSaving}
+              style={[styles.cancelBtn, isSaving && { opacity: 0.6 }]}
             >
               <Text style={styles.cancelBtnText}>Cancel</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => {
-                hapticFeedback.success();
-                actions.savePersonalInfo();
-              }}
-              style={styles.saveBtn}
+              activeOpacity={0.85}
+              onPress={handleSave}
+              disabled={isSaving}
+              style={[styles.saveBtn, isSaving && styles.saveBtnDisabled]}
             >
-              <Text style={styles.saveBtnText}>Save Changes</Text>
+              {isSaving ? (
+                <View style={styles.savingRow}>
+                  <ActivityIndicator size="small" color="#ffffff" />
+                  <Text style={styles.saveBtnText}>Saving to Cloud...</Text>
+                </View>
+              ) : (
+                <View style={styles.savingRow}>
+                  <Svg width={15} height={15} viewBox="0 0 24 24" fill="none">
+                    <Path
+                      d="M20 6L9 17l-5-5"
+                      stroke="#ffffff"
+                      strokeWidth={2.2}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </Svg>
+                  <Text style={styles.saveBtnText}>Save Changes</Text>
+                </View>
+              )}
             </TouchableOpacity>
           </View>
         )}
@@ -338,16 +556,40 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#ffffff',
   },
-  editTopRow: {
+  topActionRow: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 4,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+    marginBottom: 10,
+  },
+  subTextContainer: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  sectionSubtitle: {
+    fontSize: 12,
+    color: '#64748b',
+    lineHeight: 16,
+  },
+  editPillBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#f0f9ff',
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
   },
   editActionText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
-    color: '#0EA5E9',
+    color: '#0284c7',
   },
   scrollArea: {
     flex: 1,
@@ -358,7 +600,7 @@ const styles = StyleSheet.create({
   },
   avatarSection: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
     gap: 8,
   },
   avatarWrapper: {
@@ -395,33 +637,70 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#92582b',
   },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#fef2f2',
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 14,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#b91c1c',
+    fontWeight: '600',
+  },
   editForm: {
-    gap: 12,
+    gap: 14,
   },
   formGroup: {
-    gap: 4,
+    gap: 5,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   fieldLabel: {
     fontSize: 11,
-    color: '#94a3b8',
+    color: '#64748b',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     fontWeight: '700',
   },
+  fieldHelper: {
+    fontSize: 11,
+    color: '#94a3b8',
+  },
+  dateInputWrapper: {
+    position: 'relative',
+    justifyContent: 'center',
+  },
   formInput: {
     backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: '#cbd5e1',
     borderRadius: 10,
-    paddingVertical: 9,
+    paddingVertical: 10,
     paddingHorizontal: 12,
     fontSize: 14,
     color: '#0f172a',
+  },
+  inputEndIcon: {
+    position: 'absolute',
+    right: 12,
   },
   displayCard: {
     backgroundColor: '#f8fafc',
     borderRadius: 16,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
   displayRow: {
     paddingVertical: 12,
@@ -447,6 +726,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 24,
     paddingTop: 10,
+    backgroundColor: '#ffffff',
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
   },
   cancelBtn: {
     flex: 1,
@@ -454,9 +736,10 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   cancelBtnText: {
-    color: '#334155',
+    color: '#475569',
     fontSize: 14,
     fontWeight: '700',
   },
@@ -466,6 +749,20 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#041E42',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  saveBtnDisabled: {
+    opacity: 0.75,
+  },
+  savingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   saveBtnText: {
     color: '#ffffff',
