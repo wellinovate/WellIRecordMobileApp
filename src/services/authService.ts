@@ -11,13 +11,15 @@ export interface AuthSession {
   token: string;
   user: {
     id: string;
-    fullName: string;
-    phoneNumber: string;
-    email: string;
-    bloodType: string;
-    genotype: string;
-    hmoProvider: string;
-    hmoPolicyNumber: string;
+    fullName?: string;
+    phoneNumber?: string;
+    email?: string;
+    dateOfBirth?: string;
+    memberId?: string;
+    bloodType?: string;
+    genotype?: string;
+    hmoProvider?: string;
+    hmoPolicyNumber?: string;
   };
 }
 

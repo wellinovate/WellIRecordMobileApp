@@ -41,6 +41,7 @@ import { EXPIRY_SHORT_LABEL_MAP } from '../utils/expiry';
 import { hapticFeedback } from '../utils/haptics';
 import { storage } from '../utils/storage';
 import { authService } from '../services/authService';
+import { apiClient } from '../services/apiClient';
 
 export interface AppState {
   tab: Tab;
@@ -574,7 +575,7 @@ export function useWelliApp() {
     cancelEditPersonalInfo: () => patch({ personalInfoEditMode: false, personalInfoDraft: null }),
     updatePersonalInfoDraft: (field: keyof FamilyMember, value: string) =>
       patch((s) => (s.personalInfoDraft ? { personalInfoDraft: { ...s.personalInfoDraft, [field]: value } } : {})),
-    savePersonalInfo: () => {
+    savePersonalInfo: async () => {
       const draft = state.personalInfoDraft;
       if (!draft) return;
       patch((s) => ({
@@ -583,6 +584,30 @@ export function useWelliApp() {
         personalInfoDraft: null,
       }));
       showToast('Personal info updated');
+
+      // If editing primary user ('me'), sync to backend profiles collection
+      if (draft.id === 'me') {
+        try {
+          await apiClient.patch('/profile/update', {
+            fullName: draft.name,
+            name: draft.name,
+            dob: draft.dob,
+            dateOfBirth: draft.dob,
+            gender: draft.gender,
+            bloodType: draft.bloodType,
+            genotype: draft.genotype,
+            email: draft.email,
+            phone: draft.phone,
+            hmoProvider: draft.insuranceProvider,
+            insuranceProvider: draft.insuranceProvider,
+            hmoPolicyNumber: draft.insuranceId,
+            insuranceId: draft.insuranceId,
+            allergies: draft.allergies,
+          });
+        } catch (syncErr) {
+          console.warn('[Profile Sync Notice]', syncErr);
+        }
+      }
     },
     setAvatar: (memberId: string, dataUrl: string, sizeBytes: number) => {
       if (sizeBytes > 5 * 1024 * 1024) {
@@ -930,34 +955,39 @@ export function useWelliApp() {
         hmoPolicyNumber: userData.insuranceId,
       } : undefined);
 
-      const displayName = userData?.name || session.user.fullName || 'Amara Nwosu';
-      const initials = displayName
-        .split(' ')
-        .filter(Boolean)
-        .slice(0, 2)
-        .map((p) => p[0])
-        .join('')
-        .toUpperCase() || 'U';
+      const rawName = session.user.fullName || userData?.name || '';
+      const displayName = rawName || session.user.email || session.user.phoneNumber || 'User';
+      const initials = rawName
+        ? rawName
+            .split(' ')
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((p) => p[0])
+            .join('')
+            .toUpperCase()
+        : 'U';
+
+      const needsProfileCompletion = !session.user.fullName || !session.user.dateOfBirth;
 
       const newOwner: FamilyMember = {
         id: 'me',
-        name: displayName,
+        name: rawName,
         initials,
         role: 'owner',
-        dob: userData?.dob || '1990-01-01',
-        gender: '—',
-        bloodType: session.user.bloodType || userData?.bloodType || 'O+',
-        genotype: session.user.genotype || userData?.genotype || 'AA',
-        height: '—',
-        weight: '—',
-        allergies: 'None reported',
-        conditions: 'None reported',
-        contact: session.user.phoneNumber || userData?.phone || '+234 800 000 0000',
-        email: session.user.email || userData?.email || 'user@example.com',
-        phone: session.user.phoneNumber || userData?.phone || '+234 800 000 0000',
-        address: 'Lagos, Nigeria',
-        insuranceProvider: session.user.hmoProvider || userData?.insuranceProvider || 'Private Self-Pay',
-        insuranceId: session.user.hmoPolicyNumber || userData?.insuranceId || `WELLI-${Math.floor(100000 + Math.random() * 900000)}`,
+        dob: session.user.dateOfBirth || userData?.dob || '',
+        gender: '',
+        bloodType: session.user.bloodType || userData?.bloodType || '',
+        genotype: session.user.genotype || userData?.genotype || '',
+        height: '',
+        weight: '',
+        allergies: '',
+        conditions: '',
+        contact: session.user.phoneNumber || userData?.phone || '',
+        email: session.user.email || userData?.email || '',
+        phone: session.user.phoneNumber || userData?.phone || '',
+        address: '',
+        insuranceProvider: session.user.hmoProvider || userData?.insuranceProvider || '',
+        insuranceId: session.user.hmoPolicyNumber || userData?.insuranceId || session.user.memberId || '',
       };
 
       patch((s) => ({
@@ -966,8 +996,20 @@ export function useWelliApp() {
         loggedOut: false,
         showWelcomeHome: false,
         tab: 'home',
+        ...(needsProfileCompletion
+          ? {
+              showPersonalInfo: true,
+              personalInfoEditMode: true,
+              personalInfoDraft: { ...newOwner },
+            }
+          : {}),
       }));
-      showToast(`Welcome to WelliRecord, ${displayName.split(' ')[0]}!`);
+
+      if (needsProfileCompletion) {
+        showToast('Please complete your profile details');
+      } else {
+        showToast(`Welcome back, ${displayName.split(' ')[0]}!`);
+      }
       return session;
     },
 

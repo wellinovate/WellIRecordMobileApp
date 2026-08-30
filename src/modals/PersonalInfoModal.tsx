@@ -71,23 +71,26 @@ export function PersonalInfoModal({ app }: { app: WelliApp }) {
   const draft = state.personalInfoDraft;
 
   const displayFields = [
-    { label: 'Full Name', value: activeMember.name },
+    { label: 'Full Name', value: activeMember.name || 'Not set' },
     { label: 'Date of Birth', value: formatDob(activeMember.dob) },
-    { label: 'Gender', value: activeMember.gender },
-    { label: 'Blood Type', value: activeMember.bloodType },
-    { label: 'Genotype', value: activeMember.genotype },
+    { label: 'Gender', value: activeMember.gender || 'Not set' },
+    { label: 'Blood Type', value: activeMember.bloodType || 'Not set' },
+    { label: 'Genotype', value: activeMember.genotype || 'Not set' },
     {
       label: 'Height / Weight',
-      value: `${activeMember.height} / ${activeMember.weight}`,
+      value:
+        activeMember.height || activeMember.weight
+          ? `${activeMember.height || '—'} / ${activeMember.weight || '—'}`
+          : 'Not set',
     },
-    { label: 'Allergies', value: activeMember.allergies },
-    { label: 'Conditions', value: activeMember.conditions },
-    { label: 'Emergency Contact', value: activeMember.contact },
-    { label: 'Email', value: activeMember.email },
-    { label: 'Phone', value: activeMember.phone },
-    { label: 'Address', value: activeMember.address },
-    { label: 'Insurance Provider', value: activeMember.insuranceProvider },
-    { label: 'Insurance ID', value: activeMember.insuranceId },
+    { label: 'Allergies', value: activeMember.allergies || 'None on file' },
+    { label: 'Conditions', value: activeMember.conditions || 'None on file' },
+    { label: 'Emergency Contact', value: activeMember.contact || 'Not set' },
+    { label: 'Email', value: activeMember.email || 'Not set' },
+    { label: 'Phone', value: activeMember.phone || 'Not set' },
+    { label: 'Address', value: activeMember.address || 'Not set' },
+    { label: 'Insurance Provider', value: activeMember.insuranceProvider || 'Not set' },
+    { label: 'Insurance ID', value: activeMember.insuranceId || 'Not set' },
   ];
 
   const handleTakePhoto = async () => {

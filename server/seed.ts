@@ -4,7 +4,7 @@
  */
 
 import mongoose from 'mongoose';
-import { User, FamilyMember, Facility, HealthRecord, Prescription } from './models';
+import { User, Account, Profile, FamilyMember, Facility, HealthRecord, Prescription } from './models';
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/wellirecord';
 
@@ -184,6 +184,28 @@ async function seedDatabase() {
     deliveryAddress: 'Block 12, Admiralty Way, Lekki Phase 1, Lagos',
     hmoProvider: 'Hygeia HMO (80% Tariff Co-Pay)',
   });
+
+  console.log('[Seed] Creating/updating profile for Chibuike Joshua Nwogha...');
+  const testAccountId = new mongoose.Types.ObjectId('6a626749a25c1d8dadfff6dd');
+  await Profile.findOneAndUpdate(
+    { $or: [{ accountId: testAccountId }, { email: 'talk2jaywin@gmail.com' }, { phone: '07030144923' }] },
+    {
+      accountId: testAccountId,
+      fullName: 'Chibuike Joshua Nwogha',
+      dateOfBirth: new Date('1986-09-16'),
+      gender: 'Male',
+      email: 'talk2jaywin@gmail.com',
+      phone: '07030144923',
+      memberId: 'WR-2WJX-P7Y4',
+      bloodType: 'O+',
+      genotype: 'AA',
+      hmoProvider: 'Hygeia HMO',
+      hmoPolicyNumber: 'HYG-992014-LAG',
+      isAccountLinked: true,
+      isProvisional: false,
+    },
+    { upsert: true, new: true }
+  );
 
   console.log('✅ [Seed] MongoDB database successfully populated with Lagos healthcare data!');
   await mongoose.disconnect();

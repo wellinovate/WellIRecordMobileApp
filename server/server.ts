@@ -192,8 +192,21 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
     if (!profile && user._id) {
       profile = await Profile.findOne({ $or: [{ accountId: user._id }, { userId: user._id }] });
     }
-    if (!profile) {
-      profile = await Profile.findOne({ $or: [{ phone: normalizedLocal }, { phone: phoneNumber }] });
+    if (!profile && mongoose.connection.readyState === 1) {
+      try {
+        profile = await Profile.create({
+          accountId: user._id,
+          email: user.email,
+          phone: user.phone || user.phoneNumber || phoneNumber,
+          fullName: null,      // to be filled in by the user
+          dateOfBirth: null,
+          gender: null,
+          isAccountLinked: true,
+          isProvisional: false,
+        });
+      } catch (createErr) {
+        console.warn('[Profile Create Notice]', createErr);
+      }
     }
 
     const userId = user._id.toString();
@@ -220,6 +233,80 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
     return res.json(userSessionData);
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Authentication error', error: err });
+  }
+});
+
+// 3d. Update Patient Profile
+app.all('/api/v1/profile/update', async (req: Request, res: Response) => {
+  const {
+    accountId,
+    userId,
+    email,
+    phone,
+    phoneNumber,
+    fullName,
+    name,
+    dateOfBirth,
+    dob,
+    gender,
+    bloodType,
+    genotype,
+    hmoProvider,
+    insuranceProvider,
+    hmoPolicyNumber,
+    insuranceId,
+    memberId,
+    allergies,
+  } = req.body;
+
+  try {
+    const searchConditions: any[] = [];
+    if (accountId) searchConditions.push({ accountId }, { _id: accountId }, { userId: accountId });
+    if (userId) searchConditions.push({ userId }, { accountId: userId }, { _id: userId });
+    if (email) searchConditions.push({ email: email.toLowerCase().trim() });
+    const rawPhone = phone || phoneNumber;
+    if (rawPhone) {
+      const clean = rawPhone.replace(/[^0-9]/g, '');
+      const local = rawPhone.replace('+234', '0');
+      searchConditions.push({ phone: rawPhone }, { phone: local }, { phone: clean }, { phoneNumber: rawPhone });
+    }
+
+    let profile: any = null;
+    if (searchConditions.length > 0) {
+      profile = await Profile.findOne({ $or: searchConditions });
+    }
+
+    if (!profile) {
+      profile = new Profile({
+        accountId: accountId || userId,
+        userId: userId || accountId,
+        email,
+        phone: rawPhone,
+        isAccountLinked: true,
+        isProvisional: false,
+      });
+    }
+
+    const resolvedName = fullName !== undefined ? fullName : name;
+    if (resolvedName !== undefined) profile.fullName = resolvedName;
+    const resolvedDob = dateOfBirth !== undefined ? dateOfBirth : dob;
+    if (resolvedDob !== undefined) profile.dateOfBirth = resolvedDob;
+    if (gender !== undefined) profile.gender = gender;
+    if (bloodType !== undefined) profile.bloodType = bloodType;
+    if (genotype !== undefined) profile.genotype = genotype;
+    const resolvedHmo = hmoProvider !== undefined ? hmoProvider : insuranceProvider;
+    if (resolvedHmo !== undefined) profile.hmoProvider = resolvedHmo;
+    const resolvedPolicy = hmoPolicyNumber !== undefined ? hmoPolicyNumber : insuranceId;
+    if (resolvedPolicy !== undefined) profile.hmoPolicyNumber = resolvedPolicy;
+    if (memberId !== undefined) profile.memberId = memberId;
+    if (allergies !== undefined) profile.allergies = allergies;
+
+    await profile.save();
+
+    console.log('[PROFILE UPDATE RESPONSE]', JSON.stringify(profile));
+    return res.json({ success: true, message: 'Profile updated successfully', profile });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to update profile', error: err });
   }
 });
 
