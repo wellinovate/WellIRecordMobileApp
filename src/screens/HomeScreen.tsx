@@ -13,6 +13,7 @@ import { Chip } from '../components/Chip';
 import { Logo } from '../components/Logo';
 import { Avatar } from '../components/Avatar';
 import { RECORD_META, VITALS } from '../data/mockData';
+import { hapticFeedback } from '../utils/haptics';
 import type { WelliApp } from '../state/useWelliApp';
 
 export function HomeScreen({ app }: { app: WelliApp }) {
@@ -85,7 +86,7 @@ export function HomeScreen({ app }: { app: WelliApp }) {
                 active={isSelected}
                 onClick={() => {
                   hapticFeedback.selection();
-                  actions.selectFamilyMember(f.id);
+                  actions.setFamily(f.id);
                 }}
               />
             );
