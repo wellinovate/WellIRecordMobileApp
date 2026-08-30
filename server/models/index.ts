@@ -297,8 +297,39 @@ const VitalLogSchema = new Schema<IVitalLog>(
   { timestamps: true }
 );
 
+// 9. Account Model (Matching 'accounts' collection with phone e.g. 07030144923)
+export interface IAccount extends Document {
+  phone?: string;
+  phoneNumber?: string;
+  email?: string;
+  fullName?: string;
+  name?: string;
+  bloodType?: string;
+  genotype?: string;
+  hmoProvider?: string;
+  hmoPolicyNumber?: string;
+  isPhoneVerified?: boolean;
+}
+
+const AccountSchema = new Schema<IAccount>(
+  {
+    phone: { type: String, index: true },
+    phoneNumber: { type: String, index: true },
+    email: { type: String },
+    fullName: { type: String },
+    name: { type: String },
+    bloodType: { type: String },
+    genotype: { type: String },
+    hmoProvider: { type: String },
+    hmoPolicyNumber: { type: String },
+    isPhoneVerified: { type: Boolean, default: false },
+  },
+  { timestamps: true, strict: false }
+);
+
 // Export Mongoose Models
 export const User: Model<IUser> = mongoose.models.User || mongoose.model<IUser>('User', UserSchema);
+export const Account: Model<IAccount> = mongoose.models.Account || mongoose.model<IAccount>('Account', AccountSchema, 'accounts');
 export const FamilyMember: Model<IFamilyMember> = mongoose.models.FamilyMember || mongoose.model<IFamilyMember>('FamilyMember', FamilyMemberSchema);
 export const HealthRecord: Model<IHealthRecord> = mongoose.models.HealthRecord || mongoose.model<IHealthRecord>('HealthRecord', HealthRecordSchema);
 export const Prescription: Model<IPrescription> = mongoose.models.Prescription || mongoose.model<IPrescription>('Prescription', PrescriptionSchema);

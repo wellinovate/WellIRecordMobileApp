@@ -9,6 +9,7 @@ import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import {
   User,
+  Account,
   HealthRecord,
   Prescription,
   Facility,
@@ -157,37 +158,43 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
   }
 
   try {
-    let user = null;
-    if (mongoose.connection.readyState === 1) {
-      user = await User.findOne({ phoneNumber });
-      if (!user) {
-        user = await User.create({
-          phoneNumber,
-          fullName: 'Amara Nwosu',
-          email: 'amara.nwosu@gmail.com',
-          bloodType: 'O+',
-          genotype: 'AA',
-          hmoProvider: 'Hygeia HMO',
-          hmoPolicyNumber: 'HYG-992014-LAG',
-          isPhoneVerified: true,
-        });
-      }
+    const normalizedLocal = phoneNumber.replace('+234', '0'); // "+2347030144923" -> "07030144923"
+    let account = await Account.findOne({ phone: normalizedLocal });
+    if (!account) {
+      account = await Account.findOne({ $or: [{ phone: phoneNumber }, { phoneNumber: phoneNumber }, { phoneNumber: normalizedLocal }] });
     }
 
-    const userId = user ? user._id.toString() : 'u_amara_nwosu';
-    const token = jwt.sign({ userId, phoneNumber, role: 'patient' }, JWT_SECRET, { expiresIn: '30d' });
+    let user: any = account;
+    if (!user) {
+      user = await User.findOne({
+        $or: [
+          { phoneNumber: req.body.phoneNumber },
+          { phoneNumber: normalizedLocal },
+          { phoneNumber: cleanPhone },
+          { phoneNumber: `+${cleanPhone}` },
+        ],
+      });
+    }
+
+    if (!user) {
+      return res.status(404).json({ error: 'No account found for this phone number' });
+    }
+
+    const userId = user._id.toString();
+    const phone = user.phone || user.phoneNumber || phoneNumber;
+    const token = jwt.sign({ userId, phoneNumber: phone, role: 'patient' }, JWT_SECRET, { expiresIn: '30d' });
 
     const userSessionData = {
       token,
       user: {
         id: userId,
-        fullName: user ? user.fullName : 'Amara Nwosu',
-        phoneNumber,
-        email: user?.email || 'amara.nwosu@gmail.com',
-        bloodType: user?.bloodType || 'O+',
-        genotype: user?.genotype || 'AA',
-        hmoProvider: user?.hmoProvider || 'Hygeia HMO',
-        hmoPolicyNumber: user?.hmoPolicyNumber || 'HYG-992014-LAG',
+        fullName: user.fullName || user.name || 'Amara Nwosu',
+        phoneNumber: phone,
+        email: user.email || 'amara.nwosu@gmail.com',
+        bloodType: user.bloodType || 'O+',
+        genotype: user.genotype || 'AA',
+        hmoProvider: user.hmoProvider || 'Hygeia HMO',
+        hmoPolicyNumber: user.hmoPolicyNumber || 'HYG-992014-LAG',
       },
     };
 
