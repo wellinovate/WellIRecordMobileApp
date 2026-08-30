@@ -29,6 +29,7 @@ export function HomeScreen({ app }: { app: WelliApp }) {
     activeMember.name && activeMember.name !== 'You'
       ? activeMember.name
       : activeMember.email || activeMember.phone || 'You';
+  const unreadCount = state.notifications.length;
 
   return (
     <ScrollView
