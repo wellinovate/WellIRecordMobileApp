@@ -188,13 +188,13 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
       token,
       user: {
         id: userId,
-        fullName: user.fullName || user.name || 'Amara Nwosu',
-        phoneNumber: phone,
-        email: user.email || 'amara.nwosu@gmail.com',
-        bloodType: user.bloodType || 'O+',
-        genotype: user.genotype || 'AA',
-        hmoProvider: user.hmoProvider || 'Hygeia HMO',
-        hmoPolicyNumber: user.hmoPolicyNumber || 'HYG-992014-LAG',
+        fullName: user.fullName || user.email, // fallback display name for accounts without one
+        phoneNumber: user.phoneNumber || user.phone,
+        email: user.email,
+        bloodType: user.bloodType || null,
+        genotype: user.genotype || null,
+        hmoProvider: user.hmoProvider || null,
+        hmoPolicyNumber: user.hmoPolicyNumber || null,
       },
     };
 
