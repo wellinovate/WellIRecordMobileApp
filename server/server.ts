@@ -872,13 +872,13 @@ app.post('/api/v1/records/upload-url', (req: Request, res: Response) => {
 });
 
 // 6. Fetch Lagos Healthcare Facilities (MongoDB)
-app.get('/api/v1/care/facilities', async (_req: Request, res: Response) => {
+app.get(['/api/v1/care/facilities', '/api/v1/facilities'], async (_req: Request, res: Response) => {
   try {
     if (mongoose.connection.readyState === 1) {
       const facilities = await Facility.find({ isVerified: true });
-      return res.json(facilities);
+      return res.json({ success: true, facilities });
     }
-    return res.json([]);
+    return res.json({ success: true, facilities: [] });
   } catch (err) {
     return res.status(500).json({ success: false, error: err });
   }

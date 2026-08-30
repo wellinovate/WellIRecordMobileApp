@@ -39,6 +39,8 @@ import { apiClient, setAuthToken } from '../services/apiClient';
 import { recordsService } from '../services/recordsService';
 import { profileService } from '../services/profileService';
 import { familyService } from '../services/familyService';
+import { facilityService } from '../services/facilityService';
+import type { CareFacility } from '../data/types';
 
 export interface AppState {
   tab: Tab;
@@ -128,6 +130,7 @@ export interface AppState {
   showWelcomeHome: boolean;
   welcomeTab: WelcomeTab;
   showVaultExport: boolean;
+  facilitiesList: CareFacility[];
   toast: string | null;
 }
 
@@ -291,6 +294,7 @@ const initialState: AppState = {
   showLanguage: false,
   language: 'English',
   notifPermission: null,
+  facilitiesList: FACILITIES,
   toast: null,
 };
 
@@ -478,6 +482,13 @@ export function useWelliApp() {
             vitalsLogs: [],
           });
         }
+
+        // Fetch healthcare provider & facilities directory from backend
+        facilityService.fetchFacilities().then((remoteFacilities) => {
+          if (Array.isArray(remoteFacilities) && remoteFacilities.length > 0) {
+            patch({ facilitiesList: remoteFacilities });
+          }
+        }).catch(() => {});
       } catch {
         // ignore corrupt local storage
       }
@@ -1646,7 +1657,7 @@ export function useWelliApp() {
     onboardingSlides: ONBOARDING,
     linkedAccountDefs: LINKED_ACCOUNTS,
     consentScopes: CONSENT_SCOPES,
-    facilities: FACILITIES,
+    facilities: state.facilitiesList && state.facilitiesList.length > 0 ? state.facilitiesList : FACILITIES,
   };
 }
 
