@@ -39,17 +39,27 @@ export function LogListModal({
         >
           {intro ? <Text style={styles.introText}>{intro}</Text> : null}
 
-          {entries.map((a, i) => (
-            <View key={i} style={styles.logCard}>
-              <View style={styles.emojiBox}>
-                <Text style={{ fontSize: 15 }}>{a.emoji}</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.logTitle}>{a.title}</Text>
-                <Text style={styles.logTime}>{a.time}</Text>
-              </View>
+          {entries.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={{ fontSize: 32, marginBottom: 8 }}>📋</Text>
+              <Text style={styles.emptyTitle}>No activity logged yet</Text>
+              <Text style={styles.emptySub}>
+                Your NDPR-compliant access history and audit events will appear here.
+              </Text>
             </View>
-          ))}
+          ) : (
+            entries.map((a, i) => (
+              <View key={i} style={styles.logCard}>
+                <View style={styles.emojiBox}>
+                  <Text style={{ fontSize: 15 }}>{a.emoji}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.logTitle}>{a.title}</Text>
+                  <Text style={styles.logTime}>{a.time}</Text>
+                </View>
+              </View>
+            ))
+          )}
         </ScrollView>
       </SafeAreaView>
     </Modal>
@@ -68,6 +78,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 36,
     gap: 10,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: 20,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 4,
+  },
+  emptySub: {
+    fontSize: 13,
+    color: '#64748b',
+    textAlign: 'center',
+    lineHeight: 18,
   },
   introText: {
     fontSize: 12.5,

@@ -85,60 +85,70 @@ export function BillingModal({ app }: { app: WelliApp }) {
           <Text style={styles.sectionSub}>Tap an invoice to see the full breakdown.</Text>
 
           <View style={styles.invoiceList}>
-            {state.invoices.map((inv) => {
-              const total = invoiceTotal(inv.items);
-              const patientPortion = total - inv.hmoCovered;
-              const isPaid = inv.status === 'paid';
+            {state.invoices.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Text style={{ fontSize: 32, marginBottom: 8 }}>💳</Text>
+                <Text style={styles.emptyTitle}>No Invoices on File</Text>
+                <Text style={styles.emptySub}>
+                  Hospital bills, co-pay receipts, and clinic invoices will appear here once issued.
+                </Text>
+              </View>
+            ) : (
+              state.invoices.map((inv) => {
+                const total = invoiceTotal(inv.items);
+                const patientPortion = total - inv.hmoCovered;
+                const isPaid = inv.status === 'paid';
 
-              return (
-                <TouchableOpacity
-                  key={inv.id}
-                  activeOpacity={0.7}
-                  onPress={() => actions.openInvoiceDetail(inv.id)}
-                  style={styles.invoiceCard}
-                >
-                  <View style={styles.invoiceTop}>
-                    <Text style={styles.invoiceId}>{inv.id}</Text>
-                    <View
-                      style={[
-                        styles.paidBadge,
-                        {
-                          backgroundColor: isPaid
-                            ? 'rgba(16,185,129,0.14)'
-                            : '#fef3c7',
-                        },
-                      ]}
-                    >
-                      <Text
+                return (
+                  <TouchableOpacity
+                    key={inv.id}
+                    activeOpacity={0.7}
+                    onPress={() => actions.openInvoiceDetail(inv.id)}
+                    style={styles.invoiceCard}
+                  >
+                    <View style={styles.invoiceTop}>
+                      <Text style={styles.invoiceId}>{inv.id}</Text>
+                      <View
                         style={[
-                          styles.paidBadgeText,
-                          { color: isPaid ? '#10b981' : '#92400e' },
+                          styles.paidBadge,
+                          {
+                            backgroundColor: isPaid
+                              ? 'rgba(16,185,129,0.14)'
+                              : '#fef3c7',
+                          },
                         ]}
                       >
-                        {isPaid ? 'PAID' : 'UNPAID'}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.invoiceBottom}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.providerName}>{inv.provider}</Text>
-                      <Text style={styles.invoiceMeta}>
-                        {inv.date} · {inv.items.length} items
-                      </Text>
-                    </View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={styles.invoiceTotal}>{formatNaira(total)}</Text>
-                      {!isPaid && (
-                        <Text style={styles.youPay}>
-                          You pay: {formatNaira(patientPortion)}
+                        <Text
+                          style={[
+                            styles.paidBadgeText,
+                            { color: isPaid ? '#10b981' : '#92400e' },
+                          ]}
+                        >
+                          {isPaid ? 'PAID' : 'UNPAID'}
                         </Text>
-                      )}
+                      </View>
                     </View>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
+
+                    <View style={styles.invoiceBottom}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.providerName}>{inv.provider}</Text>
+                        <Text style={styles.invoiceMeta}>
+                          {inv.date} · {inv.items.length} items
+                        </Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={styles.invoiceTotal}>{formatNaira(total)}</Text>
+                        {!isPaid && (
+                          <Text style={styles.youPay}>
+                            You pay: {formatNaira(patientPortion)}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })
+            )}
           </View>
         </ScrollView>
       </SafeAreaView>
