@@ -41,7 +41,7 @@ import { EXPIRY_SHORT_LABEL_MAP } from '../utils/expiry';
 import { hapticFeedback } from '../utils/haptics';
 import { storage } from '../utils/storage';
 import { authService } from '../services/authService';
-import { apiClient } from '../services/apiClient';
+import { apiClient, setAuthToken } from '../services/apiClient';
 import { recordsService } from '../services/recordsService';
 import { profileService } from '../services/profileService';
 
