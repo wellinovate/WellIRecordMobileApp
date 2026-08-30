@@ -77,6 +77,13 @@ function verifyStoredOtp(identifier: string, code: string): boolean {
   return isValid;
 }
 
+// WelliRecord ID Generator (Format: WR-XXXX-XXXX)
+function generateWelliRecordId(): string {
+  const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+  const timestamp = Date.now().toString().slice(-4);
+  return `WR-${timestamp}-${random}`;
+}
+
 // 2. Termii Nigerian SMS OTP Dispatch
 app.post('/api/v1/auth/otp/send', async (req: Request, res: Response) => {
   const targetPhone = req.body.phoneNumber || req.body.phone || req.body.to;
