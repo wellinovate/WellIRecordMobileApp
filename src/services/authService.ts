@@ -16,6 +16,7 @@ export interface AuthSession {
     email?: string;
     dateOfBirth?: string;
     memberId?: string;
+    wrId?: string;
     bloodType?: string;
     genotype?: string;
     hmoProvider?: string;
