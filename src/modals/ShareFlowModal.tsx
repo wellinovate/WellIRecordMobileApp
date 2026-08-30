@@ -39,9 +39,25 @@ const EXPIRY_DEFS: [ShareExpiry, string][] = [
 
 type RecipientFilterTab = 'all' | 'orgs' | 'doctors';
 
+function maskPhone(phone: string): string {
+  if (!phone || phone.length < 4) return phone;
+  return phone.slice(0, -4).replace(/\d/g, '•') + phone.slice(-4);
+}
+
+function maskEmail(email: string): string {
+  const [name, domain] = email.split('@');
+  if (!name || !domain) return email;
+  if (name.length <= 2) return `${name[0]}***@${domain}`;
+  return `${name[0]}${'*'.repeat(name.length - 2)}${name.slice(-1)}@${domain}`;
+}
+
 export function ShareFlowModal({ app }: { app: WelliApp }) {
   const { state, actions, records, family, doctors, facilities } = app;
   const [recipientTab, setRecipientTab] = useState<RecipientFilterTab>('all');
+
+  const currentUser = family.find((f) => f.id === 'me') ?? family[0];
+  const userPhone = currentUser?.phone || state.user?.phoneNumber || '';
+  const userEmail = currentUser?.email || state.user?.email || '';
 
   // Custom provider invitation state
   const [customProviderName, setCustomProviderName] = useState('');
@@ -63,13 +79,15 @@ export function ShareFlowModal({ app }: { app: WelliApp }) {
     setDispatchError(null);
     try {
       if (channel === 'phone') {
-        const res = await authService.sendPhoneOtp('+2348053355504');
+        if (!userPhone) throw new Error('No phone number on file for this account');
+        const res = await authService.sendPhoneOtp(userPhone);
         setDispatchState('sent');
-        setDispatchMessage(res.message || 'Security code dispatched to +234 805 335 5504');
+        setDispatchMessage(res.message || `Security code dispatched to ${maskPhone(userPhone)}`);
       } else {
-        const res = await authService.sendEmailOtp('amara.nwosu@gmail.com');
+        if (!userEmail) throw new Error('No email on file for this account');
+        const res = await authService.sendEmailOtp(userEmail);
         setDispatchState('sent');
-        setDispatchMessage(res.message || 'Security code dispatched to am***u@gmail.com');
+        setDispatchMessage(res.message || `Security code dispatched to ${maskEmail(userEmail)}`);
       }
     } catch (err: any) {
       setDispatchState('error');
@@ -94,16 +112,18 @@ export function ShareFlowModal({ app }: { app: WelliApp }) {
       const run = async () => {
         try {
           if (otpChannel === 'phone') {
-            const res = await authService.sendPhoneOtp('+2348053355504');
+            if (!userPhone) throw new Error('No phone number on file for this account');
+            const res = await authService.sendPhoneOtp(userPhone);
             if (isMounted) {
               setDispatchState('sent');
-              setDispatchMessage(res.message || 'Security code dispatched to +234 805 335 5504');
+              setDispatchMessage(res.message || `Security code dispatched to ${maskPhone(userPhone)}`);
             }
           } else {
-            const res = await authService.sendEmailOtp('amara.nwosu@gmail.com');
+            if (!userEmail) throw new Error('No email on file for this account');
+            const res = await authService.sendEmailOtp(userEmail);
             if (isMounted) {
               setDispatchState('sent');
-              setDispatchMessage(res.message || 'Security code dispatched to am***u@gmail.com');
+              setDispatchMessage(res.message || `Security code dispatched to ${maskEmail(userEmail)}`);
             }
           }
         } catch (err: any) {
@@ -118,7 +138,7 @@ export function ShareFlowModal({ app }: { app: WelliApp }) {
     return () => {
       isMounted = false;
     };
-  }, [state.shareStep, otpChannel]);
+  }, [state.shareStep, otpChannel, userPhone, userEmail]);
 
   if (!state.showShareFlow) return null;
 
@@ -759,6 +779,7 @@ export function ShareFlowModal({ app }: { app: WelliApp }) {
             <View style={styles.channelSelectorRow}>
               <TouchableOpacity
                 activeOpacity={0.8}
+                disabled={!userPhone}
                 onPress={() => {
                   hapticFeedback.selection();
                   setOtpChannel('phone');
@@ -766,6 +787,7 @@ export function ShareFlowModal({ app }: { app: WelliApp }) {
                 style={[
                   styles.channelBtn,
                   otpChannel === 'phone' && styles.channelBtnActive,
+                  !userPhone && { opacity: 0.4 },
                 ]}
               >
                 <Text style={{ fontSize: 16 }}>📱</Text>
@@ -773,12 +795,13 @@ export function ShareFlowModal({ app }: { app: WelliApp }) {
                   <Text style={[styles.channelTitle, otpChannel === 'phone' && styles.channelTitleActive]}>
                     Phone (SMS)
                   </Text>
-                  <Text style={styles.channelDetail}>+234 805 *** 5504</Text>
+                  <Text style={styles.channelDetail}>{maskPhone(userPhone) || 'No phone on file'}</Text>
                 </View>
               </TouchableOpacity>
 
               <TouchableOpacity
                 activeOpacity={0.8}
+                disabled={!userEmail}
                 onPress={() => {
                   hapticFeedback.selection();
                   setOtpChannel('email');
@@ -786,6 +809,7 @@ export function ShareFlowModal({ app }: { app: WelliApp }) {
                 style={[
                   styles.channelBtn,
                   otpChannel === 'email' && styles.channelBtnActive,
+                  !userEmail && { opacity: 0.4 },
                 ]}
               >
                 <Text style={{ fontSize: 16 }}>✉️</Text>
@@ -793,7 +817,7 @@ export function ShareFlowModal({ app }: { app: WelliApp }) {
                   <Text style={[styles.channelTitle, otpChannel === 'email' && styles.channelTitleActive]}>
                     Email
                   </Text>
-                  <Text style={styles.channelDetail}>am***u@gmail.com</Text>
+                  <Text style={styles.channelDetail}>{maskEmail(userEmail) || 'No email on file'}</Text>
                 </View>
               </TouchableOpacity>
             </View>
