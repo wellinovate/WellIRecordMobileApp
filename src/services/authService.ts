@@ -60,7 +60,7 @@ export const authService = {
   /**
    * Verifies the 6-digit OTP and initiates a secure session
    */
-  async verifyPhoneOtp(phoneNumber: string, code: string): Promise<AuthSession> {
+  async verifyPhoneOtp(phoneNumber: string, code: string, userData?: Partial<AuthSession['user']>): Promise<AuthSession> {
     const normalized = normalizeNigerianPhone(phoneNumber);
     if (CONFIG.demoMode) {
       await new Promise((res) => setTimeout(res, 400));
@@ -68,13 +68,14 @@ export const authService = {
         token: `jwt_welli_demo_${Date.now()}`,
         user: {
           id: 'me',
-          fullName: 'Amara Nwosu',
+          fullName: userData?.fullName || 'Amara Nwosu',
           phoneNumber: normalized || phoneNumber || '+2348053355504',
-          email: 'amara.nwosu@gmail.com',
-          bloodType: 'O+',
-          genotype: 'AA',
-          hmoProvider: 'Hygeia HMO',
-          hmoPolicyNumber: 'HYG-992014-LAG',
+          email: userData?.email || 'amara.nwosu@gmail.com',
+          bloodType: userData?.bloodType || 'O+',
+          genotype: userData?.genotype || 'AA',
+          hmoProvider: userData?.hmoProvider || 'Hygeia HMO',
+          hmoPolicyNumber: userData?.hmoPolicyNumber || 'HYG-992014-LAG',
+          dateOfBirth: userData?.dateOfBirth,
         },
       };
       await this.saveSession(session);
@@ -84,6 +85,15 @@ export const authService = {
     const session = await apiClient.post<AuthSession>('/auth/otp/verify', {
       phoneNumber: normalized || phoneNumber,
       code,
+      ...(userData ? {
+        fullName: userData.fullName,
+        email: userData.email,
+        dateOfBirth: userData.dateOfBirth,
+        bloodType: userData.bloodType,
+        genotype: userData.genotype,
+        hmoProvider: userData.hmoProvider,
+        hmoPolicyNumber: userData.hmoPolicyNumber,
+      } : {}),
     });
     await this.saveSession(session);
     return session;
@@ -134,10 +144,11 @@ export const authService = {
           genotype: userData?.genotype || 'AA',
           hmoProvider: userData?.hmoProvider || 'Hygeia HMO',
           hmoPolicyNumber: userData?.hmoPolicyNumber || 'HYG-992014-LAG',
+          dateOfBirth: userData?.dateOfBirth,
         },
       };
     } else {
-      session = await this.verifyPhoneOtp(identifier.trim(), code);
+      session = await this.verifyPhoneOtp(identifier.trim(), code, userData);
       if (userData?.fullName) {
         session.user.fullName = userData.fullName;
       }

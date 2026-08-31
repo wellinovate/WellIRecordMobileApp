@@ -187,7 +187,26 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
     }
 
     if (!user) {
-      return res.status(404).json({ error: 'No account found for this phone number' });
+      if (mongoose.connection.readyState === 1) {
+        const newPhone = phoneNumber.startsWith('+') ? phoneNumber : `+${cleanPhone}`;
+        const newEmail = req.body.email ? req.body.email.toLowerCase().trim() : undefined;
+        const newName = req.body.fullName || req.body.name || (newEmail ? newEmail.split('@')[0] : 'WelliRecord Patient');
+
+        account = new Account({
+          phone: normalizedLocal,
+          phoneNumber: newPhone,
+          email: newEmail,
+          fullName: newName,
+          name: newName,
+          isPhoneVerified: true,
+          authProvider: 'phone_otp',
+        });
+        await account.save();
+        user = account;
+        console.log('[NEW ACCOUNT CREATED ON SIGNUP]', user._id, newName);
+      } else {
+        return res.status(404).json({ error: 'No account found for this phone number' });
+      }
     }
 
     // 2nd lookup: Fetch matching profile from shared 'userprofiles' collection
@@ -230,25 +249,43 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
         }
       }
 
-      // If still no profile exists, create a genuine UserProfile document with wrId
+      // If still no profile exists, create a genuine UserProfile document with wrId and passed signup data
       if (!profile) {
         const newWrId = generateWelliRecordId();
+        const profileName = req.body.fullName || req.body.name || user.fullName || null;
+        const profileEmail = req.body.email ? req.body.email.toLowerCase().trim() : (user.email || null);
+        const profilePhone = user.phone || user.phoneNumber || phoneNumber;
+
         profile = new UserProfile({
           accountId: user._id,
-          fullName: user.fullName || null,
-          email: user.email || null,
-          phone: user.phone || user.phoneNumber || phoneNumber,
+          fullName: profileName,
+          email: profileEmail,
+          phone: profilePhone,
+          dateOfBirth: req.body.dateOfBirth || req.body.dob || null,
+          bloodType: req.body.bloodType || user.bloodType || 'O+',
+          genotype: req.body.genotype || user.genotype || 'AA',
+          hmoProvider: req.body.hmoProvider || req.body.insuranceProvider || user.hmoProvider || null,
+          hmoPolicyNumber: req.body.hmoPolicyNumber || req.body.insuranceId || user.hmoPolicyNumber || null,
           wrId: newWrId,
           authProvider: 'phone_otp',
           isEmailVerified: Boolean(user.isEmailVerified),
         });
         await profile.save();
-        console.log('[USERPROFILE CREATED]', JSON.stringify(profile));
-      } else if (!profile.wrId) {
-        // Ensure wrId is generated and saved if missing
-        profile.wrId = generateWelliRecordId();
-        await profile.save();
-        console.log('[USERPROFILE ASSIGNED WRID]', profile.wrId);
+        console.log('[USERPROFILE CREATED ON SIGNUP]', JSON.stringify(profile));
+      } else {
+        // If profile exists, ensure wrId and persist any missing profile fields from signup
+        let updated = false;
+        if (req.body.fullName && !profile.fullName) { profile.fullName = req.body.fullName; updated = true; }
+        if (req.body.dateOfBirth && !profile.dateOfBirth) { profile.dateOfBirth = req.body.dateOfBirth; updated = true; }
+        if (req.body.bloodType && !profile.bloodType) { profile.bloodType = req.body.bloodType; updated = true; }
+        if (req.body.genotype && !profile.genotype) { profile.genotype = req.body.genotype; updated = true; }
+        if (req.body.hmoProvider && !profile.hmoProvider) { profile.hmoProvider = req.body.hmoProvider; updated = true; }
+        if (req.body.hmoPolicyNumber && !profile.hmoPolicyNumber) { profile.hmoPolicyNumber = req.body.hmoPolicyNumber; updated = true; }
+        if (!profile.wrId) { profile.wrId = generateWelliRecordId(); updated = true; }
+        if (updated) {
+          await profile.save();
+          console.log('[USERPROFILE UPDATED ON VERIFY]', profile._id);
+        }
       }
     }
 
