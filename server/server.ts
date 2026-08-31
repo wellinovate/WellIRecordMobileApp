@@ -95,6 +95,15 @@ function normalizeNigerianPhone(phone?: string): string {
   return cleaned;
 }
 
+// Converts a Nigerian phone number to local 11-digit format (0XXXXXXXXXX)
+function toLocalNigerianPhone(phone?: string): string {
+  const e164 = normalizeNigerianPhone(phone);
+  if (e164.startsWith('+234') && e164.length === 14) {
+    return `0${e164.slice(4)}`;
+  }
+  return phone ? phone.replace(/[^0-9]/g, '') : '';
+}
+
 // 2. Termii Nigerian SMS OTP Dispatch
 app.post('/api/v1/auth/otp/send', async (req: Request, res: Response) => {
   const targetPhone = req.body.phoneNumber || req.body.phone || req.body.to;
@@ -179,17 +188,26 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
   }
 
   try {
-    const normalizedLocal = phoneNumber.replace('+234', '0'); // "+2347030144923" -> "07030144923"
-    let account = await Account.findOne({ phone: normalizedLocal });
-    if (!account) {
-      account = await Account.findOne({ $or: [{ phone: phoneNumber }, { phoneNumber: phoneNumber }, { phoneNumber: normalizedLocal }] });
-    }
+    const normalizedE164 = normalizeNigerianPhone(phoneNumber);
+    const normalizedLocal = toLocalNigerianPhone(phoneNumber); // e.g. "07030144923"
+
+    let account = await Account.findOne({
+      $or: [
+        { phone: normalizedLocal },
+        { phone: normalizedE164 },
+        { phone: phoneNumber },
+        { phoneNumber: normalizedE164 },
+        { phoneNumber: normalizedLocal },
+        { phoneNumber: phoneNumber },
+      ],
+    });
 
     let user: any = account;
     if (!user) {
       user = await User.findOne({
         $or: [
           { phoneNumber: req.body.phoneNumber },
+          { phoneNumber: normalizedE164 },
           { phoneNumber: normalizedLocal },
           { phoneNumber: cleanPhone },
           { phoneNumber: `+${cleanPhone}` },
@@ -199,13 +217,12 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
 
     if (!user) {
       if (mongoose.connection.readyState === 1) {
-        const normalizedE164 = normalizeNigerianPhone(phoneNumber);
         const newPhone = normalizedE164 || (phoneNumber.startsWith('+') ? phoneNumber : `+${cleanPhone}`);
         const newEmail = req.body.email ? req.body.email.toLowerCase().trim() : undefined;
         const newName = req.body.fullName || req.body.name || (newEmail ? newEmail.split('@')[0] : 'WelliRecord Patient');
 
         account = new Account({
-          phone: normalizedLocal,
+          phone: normalizedLocal || newPhone,
           phoneNumber: newPhone,
           email: newEmail,
           fullName: newName,
