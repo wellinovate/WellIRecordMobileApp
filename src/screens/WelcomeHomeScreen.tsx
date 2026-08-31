@@ -249,7 +249,7 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
         insuranceId: cleanInsuranceId,
       };
 
-      await actions.sendAuthOtp(targetId, channel);
+      await actions.sendAuthOtp(targetId, channel, signUpData.name.trim());
       setPendingAuth({
         mode: 'signup',
         identifier: targetId,

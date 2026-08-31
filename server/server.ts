@@ -156,85 +156,404 @@ app.post('/api/v1/auth/otp/send', async (req: Request, res: Response) => {
   }
 });
 
-// 2b. Email OTP Dispatch
+// 2b. WelliRecord Email Dispatcher & Templates
+interface SendEmailOptions {
+  to: string;
+  subject: string;
+  html: string;
+  text?: string;
+  from?: string;
+}
+
+async function sendWelliEmail({ to, subject, html, text, from }: SendEmailOptions): Promise<{ success: boolean; messageId?: string; error?: any }> {
+  const fromAddress = from || process.env.EMAIL_FROM || 'WelliRecord <noreply@send.wellirecord.com>';
+  
+  // 1. Resend API
+  const resendApiKey = process.env.RESEND_API_KEY;
+  if (resendApiKey) {
+    try {
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${resendApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: fromAddress,
+          to: [to],
+          subject,
+          html,
+          text: text || html.replace(/<[^>]+>/g, ''),
+        }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        console.log('[EMAIL RESEND DISPATCHED]', to, data.id);
+        return { success: true, messageId: data.id };
+      } else {
+        console.warn('[EMAIL RESEND WARN]', data);
+      }
+    } catch (e: any) {
+      console.error('[EMAIL RESEND ERROR]', e.message);
+    }
+  }
+
+  // 2. SendGrid API
+  const sendgridApiKey = process.env.SENDGRID_API_KEY;
+  if (sendgridApiKey) {
+    try {
+      const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${sendgridApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          personalizations: [{ to: [{ email: to }] }],
+          from: { email: fromAddress.match(/<([^>]+)>/)?.[1] || fromAddress, name: 'WelliRecord' },
+          subject,
+          content: [
+            { type: 'text/html', value: html },
+            { type: 'text/plain', value: text || html.replace(/<[^>]+>/g, '') },
+          ],
+        }),
+      });
+      if (response.ok || response.status === 202) {
+        console.log('[EMAIL SENDGRID DISPATCHED]', to);
+        return { success: true, messageId: `sg_${Date.now()}` };
+      }
+    } catch (e: any) {
+      console.error('[EMAIL SENDGRID ERROR]', e.message);
+    }
+  }
+
+  // 3. Fallback / Development Dispatch Logger
+  console.log(`[EMAIL DISPATCHED TO ${to}] Subject: "${subject}"`);
+  return { success: true, messageId: `msg_${Date.now()}` };
+}
+
+function renderOtpEmailHtml({ fullName, code, expiresInMinutes }: { fullName?: string; code: string; expiresInMinutes?: number }): string {
+  const formattedCode = code.split('').join(' ');
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verify your WelliRecord™ account</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #F8FAFC; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #334155; line-height: 1.6;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #F8FAFC; padding: 32px 16px;">
+    <tr>
+      <td align="center">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 580px; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #E2E8F0; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);">
+          <!-- Dark Navy Banner -->
+          <tr>
+            <td style="background-color: #041E42; padding: 32px 24px; text-align: center;">
+              <h1 style="margin: 0; color: #FFFFFF; font-size: 24px; font-weight: 800; letter-spacing: 0.5px;">WelliRecord™</h1>
+              <p style="margin: 6px 0 0 0; color: #93C5FD; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;">ONE PATIENT. ONE TRUSTED RECORD. ACCESSIBLE WHEN IT MATTERS.</p>
+            </td>
+          </tr>
+
+          <!-- Main Content -->
+          <tr>
+            <td style="padding: 32px 32px 24px 32px;">
+              <p style="margin: 0 0 16px 0; font-size: 16px; color: #1E293B;">
+                Hello <strong style="color: #041E42;">${fullName || 'WelliRecord Patient'}</strong>,
+              </p>
+              
+              <h2 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 700; color: #0F172A;">
+                🔐 Verify your WelliRecord™ account
+              </h2>
+              
+              <p style="margin: 0 0 24px 0; font-size: 15px; color: #475569;">
+                Use the verification code below to continue with your WelliRecord™ account securely.
+              </p>
+
+              <!-- Verification Code Box -->
+              <div style="background-color: #F0FDF4; border: 1px solid #86EFAC; border-radius: 12px; padding: 24px; text-align: center; margin: 0 0 24px 0;">
+                <div style="font-size: 12px; font-weight: 700; color: #15803D; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px;">
+                  YOUR VERIFICATION CODE
+                </div>
+                <div style="font-size: 38px; font-weight: 800; color: #041E42; letter-spacing: 10px; margin: 10px 0; font-family: monospace, -apple-system, sans-serif;">
+                  ${formattedCode}
+                </div>
+                <div style="font-size: 13px; font-weight: 600; color: #16A34A;">
+                  ⏱ Expires in ${expiresInMinutes || 10} minutes
+                </div>
+              </div>
+
+              <!-- Security Warning -->
+              <p style="margin: 0 0 12px 0; font-size: 14px; color: #475569; line-height: 1.5;">
+                For your security, <strong>do not share this code with anyone</strong>. WelliRecord™ will never ask you to provide your verification code by phone, email, or message.
+              </p>
+              <p style="margin: 0 0 24px 0; font-size: 14px; color: #64748B; line-height: 1.5;">
+                If you did not request this code, you can safely ignore this email. Your account remains secure.
+              </p>
+
+              <!-- Medical Tip -->
+              <div style="background-color: #FFFBEB; border-left: 4px solid #F59E0B; border-radius: 8px; padding: 14px 18px; margin: 0 0 14px 0;">
+                <div style="font-size: 14px; font-weight: 700; color: #92400E; margin-bottom: 4px;">
+                  🩺 Medical Tip
+                </div>
+                <div style="font-size: 13px; color: #78350F; line-height: 1.5;">
+                  Keep your health information accurate and up to date. Complete and maintain your health profile so your trusted record is ready when you need it.
+                </div>
+              </div>
+
+              <!-- Security Tip -->
+              <div style="background-color: #F0F9FF; border-left: 4px solid #0284C7; border-radius: 8px; padding: 14px 18px; margin: 0 0 8px 0;">
+                <div style="font-size: 14px; font-weight: 700; color: #075985; margin-bottom: 4px;">
+                  🔐 Security Tip
+                </div>
+                <div style="font-size: 13px; color: #0C4A6E; line-height: 1.5;">
+                  Use a strong, unique password for your WelliRecord™ account and never share your login credentials with anyone.
+                </div>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #F8FAFC; padding: 24px; text-align: center; border-top: 1px solid #E2E8F0;">
+              <div style="font-size: 14px; font-weight: 700; color: #041E42; margin-bottom: 4px;">
+                WelliRecord™
+              </div>
+              <div style="font-size: 13px; color: #475569; margin-bottom: 8px; font-style: italic;">
+                One patient. One trusted record. Accessible when it matters.
+              </div>
+              <div style="font-size: 11px; color: #94A3B8;">
+                Patient-Owned Health Records • Secure & Encrypted • Consent-Driven Access • Audit Trail
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
+function renderSignInNotificationEmailHtml({ fullName, signedInAt, method, device, dashboardUrl, securityUrl }: { fullName?: string; signedInAt?: string; method?: string; device?: string; dashboardUrl?: string; securityUrl?: string }): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>New sign-in to your WelliRecord™ account</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #F8FAFC; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #334155; line-height: 1.6;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #F8FAFC; padding: 32px 16px;">
+    <tr>
+      <td align="center">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 580px; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #E2E8F0; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);">
+          <!-- Header Badge -->
+          <tr>
+            <td style="padding: 32px 32px 12px 32px;">
+              <span style="display: inline-block; background-color: #E0F2FE; color: #0369A1; font-size: 11px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; padding: 6px 12px; border-radius: 100px;">
+                SIGNED IN
+              </span>
+            </td>
+          </tr>
+
+          <!-- Main Greeting -->
+          <tr>
+            <td style="padding: 0 32px 24px 32px;">
+              <h1 style="margin: 0 0 12px 0; font-size: 22px; font-weight: 800; color: #041E42;">
+                Welcome back, ${fullName || 'WelliRecord Patient'}
+              </h1>
+              <p style="margin: 0 0 24px 0; font-size: 15px; color: #475569; line-height: 1.5;">
+                You just signed in to your WelliRecord™ health vault. Here's a quick summary of this sign-in for your records.
+              </p>
+
+              <!-- Sign-In Summary Card -->
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border: 1px solid #E2E8F0; border-radius: 12px; overflow: hidden; margin-bottom: 24px;">
+                <tr style="border-bottom: 1px solid #F1F5F9;">
+                  <td style="padding: 14px 18px; font-size: 14px; color: #64748B; width: 35%; border-bottom: 1px solid #F1F5F9;">Signed in</td>
+                  <td style="padding: 14px 18px; font-size: 14px; font-weight: 700; color: #041E42; border-bottom: 1px solid #F1F5F9;">${signedInAt || new Date().toLocaleString()}</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #F1F5F9;">
+                  <td style="padding: 14px 18px; font-size: 14px; color: #64748B; border-bottom: 1px solid #F1F5F9;">Method</td>
+                  <td style="padding: 14px 18px; font-size: 14px; font-weight: 700; color: #041E42; border-bottom: 1px solid #F1F5F9;">${method || 'Email & Login Code'}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 14px 18px; font-size: 14px; color: #64748B;">Device</td>
+                  <td style="padding: 14px 18px; font-size: 13px; font-weight: 600; color: #041E42; line-height: 1.4;">${device || 'WelliRecord Mobile App (iOS)'}</td>
+                </tr>
+              </table>
+
+              <!-- Action CTA -->
+              <div style="margin-bottom: 24px;">
+                <a href="${dashboardUrl || 'https://wellirecord.com'}" style="display: inline-block; background-color: #041E42; color: #FFFFFF; font-size: 15px; font-weight: 700; padding: 14px 28px; border-radius: 8px; text-decoration: none;">
+                  Go to Dashboard
+                </a>
+              </div>
+
+              <!-- Security Follow-up -->
+              <p style="margin: 0; font-size: 14px; color: #64748B;">
+                Wasn't you? <a href="${securityUrl || 'https://wellirecord.com/security'}" style="color: #041E42; font-weight: 700; text-decoration: underline;">Secure your account immediately</a>.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #FAFAFA; padding: 24px 32px; border-top: 1px solid #E2E8F0;">
+              <div style="font-size: 14px; font-weight: 800; color: #041E42; margin-bottom: 4px;">
+                WelliRecord™
+              </div>
+              <div style="font-size: 13px; color: #64748B; font-style: italic; margin-bottom: 8px;">
+                One patient. One trusted record. Accessible when it matters.
+              </div>
+              <div style="font-size: 12px; color: #94A3B8; margin-bottom: 16px;">
+                Secure • Patient-Owned • Consent-Driven • Interoperable
+              </div>
+              <div style="font-size: 13px;">
+                <a href="https://wellirecord.com" style="color: #041E42; text-decoration: underline; font-weight: 600; margin-right: 16px;">View Dashboard</a>
+                <a href="https://wellirecord.com/privacy" style="color: #041E42; text-decoration: underline; font-weight: 600; margin-right: 16px;">Privacy Policy</a>
+                <a href="https://wellirecord.com/support" style="color: #041E42; text-decoration: underline; font-weight: 600;">Contact Support</a>
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
+// 2c. Email OTP Dispatch
 app.post('/api/v1/auth/email/send', async (req: Request, res: Response) => {
-  const { email } = req.body;
+  const { email, fullName, name } = req.body;
 
   if (!email) {
     return res.status(400).json({ success: false, message: 'Email address is required' });
   }
 
-  generateOtp(email.toLowerCase());
+  const cleanEmail = email.toLowerCase().trim();
+  const generatedCode = generateOtp(cleanEmail);
+  const recipientName = fullName || name || (cleanEmail.includes('@') ? cleanEmail.split('@')[0] : 'WelliRecord Patient');
 
-  return res.json({
-    success: true,
-    message: `Verification code sent to ${email}.`,
-    otpId: `otp_${Date.now()}`,
-    expiresInSeconds: 300,
-  });
+  try {
+    await sendWelliEmail({
+      to: cleanEmail,
+      subject: '🔐 Verify your WelliRecord™ account - Login Code',
+      html: renderOtpEmailHtml({
+        fullName: recipientName,
+        code: generatedCode,
+        expiresInMinutes: 10,
+      }),
+    });
+
+    return res.json({
+      success: true,
+      message: `Verification code sent to ${cleanEmail}.`,
+      otpId: `otp_${Date.now()}`,
+      expiresInSeconds: 600,
+    });
+  } catch (err: any) {
+    console.error('[EMAIL SEND ERROR]', err);
+    return res.status(500).json({ success: false, message: 'Failed to send verification email', error: err.message });
+  }
 });
 
-// 3. Verify OTP & Issue JWT (with MongoDB user lookup)
-app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
-  const { phoneNumber, code } = req.body;
-
-  if (!phoneNumber || !code) {
-    return res.status(400).json({ success: false, message: 'Phone number and code required' });
+// 2d. Generic Transactional Email Notification
+app.post('/api/v1/notifications/email', async (req: Request, res: Response) => {
+  const { to, subject, html, text, type } = req.body;
+  if (!to || (!html && !text)) {
+    return res.status(400).json({ success: false, message: 'Recipient and content required' });
   }
 
-  const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
-  if (!verifyStoredOtp(phoneNumber, code) && !verifyStoredOtp(cleanPhone, code)) {
+  try {
+    const result = await sendWelliEmail({
+      to: to.trim(),
+      subject: subject || 'Notification from WelliRecord™',
+      html: html || `<p>${text}</p>`,
+      text,
+    });
+    return res.json({ success: true, ...result });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: 'Notification dispatch error', error: err.message });
+  }
+});
+
+// 3. Verify OTP & Issue JWT (Supports Phone or Email verification with MongoDB user lookup)
+app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
+  const { phoneNumber, email, code } = req.body;
+
+  if ((!phoneNumber && !email) || !code) {
+    return res.status(400).json({ success: false, message: 'Phone number or email, and verification code required' });
+  }
+
+  const targetIdentifier = (email ? email.toLowerCase().trim() : phoneNumber?.trim()) || '';
+  const cleanPhone = phoneNumber ? phoneNumber.replace(/[^0-9]/g, '') : '';
+  const cleanEmail = email ? email.toLowerCase().trim() : (req.body.email ? req.body.email.toLowerCase().trim() : undefined);
+
+  if (
+    !verifyStoredOtp(targetIdentifier, code) &&
+    !(cleanPhone && verifyStoredOtp(cleanPhone, code)) &&
+    !(cleanEmail && verifyStoredOtp(cleanEmail, code))
+  ) {
     return res.status(400).json({ success: false, message: 'Invalid or expired authorization code' });
   }
 
   try {
-    const normalizedE164 = normalizeNigerianPhone(phoneNumber);
-    const normalizedLocal = toLocalNigerianPhone(phoneNumber); // e.g. "07030144923"
+    const normalizedE164 = phoneNumber ? normalizeNigerianPhone(phoneNumber) : '';
+    const normalizedLocal = phoneNumber ? toLocalNigerianPhone(phoneNumber) : '';
 
-    let account = await Account.findOne({
-      $or: [
-        { phone: normalizedLocal },
-        { phone: normalizedE164 },
-        { phone: phoneNumber },
-        { phoneNumber: normalizedE164 },
-        { phoneNumber: normalizedLocal },
-        { phoneNumber: phoneNumber },
-      ],
-    });
-
-    let user: any = account;
-    if (!user) {
-      user = await User.findOne({
+    let account = null;
+    if (cleanEmail) {
+      account = await Account.findOne({ email: cleanEmail });
+    }
+    if (!account && (phoneNumber || normalizedLocal)) {
+      account = await Account.findOne({
         $or: [
-          { phoneNumber: req.body.phoneNumber },
-          { phoneNumber: normalizedE164 },
-          { phoneNumber: normalizedLocal },
-          { phoneNumber: cleanPhone },
-          { phoneNumber: `+${cleanPhone}` },
+          ...(normalizedLocal ? [{ phone: normalizedLocal }, { phoneNumber: normalizedLocal }] : []),
+          ...(normalizedE164 ? [{ phone: normalizedE164 }, { phoneNumber: normalizedE164 }] : []),
+          ...(phoneNumber ? [{ phone: phoneNumber }, { phoneNumber: phoneNumber }] : []),
         ],
       });
     }
 
+    let user: any = account;
+    if (!user) {
+      if (cleanEmail) {
+        user = await User.findOne({ email: cleanEmail });
+      }
+      if (!user && (phoneNumber || normalizedLocal)) {
+        user = await User.findOne({
+          $or: [
+            ...(req.body.phoneNumber ? [{ phoneNumber: req.body.phoneNumber }] : []),
+            ...(normalizedE164 ? [{ phoneNumber: normalizedE164 }] : []),
+            ...(normalizedLocal ? [{ phoneNumber: normalizedLocal }] : []),
+            ...(cleanPhone ? [{ phoneNumber: cleanPhone }, { phoneNumber: `+${cleanPhone}` }] : []),
+          ],
+        });
+      }
+    }
+
     if (!user) {
       if (mongoose.connection.readyState === 1) {
-        const newPhone = normalizedE164 || (phoneNumber.startsWith('+') ? phoneNumber : `+${cleanPhone}`);
-        const newEmail = req.body.email ? req.body.email.toLowerCase().trim() : undefined;
+        const newPhone = normalizedE164 || (phoneNumber ? (phoneNumber.startsWith('+') ? phoneNumber : `+${cleanPhone}`) : undefined);
+        const newEmail = cleanEmail || (req.body.email ? req.body.email.toLowerCase().trim() : undefined);
         const newName = req.body.fullName || req.body.name || (newEmail ? newEmail.split('@')[0] : 'WelliRecord Patient');
 
         account = new Account({
-          phone: normalizedLocal || newPhone,
-          phoneNumber: newPhone,
+          phone: normalizedLocal || newPhone || '',
+          phoneNumber: newPhone || '',
           email: newEmail,
           fullName: newName,
           name: newName,
-          isPhoneVerified: true,
-          authProvider: 'phone_otp',
+          isPhoneVerified: Boolean(phoneNumber),
+          isEmailVerified: Boolean(cleanEmail),
+          authProvider: cleanEmail ? 'email_otp' : 'phone_otp',
         });
         await account.save();
         user = account;
         console.log('[NEW ACCOUNT CREATED ON SIGNUP]', user._id, newName);
       } else {
-        return res.status(404).json({ error: 'No account found for this phone number' });
+        return res.status(404).json({ error: 'No account found for this user' });
       }
     }
 
@@ -245,6 +564,7 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
         $or: [
           { accountId: user._id },
           ...(user.email ? [{ email: user.email.toLowerCase().trim() }] : []),
+          ...(cleanEmail ? [{ email: cleanEmail }] : []),
           ...(user.phone ? [{ phone: user.phone }, { phone: user.phoneNumber }] : []),
         ],
       });
@@ -255,6 +575,7 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
           $or: [
             { accountId: user._id },
             ...(user.email ? [{ email: user.email.toLowerCase().trim() }] : []),
+            ...(cleanEmail ? [{ email: cleanEmail }] : []),
           ],
         });
 
@@ -267,7 +588,7 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
           profile = new UserProfile({
             accountId: user._id,
             fullName: legacyProfile.fullName || legacyProfile.name,
-            email: legacyProfile.email || user.email,
+            email: legacyProfile.email || user.email || cleanEmail,
             phone: legacyPhone,
             contact: legacyPhone,
             gender: legacyProfile.gender,
@@ -287,9 +608,9 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
       if (!profile) {
         const newWrId = generateWelliRecordId();
         const profileName = req.body.fullName || req.body.name || user.fullName || null;
-        const profileEmail = req.body.email ? req.body.email.toLowerCase().trim() : (user.email || null);
+        const profileEmail = cleanEmail || (req.body.email ? req.body.email.toLowerCase().trim() : (user.email || null));
         const rawPhone = user.phone || user.phoneNumber || phoneNumber;
-        const profilePhone = normalizeNigerianPhone(rawPhone) || rawPhone;
+        const profilePhone = rawPhone ? (normalizeNigerianPhone(rawPhone) || rawPhone) : '';
         const rawHmo = req.body.hmoProvider || req.body.insuranceProvider || user.hmoProvider || null;
         const cleanHmo = (!rawHmo || rawHmo === 'Private Self-Pay / None' || rawHmo === 'None' || rawHmo === 'self_pay') ? null : rawHmo;
 
@@ -305,8 +626,8 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
           hmoProvider: cleanHmo,
           hmoPolicyNumber: cleanHmo ? (req.body.hmoPolicyNumber || req.body.insuranceId || user.hmoPolicyNumber || null) : null,
           wrId: newWrId,
-          authProvider: 'phone_otp',
-          isEmailVerified: Boolean(user.isEmailVerified),
+          authProvider: cleanEmail ? 'email_otp' : 'phone_otp',
+          isEmailVerified: Boolean(cleanEmail || user.isEmailVerified),
         });
         await profile.save();
         console.log('[USERPROFILE CREATED ON SIGNUP]', JSON.stringify(profile));
@@ -331,19 +652,46 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
     }
 
     const userId = user._id.toString();
-    const phone = user.phoneNumber || user.phone || phoneNumber;
-    const token = jwt.sign({ userId, phoneNumber: phone, role: 'patient' }, JWT_SECRET, { expiresIn: '30d' });
+    const phone = user.phoneNumber || user.phone || phoneNumber || '';
+    const userEmail = user.email || profile?.email || cleanEmail || null;
+    const token = jwt.sign({ userId, phoneNumber: phone, email: userEmail, role: 'patient' }, JWT_SECRET, { expiresIn: '30d' });
+
+    // Send Sign-In Notification Email Asynchronously
+    if (userEmail) {
+      const userAgent = req.headers['user-agent'] || 'WelliRecord Mobile App (iOS / Android)';
+      const authMethod = cleanEmail ? 'Email & Login Code' : 'Phone & SMS OTP';
+      const nowFormatted = new Date().toLocaleString('en-US', {
+        month: 'numeric',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+      });
+
+      sendWelliEmail({
+        to: userEmail,
+        subject: '🔐 New sign-in to your WelliRecord™ account',
+        html: renderSignInNotificationEmailHtml({
+          fullName: profile?.fullName || user.fullName || userEmail.split('@')[0],
+          signedInAt: nowFormatted,
+          method: authMethod,
+          device: userAgent,
+        }),
+      }).catch((emailErr) => console.error('[Sign-In Email Error]', emailErr));
+    }
 
     const userSessionData = {
       token,
       user: {
         id: userId,
-        fullName: profile?.fullName || (profile?.firstName && profile?.lastName ? `${profile.firstName} ${profile.lastName}` : null) || profile?.name || user.fullName || user.email,
+        fullName: profile?.fullName || (profile?.firstName && profile?.lastName ? `${profile.firstName} ${profile.lastName}` : null) || profile?.name || user.fullName || userEmail,
         dateOfBirth: profile?.dateOfBirth || profile?.dob || null,
         memberId: profile?.wrId || profile?.memberId || user.patientIdentityId || null,
         wrId: profile?.wrId || null,
         phoneNumber: user.phoneNumber || user.phone || profile?.phone || phone,
-        email: user.email || profile?.email || null,
+        email: userEmail,
         bloodType: profile?.bloodType || user.bloodType || null,
         genotype: profile?.genotype || user.genotype || null,
         hmoProvider: profile?.hmoProvider || profile?.insuranceProvider || user.hmoProvider || null,
@@ -842,6 +1190,32 @@ app.post('/api/v1/auth/login', async (req: Request, res: Response) => {
     const phoneNumber = user ? user.phoneNumber : (identifier.includes('@') ? '+234 805 335 5504' : identifier);
 
     const token = jwt.sign({ userId, email, role: 'patient' }, JWT_SECRET, { expiresIn: '30d' });
+
+    // Send Sign-In Notification Email Asynchronously
+    if (email) {
+      const userAgent = req.headers['user-agent'] || 'Mozilla/5.0 (Macintosh; Intel Mac OS X) Chrome/Safari';
+      const authMethod = identifier.includes('@') ? 'Email & Password' : 'Phone & Password';
+      const nowFormatted = new Date().toLocaleString('en-US', {
+        month: 'numeric',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+      });
+
+      sendWelliEmail({
+        to: email,
+        subject: '🔐 New sign-in to your WelliRecord™ account',
+        html: renderSignInNotificationEmailHtml({
+          fullName,
+          signedInAt: nowFormatted,
+          method: authMethod,
+          device: userAgent,
+        }),
+      }).catch((emailErr) => console.error('[Sign-In Email Error]', emailErr));
+    }
 
     return res.json({
       token,

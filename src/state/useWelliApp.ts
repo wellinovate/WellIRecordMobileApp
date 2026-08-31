@@ -1266,9 +1266,9 @@ export function useWelliApp() {
       showToast('Welcome back to WelliRecord');
     },
 
-    sendAuthOtp: async (identifier: string, explicitChannel?: 'phone' | 'email') => {
+    sendAuthOtp: async (identifier: string, explicitChannel?: 'phone' | 'email', fullName?: string) => {
       hapticFeedback.light();
-      const res = await authService.sendAuthOtp(identifier, explicitChannel);
+      const res = await authService.sendAuthOtp(identifier, explicitChannel, fullName);
       
       // Dispatch in-app security notification (confirms dispatch without revealing code)
       const securityNotif: Notification = {

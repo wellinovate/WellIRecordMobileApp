@@ -102,26 +102,72 @@ export const authService = {
   /**
    * Dispatches a 6-digit verification code to email
    */
-  async sendEmailOtp(email: string): Promise<SendOtpResponse> {
+  async sendEmailOtp(email: string, fullName?: string): Promise<SendOtpResponse> {
+    const cleanEmail = email.trim().toLowerCase();
     if (CONFIG.demoMode) {
       await new Promise((res) => setTimeout(res, 400));
       return {
         success: true,
-        message: `Verification code sent to ${email}`,
-        expiresInSeconds: 300,
+        message: `Verification code sent to ${cleanEmail}`,
+        expiresInSeconds: 600,
       };
     }
 
-    return await apiClient.post<SendOtpResponse>('/auth/email/send', { email });
+    return await apiClient.post<SendOtpResponse>('/auth/email/send', {
+      email: cleanEmail,
+      fullName,
+    });
+  },
+
+  /**
+   * Verifies the 6-digit email OTP and initiates a secure session
+   */
+  async verifyEmailOtp(email: string, code: string, userData?: Partial<AuthSession['user']>): Promise<AuthSession> {
+    const cleanEmail = email.trim().toLowerCase();
+    if (CONFIG.demoMode) {
+      await new Promise((res) => setTimeout(res, 400));
+      const session: AuthSession = {
+        token: `jwt_welli_demo_${Date.now()}`,
+        user: {
+          id: 'me',
+          fullName: userData?.fullName || 'Amara Nwosu',
+          phoneNumber: userData?.phoneNumber || '+2348053355504',
+          email: cleanEmail,
+          bloodType: userData?.bloodType || 'O+',
+          genotype: userData?.genotype || 'AA',
+          hmoProvider: userData?.hmoProvider || 'Hygeia HMO',
+          hmoPolicyNumber: userData?.hmoPolicyNumber || 'HYG-992014-LAG',
+          dateOfBirth: userData?.dateOfBirth,
+        },
+      };
+      await this.saveSession(session);
+      return session;
+    }
+
+    const session = await apiClient.post<AuthSession>('/auth/otp/verify', {
+      email: cleanEmail,
+      code,
+      ...(userData ? {
+        fullName: userData.fullName,
+        email: cleanEmail,
+        dateOfBirth: userData.dateOfBirth,
+        bloodType: userData.bloodType,
+        genotype: userData.genotype,
+        hmoProvider: userData.hmoProvider,
+        hmoPolicyNumber: userData.hmoPolicyNumber,
+      } : {}),
+    });
+    await this.saveSession(session);
+    return session;
   },
 
   /**
    * Unified Send OTP helper for Phone or Email
    */
-  async sendAuthOtp(identifier: string, explicitChannel?: 'phone' | 'email'): Promise<SendOtpResponse> {
+  async sendAuthOtp(identifier: string, explicitChannel?: 'phone' | 'email', fullName?: string): Promise<SendOtpResponse> {
     const isEmail = explicitChannel ? explicitChannel === 'email' : identifier.includes('@');
     if (isEmail) {
-      return this.sendEmailOtp(identifier.trim());
+      return this.sendEmailOtp(identifier.trim(), fullName);
     }
     return this.sendPhoneOtp(identifier.trim());
   },
@@ -133,25 +179,12 @@ export const authService = {
     const isEmail = identifier.includes('@');
     let session: AuthSession;
     if (isEmail) {
-      session = {
-        token: `jwt_welli_auth_${Date.now()}`,
-        user: {
-          id: 'me',
-          fullName: userData?.fullName || 'Amara Nwosu',
-          phoneNumber: userData?.phoneNumber || '+234 805 335 5504',
-          email: identifier.trim(),
-          bloodType: userData?.bloodType || 'O+',
-          genotype: userData?.genotype || 'AA',
-          hmoProvider: userData?.hmoProvider || 'Hygeia HMO',
-          hmoPolicyNumber: userData?.hmoPolicyNumber || 'HYG-992014-LAG',
-          dateOfBirth: userData?.dateOfBirth,
-        },
-      };
+      session = await this.verifyEmailOtp(identifier.trim(), code, userData);
     } else {
       session = await this.verifyPhoneOtp(identifier.trim(), code, userData);
-      if (userData?.fullName) {
-        session.user.fullName = userData.fullName;
-      }
+    }
+    if (userData?.fullName && session?.user) {
+      session.user.fullName = userData.fullName;
     }
     await this.saveSession(session);
     return session;
@@ -169,7 +202,7 @@ export const authService = {
           id: 'me',
           fullName: 'Amara Nwosu',
           phoneNumber: '+234 805 335 5504',
-          email: identifier.includes('@') ? identifier : 'amara.nwosu@gmail.com',
+          email: identifier.includes('@') ? identifier.trim().toLowerCase() : 'amara.nwosu@gmail.com',
           bloodType: 'O+',
           genotype: 'AA',
           hmoProvider: 'Hygeia HMO',
@@ -181,8 +214,8 @@ export const authService = {
     }
 
     const session = await apiClient.post<AuthSession>('/auth/login', {
-      identifier,
-      password: password || 'DefaultPass123!',
+      identifier: identifier.trim(),
+      password,
     });
     await this.saveSession(session);
     return session;
