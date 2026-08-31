@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, Modal, FlatList, StyleSheet } from 'react
 import Svg, { Path } from 'react-native-svg';
 
 interface FormSelectProps {
-  value: string;
+  value?: string;
   onChange: (value: string) => void;
   options: string[];
   placeholder?: string;
