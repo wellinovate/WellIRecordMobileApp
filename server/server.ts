@@ -84,6 +84,17 @@ function generateWelliRecordId(): string {
   return `WR-${timestamp}-${random}`;
 }
 
+// Normalizes a Nigerian phone number to E.164 format (+234XXXXXXXXXX)
+function normalizeNigerianPhone(phone?: string): string {
+  if (!phone) return '';
+  const cleaned = phone.trim().replace(/[^\d+]/g, '');
+  if (cleaned.startsWith('+234')) return cleaned;
+  if (cleaned.startsWith('234') && cleaned.length === 13) return `+${cleaned}`;
+  if (cleaned.startsWith('0') && cleaned.length === 11) return `+234${cleaned.slice(1)}`;
+  if (cleaned.length === 10) return `+234${cleaned}`;
+  return cleaned;
+}
+
 // 2. Termii Nigerian SMS OTP Dispatch
 app.post('/api/v1/auth/otp/send', async (req: Request, res: Response) => {
   const targetPhone = req.body.phoneNumber || req.body.phone || req.body.to;
@@ -188,7 +199,8 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
 
     if (!user) {
       if (mongoose.connection.readyState === 1) {
-        const newPhone = phoneNumber.startsWith('+') ? phoneNumber : `+${cleanPhone}`;
+        const normalizedE164 = normalizeNigerianPhone(phoneNumber);
+        const newPhone = normalizedE164 || (phoneNumber.startsWith('+') ? phoneNumber : `+${cleanPhone}`);
         const newEmail = req.body.email ? req.body.email.toLowerCase().trim() : undefined;
         const newName = req.body.fullName || req.body.name || (newEmail ? newEmail.split('@')[0] : 'WelliRecord Patient');
 
@@ -231,17 +243,22 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
 
         if (legacyProfile) {
           console.log('[MIGRATION] Transferring profile from legacy profiles to userprofiles collection:', user.email || user._id);
+          const legacyPhone = normalizeNigerianPhone(legacyProfile.phone || user.phone);
+          const rawLegacyHmo = legacyProfile.hmoProvider || legacyProfile.insuranceProvider;
+          const cleanLegacyHmo = (!rawLegacyHmo || rawLegacyHmo === 'Private Self-Pay / None' || rawLegacyHmo === 'None') ? null : rawLegacyHmo;
+
           profile = new UserProfile({
             accountId: user._id,
             fullName: legacyProfile.fullName || legacyProfile.name,
             email: legacyProfile.email || user.email,
-            phone: legacyProfile.phone || user.phone,
+            phone: legacyPhone,
+            contact: legacyPhone,
             gender: legacyProfile.gender,
             dateOfBirth: legacyProfile.dateOfBirth || legacyProfile.dob,
             bloodType: legacyProfile.bloodType,
             genotype: legacyProfile.genotype,
-            hmoProvider: legacyProfile.hmoProvider || legacyProfile.insuranceProvider,
-            hmoPolicyNumber: legacyProfile.hmoPolicyNumber || legacyProfile.insuranceId,
+            hmoProvider: cleanLegacyHmo,
+            hmoPolicyNumber: cleanLegacyHmo ? (legacyProfile.hmoPolicyNumber || legacyProfile.insuranceId) : null,
             allergies: legacyProfile.allergies,
             wrId: legacyProfile.memberId || generateWelliRecordId(),
           });
@@ -254,18 +271,22 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
         const newWrId = generateWelliRecordId();
         const profileName = req.body.fullName || req.body.name || user.fullName || null;
         const profileEmail = req.body.email ? req.body.email.toLowerCase().trim() : (user.email || null);
-        const profilePhone = user.phone || user.phoneNumber || phoneNumber;
+        const rawPhone = user.phone || user.phoneNumber || phoneNumber;
+        const profilePhone = normalizeNigerianPhone(rawPhone) || rawPhone;
+        const rawHmo = req.body.hmoProvider || req.body.insuranceProvider || user.hmoProvider || null;
+        const cleanHmo = (!rawHmo || rawHmo === 'Private Self-Pay / None' || rawHmo === 'None' || rawHmo === 'self_pay') ? null : rawHmo;
 
         profile = new UserProfile({
           accountId: user._id,
           fullName: profileName,
           email: profileEmail,
           phone: profilePhone,
+          contact: profilePhone,
           dateOfBirth: req.body.dateOfBirth || req.body.dob || null,
           bloodType: req.body.bloodType || user.bloodType || 'O+',
           genotype: req.body.genotype || user.genotype || 'AA',
-          hmoProvider: req.body.hmoProvider || req.body.insuranceProvider || user.hmoProvider || null,
-          hmoPolicyNumber: req.body.hmoPolicyNumber || req.body.insuranceId || user.hmoPolicyNumber || null,
+          hmoProvider: cleanHmo,
+          hmoPolicyNumber: cleanHmo ? (req.body.hmoPolicyNumber || req.body.insuranceId || user.hmoPolicyNumber || null) : null,
           wrId: newWrId,
           authProvider: 'phone_otp',
           isEmailVerified: Boolean(user.isEmailVerified),
@@ -275,12 +296,15 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
       } else {
         // If profile exists, ensure wrId and persist any missing profile fields from signup
         let updated = false;
+        const rawHmo = req.body.hmoProvider || req.body.insuranceProvider;
+        const cleanHmo = (!rawHmo || rawHmo === 'Private Self-Pay / None' || rawHmo === 'None' || rawHmo === 'self_pay') ? null : rawHmo;
+
         if (req.body.fullName && !profile.fullName) { profile.fullName = req.body.fullName; updated = true; }
         if (req.body.dateOfBirth && !profile.dateOfBirth) { profile.dateOfBirth = req.body.dateOfBirth; updated = true; }
         if (req.body.bloodType && !profile.bloodType) { profile.bloodType = req.body.bloodType; updated = true; }
         if (req.body.genotype && !profile.genotype) { profile.genotype = req.body.genotype; updated = true; }
-        if (req.body.hmoProvider && !profile.hmoProvider) { profile.hmoProvider = req.body.hmoProvider; updated = true; }
-        if (req.body.hmoPolicyNumber && !profile.hmoPolicyNumber) { profile.hmoPolicyNumber = req.body.hmoPolicyNumber; updated = true; }
+        if (cleanHmo && !profile.hmoProvider) { profile.hmoProvider = cleanHmo; updated = true; }
+        if (cleanHmo && req.body.hmoPolicyNumber && !profile.hmoPolicyNumber) { profile.hmoPolicyNumber = req.body.hmoPolicyNumber; updated = true; }
         if (!profile.wrId) { profile.wrId = generateWelliRecordId(); updated = true; }
         if (updated) {
           await profile.save();

@@ -238,12 +238,23 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
     try {
       const targetId = signUpData.phone.trim() || signUpData.email.trim();
       const channel = signUpData.phone.trim() ? 'phone' : 'email';
+      const cleanHmo = (!signUpData.insuranceProvider || signUpData.insuranceProvider === 'Private Self-Pay / None' || signUpData.insuranceProvider === 'None')
+        ? undefined
+        : signUpData.insuranceProvider;
+      const cleanInsuranceId = cleanHmo ? (signUpData.insuranceId?.trim() || undefined) : undefined;
+
+      const sanitizedSignUpData: SignUpFormData = {
+        ...signUpData,
+        insuranceProvider: cleanHmo,
+        insuranceId: cleanInsuranceId,
+      };
+
       await actions.sendAuthOtp(targetId, channel);
       setPendingAuth({
         mode: 'signup',
         identifier: targetId,
         channel,
-        signUpData,
+        signUpData: sanitizedSignUpData,
       });
       setOtpDigits(['', '', '', '', '', '']);
       setResendCooldown(30);
