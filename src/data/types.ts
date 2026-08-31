@@ -239,7 +239,7 @@ export interface SignUpFormData {
   phone: string;
   dob: string;
   password?: string;
-  insuranceProvider: string;
+  insuranceProvider?: string;
   insuranceId?: string;
   bloodType?: string;
   genotype?: string;
