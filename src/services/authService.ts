@@ -10,6 +10,9 @@ import { normalizeNigerianPhone } from '../utils/phone';
 
 export interface AuthSession {
   token: string;
+  requiresOtp?: boolean;
+  challengeToken?: string;
+  channel?: 'sms' | 'email' | 'phone' | string;
   user: {
     id: string;
     fullName?: string;
@@ -34,6 +37,41 @@ export interface SendOtpResponse {
   code?: string;
   otpId?: string;
   expiresInSeconds: number;
+}
+
+/**
+ * Normalizes backend response envelopes ({ success: true, data: { ... } } vs flat { token, user })
+ */
+function unwrapAuthSession(rawResponse: any, fallbackUser?: Partial<AuthSession['user']>): AuthSession {
+  const payload = (rawResponse && typeof rawResponse === 'object' && 'data' in rawResponse && rawResponse.data)
+    ? rawResponse.data
+    : rawResponse;
+
+  const token = payload?.token || payload?.accessToken || payload?.jwt || rawResponse?.token || '';
+  const userObj = payload?.user || payload || fallbackUser || { id: 'me' };
+
+  return {
+    token,
+    requiresOtp: Boolean(payload?.requiresOtp || rawResponse?.requiresOtp),
+    challengeToken: payload?.challengeToken || rawResponse?.challengeToken,
+    channel: payload?.channel || rawResponse?.channel,
+    user: {
+      id: userObj?.id || userObj?._id || fallbackUser?.id || 'me',
+      fullName: userObj?.fullName || userObj?.name || fallbackUser?.fullName,
+      phoneNumber: userObj?.phoneNumber || userObj?.phone || fallbackUser?.phoneNumber,
+      email: userObj?.email || fallbackUser?.email,
+      dateOfBirth: userObj?.dateOfBirth || userObj?.dob || fallbackUser?.dateOfBirth,
+      memberId: userObj?.wrId || userObj?.memberId || fallbackUser?.memberId,
+      wrId: userObj?.wrId || userObj?.memberId || fallbackUser?.wrId,
+      bloodType: userObj?.bloodType || fallbackUser?.bloodType,
+      genotype: userObj?.genotype || fallbackUser?.genotype,
+      hmoProvider: userObj?.hmoProvider || userObj?.insuranceProvider || fallbackUser?.hmoProvider,
+      hmoPolicyNumber: userObj?.hmoPolicyNumber || userObj?.policyNumber || fallbackUser?.hmoPolicyNumber,
+      contact: userObj?.contact || fallbackUser?.contact,
+      emergencyContact: userObj?.emergencyContact || fallbackUser?.emergencyContact,
+      emergencyContacts: userObj?.emergencyContacts || fallbackUser?.emergencyContacts,
+    },
+  };
 }
 
 export const authService = {
@@ -82,7 +120,7 @@ export const authService = {
       return session;
     }
 
-    const session = await apiClient.post<AuthSession>('/auth/otp/verify', {
+    const raw = await apiClient.post<any>('/auth/otp/verify', {
       phoneNumber: normalized || phoneNumber,
       code,
       ...(userData ? {
@@ -94,6 +132,11 @@ export const authService = {
         hmoProvider: userData.hmoProvider,
         hmoPolicyNumber: userData.hmoPolicyNumber,
       } : {}),
+    });
+    const session = unwrapAuthSession(raw, {
+      fullName: userData?.fullName,
+      phoneNumber: normalized || phoneNumber,
+      ...userData,
     });
     await this.saveSession(session);
     return session;
@@ -144,7 +187,7 @@ export const authService = {
       return session;
     }
 
-    const session = await apiClient.post<AuthSession>('/auth/otp/verify', {
+    const raw = await apiClient.post<any>('/auth/otp/verify', {
       email: cleanEmail,
       code,
       ...(userData ? {
@@ -156,6 +199,11 @@ export const authService = {
         hmoProvider: userData.hmoProvider,
         hmoPolicyNumber: userData.hmoPolicyNumber,
       } : {}),
+    });
+    const session = unwrapAuthSession(raw, {
+      fullName: userData?.fullName,
+      email: cleanEmail,
+      ...userData,
     });
     await this.saveSession(session);
     return session;
@@ -213,9 +261,13 @@ export const authService = {
       return session;
     }
 
-    const session = await apiClient.post<AuthSession>('/auth/login', {
+    const raw = await apiClient.post<any>('/auth/login', {
       identifier: identifier.trim(),
       password,
+    });
+    const session = unwrapAuthSession(raw, {
+      email: identifier.includes('@') ? identifier.trim().toLowerCase() : undefined,
+      phoneNumber: !identifier.includes('@') ? identifier.trim() : undefined,
     });
     await this.saveSession(session);
     return session;
