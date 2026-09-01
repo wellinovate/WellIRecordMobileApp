@@ -65,6 +65,7 @@ export interface AppState {
   showSmartConsent: boolean;
   consentGranteeType: ConsentGranteeType;
   consentProviderId: string;
+  consentProviderWrId: string;
   consentScope: string | null;
   consentAllowWrite: boolean;
   consentExpiry: ShareExpiry;
@@ -235,6 +236,7 @@ const initialState: AppState = {
   showSmartConsent: false,
   consentGranteeType: 'individual',
   consentProviderId: '',
+  consentProviderWrId: '',
   consentScope: null,
   consentAllowWrite: false,
   consentExpiry: '24h',
@@ -681,6 +683,7 @@ export function useWelliApp() {
         showSmartConsent: true,
         consentGranteeType: 'individual',
         consentProviderId: '',
+        consentProviderWrId: '',
         consentScope: null,
         consentAllowWrite: false,
         consentExpiry: '24h',
@@ -689,30 +692,41 @@ export function useWelliApp() {
     closeSmartConsent: () => patch({ showSmartConsent: false }),
     setConsentGranteeType: (t: ConsentGranteeType) => patch({ consentGranteeType: t }),
     setConsentProviderId: (v: string) => patch({ consentProviderId: v }),
+    setConsentProviderWrId: (v: string) => patch({ consentProviderWrId: v.toUpperCase() }),
     setConsentScope: (v: string) => patch({ consentScope: v }),
     toggleConsentWrite: () => patch((s) => ({ consentAllowWrite: !s.consentAllowWrite })),
     setConsentExpiry: (v: ShareExpiry) => patch({ consentExpiry: v }),
     setConsentPurpose: (v: string) => patch({ consentPurpose: v }),
     grantSmartAccess: async () => {
-      const providerId = state.consentProviderId.trim();
-      if (!providerId || !state.consentScope) {
-        showToast('Enter a provider ID and choose an access scope');
+      const providerName = state.consentProviderId.trim();
+      const providerWrId = state.consentProviderWrId.trim();
+      if (!providerName || !state.consentScope) {
+        showToast('Enter a provider and choose an access scope');
+        return;
+      }
+      if (!providerWrId) {
+        showToast("Enter the provider's WelliRecord ID (e.g. WR-1234-ABCD)");
+        return;
+      }
+      const isIndividual = state.consentGranteeType === 'individual';
+      if (isIndividual && !/^WR-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(providerWrId)) {
+        showToast('WelliRecord ID must be in the format WR-XXXX-XXXX');
         return;
       }
       try {
         const grant = await sharingService.createShareGrant({
-          recipientId: providerId,
+          recipientId: providerWrId,
           recipientType: state.consentGranteeType === 'organization' ? 'facility' : 'doctor',
-          recipientName: providerId,
-          recordIds: [], // scope-based grant, not per-record
+          recipientName: providerName,
+          recordIds: [],
           expiry: state.consentExpiry,
-          otpCode: '', // already verified before this call fires
+          otpCode: '',
         });
         const newShare: ActiveShare = {
           id: grant.id,
-          doctorId: grant.recipientId,
-          doctorName: grant.recipientName,
-          initials: providerId.slice(0, 2).toUpperCase(),
+          doctorId: providerWrId,
+          doctorName: providerName,
+          initials: providerName.slice(0, 2).toUpperCase(),
           recordCount: 0,
           scopeLabel: state.consentScope,
           writeAccess: state.consentAllowWrite,

@@ -93,6 +93,7 @@ export function SmartConsentModal({ app }: { app: WelliApp }) {
   const handleSelectPresetOrg = (org: { id: string; name: string }) => {
     hapticFeedback.selection();
     actions.setConsentProviderId(org.name);
+    actions.setConsentProviderWrId(org.id); // facility's real ID, auto-filled
   };
 
   const triggerDispatch = async (channel: 'phone' | 'email') => {
@@ -124,6 +125,10 @@ export function SmartConsentModal({ app }: { app: WelliApp }) {
   const handleRequestGrant = () => {
     if (!state.consentProviderId.trim()) {
       actions.showToast('Please enter or select a recipient');
+      return;
+    }
+    if (!state.consentProviderWrId.trim()) {
+      actions.showToast(isOrg ? 'Please select a verified partner facility' : "Enter the provider's WelliRecord ID");
       return;
     }
     if (!state.consentScope) {
@@ -314,7 +319,7 @@ export function SmartConsentModal({ app }: { app: WelliApp }) {
             )}
 
             <Text style={[styles.sectionHeading, { color: theme.text }]}>
-              {isOrg ? 'Organization / Facility Name' : 'Doctor Name or MDCN ID'}
+              {isOrg ? 'Organization / Facility Name' : 'Doctor Name'}
             </Text>
             <TextInput
               value={state.consentProviderId}
@@ -322,7 +327,7 @@ export function SmartConsentModal({ app }: { app: WelliApp }) {
               placeholder={
                 isOrg
                   ? 'e.g. Wellicare Hospital & Medical Center'
-                  : 'e.g. Dr. Josh Uche or MDCN-88102'
+                  : 'e.g. Dr. Josh Uche'
               }
               placeholderTextColor={theme.mutedLight}
               style={[
@@ -334,6 +339,42 @@ export function SmartConsentModal({ app }: { app: WelliApp }) {
                 },
               ]}
             />
+
+            {!isOrg && (
+              <>
+                <Text style={[styles.sectionHeading, { color: theme.text }]}>
+                  Provider's WelliRecord ID
+                </Text>
+                <TextInput
+                  value={state.consentProviderWrId}
+                  onChangeText={actions.setConsentProviderWrId}
+                  placeholder="e.g. WR-4912-7K2X"
+                  placeholderTextColor={theme.mutedLight}
+                  autoCapitalize="characters"
+                  style={[
+                    styles.textInput,
+                    {
+                      backgroundColor: theme.surface,
+                      borderColor: theme.border,
+                      color: theme.text,
+                    },
+                  ]}
+                />
+                <Text style={{ fontSize: 11.5, color: theme.mutedLight, marginTop: -14, marginBottom: 18 }}>
+                  Ask the doctor for their WelliRecord Member ID — found on their provider profile.
+                </Text>
+              </>
+            )}
+
+            {isOrg && state.consentProviderWrId ? (
+              <Text style={{ fontSize: 11.5, color: '#059669', fontWeight: '700', marginTop: -14, marginBottom: 18 }}>
+                ✓ Verified partner ID: {state.consentProviderWrId}
+              </Text>
+            ) : isOrg ? (
+              <Text style={{ fontSize: 11.5, color: '#dc2626', marginTop: -14, marginBottom: 18 }}>
+                Select a verified partner above to auto-fill their ID
+              </Text>
+            ) : null}
 
             <Text style={[styles.sectionHeading, { color: theme.text }]}>Clinical Access Scope</Text>
             <View style={styles.gridTwo}>
