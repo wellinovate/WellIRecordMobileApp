@@ -4,7 +4,7 @@
  */
 
 import mongoose from 'mongoose';
-import { User, Account, Profile, FamilyMember, Facility, HealthRecord, Prescription } from './models';
+import { User, Profile, FamilyMember, Facility, HealthRecord, Prescription } from './models';
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/wellirecord';
 

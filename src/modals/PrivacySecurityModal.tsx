@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Modal,
   SafeAreaView,
+  Platform,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { ModalHeader } from '../components/ModalHeader';
@@ -15,6 +16,14 @@ import type { WelliApp } from '../state/useWelliApp';
 export function PrivacySecurityModal({ app }: { app: WelliApp }) {
   const { state, actions } = app;
   if (!state.showPrivacySecurity) return null;
+
+  const deviceName =
+    Platform.OS === 'ios'
+      ? 'iPhone (iOS)'
+      : Platform.OS === 'android'
+      ? 'Android Device'
+      : 'Web Browser';
+  const deviceEmoji = Platform.OS === 'web' ? '💻' : '📱';
 
   return (
     <Modal
@@ -59,7 +68,7 @@ export function PrivacySecurityModal({ app }: { app: WelliApp }) {
               <ToggleRow
                 emoji="🔑"
                 label="Two-Factor Authentication"
-                sub="Add an extra step when signing in"
+                sub="Require SMS / Email OTP when signing in"
                 on={state.twoFactorEnabled}
                 onClick={actions.toggleTwoFactor}
               />
@@ -69,12 +78,12 @@ export function PrivacySecurityModal({ app }: { app: WelliApp }) {
           <SectionLabel>Active Sessions</SectionLabel>
           <View style={styles.sessionCard}>
             <View style={styles.deviceEmoji}>
-              <Text style={{ fontSize: 16 }}>📱</Text>
+              <Text style={{ fontSize: 16 }}>{deviceEmoji}</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.deviceName}>This device</Text>
+              <Text style={styles.deviceName}>{deviceName}</Text>
               <Text style={styles.deviceLocation}>
-                San Francisco, CA · Active now
+                This device · Active now
               </Text>
             </View>
             <View style={styles.currentBadge}>

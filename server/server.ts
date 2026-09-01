@@ -460,7 +460,7 @@ app.post('/api/v1/auth/email/send', async (req: Request, res: Response) => {
 
 // 2d. Generic Transactional Email Notification
 app.post('/api/v1/notifications/email', async (req: Request, res: Response) => {
-  const { to, subject, html, text, type } = req.body;
+  const { to, subject, html, text, type: _type } = req.body;
   if (!to || (!html && !text)) {
     return res.status(400).json({ success: false, message: 'Recipient and content required' });
   }
@@ -1380,6 +1380,94 @@ app.post('/api/v1/shares/grants', async (req: Request, res: Response) => {
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err });
+  }
+});
+
+// 2FA Preference Toggle Endpoint
+app.post('/api/v1/auth/2fa/toggle', async (req: Request, res: Response) => {
+  const { twoFactorEnabled, email, phone } = req.body;
+  const token = req.headers.authorization?.replace('Bearer ', '');
+
+  try {
+    let decoded: any = null;
+    if (token) {
+      try {
+        decoded = jwt.verify(token, JWT_SECRET);
+      } catch {}
+    }
+
+    const userId = decoded?.userId || decoded?.id;
+    const targetEmail = decoded?.email || email;
+    const targetPhone = decoded?.phoneNumber || phone;
+
+    if (mongoose.connection.readyState === 1) {
+      if (userId) {
+        await User.findByIdAndUpdate(userId, { twoFactorEnabled: Boolean(twoFactorEnabled) });
+        await Account.findOneAndUpdate({ userId }, { twoFactorEnabled: Boolean(twoFactorEnabled) });
+      } else if (targetEmail) {
+        await User.findOneAndUpdate({ email: targetEmail }, { twoFactorEnabled: Boolean(twoFactorEnabled) });
+        await Account.findOneAndUpdate({ email: targetEmail }, { twoFactorEnabled: Boolean(twoFactorEnabled) });
+      } else if (targetPhone) {
+        const normalized = normalizeNigerianPhone(targetPhone);
+        await User.findOneAndUpdate({ phoneNumber: normalized }, { twoFactorEnabled: Boolean(twoFactorEnabled) });
+        await Account.findOneAndUpdate({ phone: normalized }, { twoFactorEnabled: Boolean(twoFactorEnabled) });
+      }
+    }
+
+    return res.json({
+      success: true,
+      twoFactorEnabled: Boolean(twoFactorEnabled),
+      message: `Two-Factor Authentication ${twoFactorEnabled ? 'enabled' : 'disabled'} successfully.`,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message || 'Failed to update 2FA setting' });
+  }
+});
+
+// Account Deletion Endpoint (NDPR Right to Erasure)
+app.delete('/api/v1/auth/account', async (req: Request, res: Response) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+
+  try {
+    let decoded: any = null;
+    if (token) {
+      try {
+        decoded = jwt.verify(token, JWT_SECRET);
+      } catch {}
+    }
+
+    const userId = decoded?.userId || decoded?.id;
+    const email = decoded?.email || req.body?.email;
+
+    if (mongoose.connection.readyState === 1) {
+      if (userId) {
+        await User.findByIdAndDelete(userId);
+        await Account.findOneAndDelete({ userId });
+        await Profile.deleteMany({ userId });
+        await UserProfile.deleteMany({ userId });
+        await FamilyMember.deleteMany({ userId });
+        await HealthRecord.deleteMany({ userId });
+        await Prescription.deleteMany({ userId });
+      } else if (email) {
+        const user = await User.findOne({ email });
+        if (user) {
+          await User.findByIdAndDelete(user._id);
+          await Account.findOneAndDelete({ userId: user._id });
+          await Profile.deleteMany({ userId: user._id });
+          await UserProfile.deleteMany({ userId: user._id });
+          await FamilyMember.deleteMany({ userId: user._id });
+          await HealthRecord.deleteMany({ userId: user._id });
+          await Prescription.deleteMany({ userId: user._id });
+        }
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: 'Account and associated patient vault records successfully erased in compliance with NDPR.',
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message || 'Failed to delete account' });
   }
 });
 

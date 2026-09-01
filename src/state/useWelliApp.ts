@@ -1,16 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Linking, Share } from 'react-native';
+import { Alert, Linking, Share } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import {
   CONSENT_SCOPES,
   DOCTORS,
   FACILITIES,
-  FAMILY,
-  IMMUNIZATION_SCHEDULE,
   LINKED_ACCOUNTS,
   ONBOARDING,
-  RECORDS,
-  VITALS_LOGS,
 } from '../data/mockData';
 import type {
   ActiveShare,
@@ -33,6 +29,7 @@ import { bridgeLinkFor, generateBridgeCode } from '../utils/bridgeCode';
 import { EXPIRY_SHORT_LABEL_MAP } from '../utils/expiry';
 import { hapticFeedback } from '../utils/haptics';
 import { storage } from '../utils/storage';
+import { authenticateWithBiometrics, getBiometricStatus } from '../utils/biometrics';
 import { authService, type AuthSession } from '../services/authService';
 import { apiClient, setAuthToken } from '../services/apiClient';
 import { recordsService } from '../services/recordsService';
@@ -325,6 +322,12 @@ export function useWelliApp() {
         }
         const dm = await storage.getItem('welli_dark_mode');
         if (dm !== null) patch({ darkMode: dm === '1' });
+
+        const bio = await storage.getItem('welli_face_id');
+        if (bio !== null) patch({ faceIdEnabled: bio === '1' });
+
+        const tfa = await storage.getItem('welli_2fa_enabled');
+        if (tfa !== null) patch({ twoFactorEnabled: tfa === '1' });
         
         // Restore active user session from secure storage
         const savedSession = await authService.getSavedSession();
@@ -989,12 +992,20 @@ export function useWelliApp() {
     closePrivacyPolicy: () => patch({ showPrivacyPolicy: false }),
     openPrivacySecurity: () => patch({ showPrivacySecurity: true }),
     closePrivacySecurity: () => patch({ showPrivacySecurity: false }),
-    toggleTwoFactor: () => {
-      setState((s) => {
-        const twoFactorEnabled = !s.twoFactorEnabled;
-        if (twoFactorEnabled) showToast('Two-factor authentication enabled');
-        return { ...s, twoFactorEnabled };
-      });
+    toggleTwoFactor: async () => {
+      hapticFeedback.selection();
+      const nextVal = !state.twoFactorEnabled;
+      patch({ twoFactorEnabled: nextVal });
+      try {
+        await authService.toggleTwoFactor(nextVal);
+        showToast(
+          nextVal
+            ? 'Two-factor authentication enabled (SMS/Email OTP required on sign-in)'
+            : 'Two-factor authentication disabled'
+        );
+      } catch {
+        showToast(`2FA ${nextVal ? 'enabled' : 'disabled'}`);
+      }
     },
     downloadMyData: () => {
       hapticFeedback.selection();
@@ -1005,7 +1016,62 @@ export function useWelliApp() {
       patch({ showVaultExport: true });
     },
     closeVaultExport: () => patch({ showVaultExport: false }),
-    requestAccountDeletion: () => showToast('Contact WelliRecord support to delete your account'),
+    requestAccountDeletion: () => {
+      hapticFeedback.warning();
+      Alert.alert(
+        'Delete Account & Erasure Request',
+        'In compliance with Nigeria Data Protection Regulation (NDPR) Right to Erasure, deleting your account permanently purges all health records, family vault data, and cryptographic keys.\n\nTo request permanent erasure, you can email our Data Protection Officer or wipe this device session now.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Email Privacy Officer',
+            onPress: () => {
+              Linking.openURL(
+                'mailto:privacy@wellirecord.com?subject=NDPR%20Account%20Deletion%20Request%20-%20WelliRecord'
+              ).catch(() => {});
+            },
+          },
+          {
+            text: 'Wipe & Sign Out',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await authService.deleteAccount();
+              } catch {}
+              patch({
+                isAuthenticated: false,
+                user: null,
+                loggedOut: true,
+                showPrivacySecurity: false,
+                familyMembers: [DEFAULT_PRIMARY_USER],
+                recordsList: [],
+                vitalsLogs: [],
+                twoFactorEnabled: false,
+                faceIdEnabled: false,
+              });
+              showToast('Account session and cached vault data cleared');
+            },
+          },
+        ]
+      );
+    },
+    deleteAccount: async () => {
+      try {
+        await authService.deleteAccount();
+      } catch {}
+      patch({
+        isAuthenticated: false,
+        user: null,
+        loggedOut: true,
+        showPrivacySecurity: false,
+        familyMembers: [DEFAULT_PRIMARY_USER],
+        recordsList: [],
+        vitalsLogs: [],
+        twoFactorEnabled: false,
+        faceIdEnabled: false,
+      });
+      showToast('Account session and cached vault data cleared');
+    },
 
     openLinkedAccounts: () => patch({ showLinkedAccounts: true }),
     closeLinkedAccounts: () => patch({ showLinkedAccounts: false }),
@@ -1157,13 +1223,28 @@ export function useWelliApp() {
       });
     },
 
-    toggleFaceId: () => {
+    toggleFaceId: async () => {
       hapticFeedback.selection();
-      setState((s) => {
-        const faceIdEnabled = !s.faceIdEnabled;
-        if (faceIdEnabled) showToast('Biometric Lock enabled — optional, off by default');
-        return { ...s, faceIdEnabled, showLockScreen: faceIdEnabled };
-      });
+      const current = state.faceIdEnabled;
+      if (!current) {
+        const status = await getBiometricStatus();
+        if (!status.isAvailable && status.biometryType === 'none') {
+          showToast(`${status.label || 'Biometric authentication'} is not available on this device`);
+          return;
+        }
+        const auth = await authenticateWithBiometrics('Enable Biometric Lock for WelliRecord');
+        if (auth.success) {
+          await storage.setItem('welli_face_id', '1');
+          patch({ faceIdEnabled: true });
+          showToast(`${status.label || 'Biometric Lock'} enabled`);
+        } else {
+          showToast('Biometric authentication cancelled');
+        }
+      } else {
+        await storage.setItem('welli_face_id', '0');
+        patch({ faceIdEnabled: false, showLockScreen: false });
+        showToast('Biometric Lock disabled');
+      }
     },
     unlockWithFaceId: () => {
       hapticFeedback.success();

@@ -356,6 +356,47 @@ export const authService = {
   },
 
   /**
+   * Toggles two-factor authentication on the backend and persists local preference
+   */
+  async toggleTwoFactor(enabled: boolean): Promise<boolean> {
+    try {
+      await storage.setItem('welli_2fa_enabled', enabled ? '1' : '0');
+    } catch {}
+
+    if (CONFIG.demoMode) {
+      return enabled;
+    }
+
+    try {
+      const res = await apiClient.post<{ success: boolean; twoFactorEnabled: boolean }>('/auth/2fa/toggle', {
+        twoFactorEnabled: enabled,
+      });
+      return Boolean(res?.twoFactorEnabled ?? enabled);
+    } catch {
+      return enabled;
+    }
+  },
+
+  /**
+   * Permanently deletes user account and erases vault records under NDPR Right to Erasure
+   */
+  async deleteAccount(): Promise<boolean> {
+    try {
+      if (!CONFIG.demoMode) {
+        await apiClient.delete<{ success: boolean }>('/auth/account');
+      }
+    } catch {}
+
+    await this.logout();
+    try {
+      await storage.removeItem('welli_active_shares');
+      await storage.removeItem('welli_face_id');
+      await storage.removeItem('welli_2fa_enabled');
+    } catch {}
+    return true;
+  },
+
+  /**
    * Clears the current session
    */
   async logout(): Promise<void> {

@@ -36,7 +36,6 @@ import { LoggedOutScreen } from './modals/LoggedOutScreen';
 import { BookAppointmentModal } from './modals/BookAppointmentModal';
 import { BillingModal } from './modals/BillingModal';
 import { InvoiceDetailModal } from './modals/InvoiceDetailModal';
-import { WelcomeHomeModal } from './modals/WelcomeHomeModal';
 import { PrintLabResultModal } from './modals/PrintLabResultModal';
 import { EmailReportModal } from './modals/EmailReportModal';
 import { PrescriptionRefillModal } from './modals/PrescriptionRefillModal';

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -10,8 +10,6 @@ import {
   SafeAreaView,
   ActivityIndicator,
   FlatList,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { ModalHeader } from '../components/ModalHeader';
