@@ -5,6 +5,7 @@ import {
   CONSENT_SCOPES,
   DOCTORS,
   FACILITIES,
+  INITIAL_NOTIFICATIONS,
   LINKED_ACCOUNTS,
   ONBOARDING,
 } from '../data/mockData';
@@ -282,7 +283,7 @@ const initialState: AppState = {
   showOnboarding: false,
   onboardingStep: 0,
   showNotifications: false,
-  notifications: [],
+  notifications: INITIAL_NOTIFICATIONS,
   darkMode: false,
   faceIdEnabled: false,
   showLockScreen: false,
@@ -1209,10 +1210,84 @@ export function useWelliApp() {
       actions.onboardingNext();
     },
 
-    toggleNotifications: () => patch((s) => ({ showNotifications: !s.showNotifications })),
+    toggleNotifications: () => {
+      hapticFeedback.selection();
+      patch((s) => ({ showNotifications: !s.showNotifications }));
+    },
     closeNotifications: () => patch({ showNotifications: false }),
-    dismissNotification: (id: string) =>
-      patch((s) => ({ notifications: s.notifications.filter((n) => n.id !== id) })),
+    dismissNotification: (id: string) => {
+      hapticFeedback.selection();
+      patch((s) => ({ notifications: s.notifications.filter((n) => n.id !== id) }));
+    },
+    markNotificationAsRead: (id: string) => {
+      patch((s) => ({
+        notifications: s.notifications.map((n) =>
+          n.id === id ? { ...n, read: true } : n
+        ),
+      }));
+    },
+    markAllNotificationsAsRead: () => {
+      hapticFeedback.selection();
+      patch((s) => ({
+        notifications: s.notifications.map((n) => ({ ...n, read: true })),
+      }));
+      showToast('All notifications marked as read');
+    },
+    clearAllNotifications: () => {
+      hapticFeedback.selection();
+      patch({ notifications: [] });
+      showToast('Notifications cleared');
+    },
+    addNotification: (notif: Partial<Notification>) => {
+      const newNotif: Notification = {
+        id: notif.id || `notif-${Date.now()}`,
+        type: notif.type || 'system',
+        emoji: notif.emoji || '🔔',
+        tint: notif.tint || '#e0f2fe',
+        categoryLabel: notif.categoryLabel || 'System Notification',
+        title: notif.title || 'Notification',
+        desc: notif.desc || '',
+        time: notif.time || 'Just now',
+        read: false,
+        actionLabel: notif.actionLabel,
+        targetTab: notif.targetTab,
+        targetModal: notif.targetModal,
+        targetId: notif.targetId,
+      };
+      hapticFeedback.success();
+      patch((s) => ({
+        notifications: [newNotif, ...s.notifications],
+      }));
+    },
+    handleNotificationAction: (notif: Notification) => {
+      hapticFeedback.selection();
+      patch((s) => ({
+        showNotifications: false,
+        notifications: s.notifications.map((n) =>
+          n.id === notif.id ? { ...n, read: true } : n
+        ),
+      }));
+
+      if (notif.targetTab) {
+        actions.setTab(notif.targetTab);
+      }
+
+      if (notif.targetTab === 'records' && notif.targetId) {
+        patch({ recordDetailId: notif.targetId });
+      } else if (notif.targetModal === 'proxyLog') {
+        patch({ showProxyLog: true });
+      } else if (notif.targetModal === 'activity') {
+        patch({ showActivity: true });
+      } else if (notif.targetModal === 'billing') {
+        patch({ showBilling: true });
+      } else if (notif.targetModal === 'emergency') {
+        patch({ showEmergency: true });
+      } else if (notif.targetModal === 'linkedAccounts') {
+        patch({ showLinkedAccounts: true });
+      } else if (notif.targetModal === 'family') {
+        patch({ showFamilyAccess: true });
+      }
+    },
 
     toggleDarkMode: () => {
       hapticFeedback.selection();

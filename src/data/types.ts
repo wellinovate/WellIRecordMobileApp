@@ -186,13 +186,31 @@ export interface ActiveShare {
 
 export type ConsentGranteeType = 'individual' | 'organization';
 
+export type NotificationCategory =
+  | 'referral'
+  | 'lab_result'
+  | 'critical_alert'
+  | 'consent'
+  | 'appointment'
+  | 'prescription'
+  | 'immunization'
+  | 'claim'
+  | 'system';
+
 export interface Notification {
   id: string;
+  type?: NotificationCategory;
   emoji: string;
   tint: string;
+  categoryLabel?: string;
   title: string;
   desc: string;
   time: string;
+  read?: boolean;
+  actionLabel?: string;
+  targetTab?: 'home' | 'records' | 'share' | 'care' | 'profile';
+  targetModal?: 'proxyLog' | 'activity' | 'billing' | 'family' | 'linkedAccounts' | 'emergency';
+  targetId?: string;
 }
 
 export interface LogEntry {
