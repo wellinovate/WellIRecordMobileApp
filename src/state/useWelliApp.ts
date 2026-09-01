@@ -37,6 +37,7 @@ import { recordsService } from '../services/recordsService';
 import { profileService } from '../services/profileService';
 import { familyService } from '../services/familyService';
 import { facilityService } from '../services/facilityService';
+import { sharingService } from '../services/sharingService';
 import type { CareFacility } from '../data/types';
 
 export interface AppState {
@@ -692,30 +693,42 @@ export function useWelliApp() {
     toggleConsentWrite: () => patch((s) => ({ consentAllowWrite: !s.consentAllowWrite })),
     setConsentExpiry: (v: ShareExpiry) => patch({ consentExpiry: v }),
     setConsentPurpose: (v: string) => patch({ consentPurpose: v }),
-    grantSmartAccess: () => {
+    grantSmartAccess: async () => {
       const providerId = state.consentProviderId.trim();
       if (!providerId || !state.consentScope) {
         showToast('Enter a provider ID and choose an access scope');
         return;
       }
-      const newShare: ActiveShare = {
-        id: 's' + Date.now(),
-        doctorId: 'consent-' + Date.now(),
-        doctorName: providerId,
-        initials: providerId.slice(0, 2).toUpperCase(),
-        recordCount: 0,
-        scopeLabel: state.consentScope,
-        writeAccess: state.consentAllowWrite,
-        purpose: state.consentPurpose.trim() || undefined,
-        expiresLabel: EXPIRY_SHORT_LABEL_MAP[state.consentExpiry],
-        ownerId: state.activeFamilyId,
-      };
-      setState((s) => {
-        const activeShares = [newShare, ...s.activeShares];
-        persistShares(activeShares);
-        return { ...s, activeShares, showSmartConsent: false };
-      });
-      showToast('Access granted');
+      try {
+        const grant = await sharingService.createShareGrant({
+          recipientId: providerId,
+          recipientType: state.consentGranteeType === 'organization' ? 'facility' : 'doctor',
+          recipientName: providerId,
+          recordIds: [], // scope-based grant, not per-record
+          expiry: state.consentExpiry,
+          otpCode: '', // already verified before this call fires
+        });
+        const newShare: ActiveShare = {
+          id: grant.id,
+          doctorId: grant.recipientId,
+          doctorName: grant.recipientName,
+          initials: providerId.slice(0, 2).toUpperCase(),
+          recordCount: 0,
+          scopeLabel: state.consentScope,
+          writeAccess: state.consentAllowWrite,
+          purpose: state.consentPurpose.trim() || undefined,
+          expiresLabel: EXPIRY_SHORT_LABEL_MAP[state.consentExpiry],
+          ownerId: state.activeFamilyId,
+        };
+        setState((s) => {
+          const activeShares = [newShare, ...s.activeShares];
+          persistShares(activeShares);
+          return { ...s, activeShares, showSmartConsent: false };
+        });
+        showToast('Access granted');
+      } catch (err: any) {
+        showToast(err?.message || 'Failed to grant access. Please try again.');
+      }
     },
 
     openEmergency: () => patch({ showEmergency: true }),

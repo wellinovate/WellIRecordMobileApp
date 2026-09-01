@@ -239,6 +239,23 @@ export const authService = {
   },
 
   /**
+   * Verifies an OTP code without altering the logged in session user details
+   */
+  async verifyOtpOnly(identifier: string, code: string): Promise<{ success: boolean; message?: string }> {
+    if (CONFIG.demoMode) {
+      await new Promise((res) => setTimeout(res, 300));
+      return { success: true };
+    }
+    const isEmail = identifier.includes('@');
+    const normalized = isEmail ? identifier.trim().toLowerCase() : normalizeNigerianPhone(identifier);
+    const res = await apiClient.post<any>('/auth/otp/verify', {
+      ...(isEmail ? { email: normalized } : { phoneNumber: normalized }),
+      code,
+    });
+    return { success: true, message: res?.message };
+  },
+
+  /**
    * Signs in user with Email/Phone and Password
    */
   async loginWithPassword(identifier: string, password?: string): Promise<AuthSession> {
