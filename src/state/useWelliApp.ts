@@ -1119,7 +1119,13 @@ export function useWelliApp() {
     setCareFacilityType: (t: string) => patch({ careFacilityType: t }),
     setCareSpecialty: (s: string) => patch({ careSpecialty: s }),
     setCareQuery: (value: string) => patch({ careQuery: value }),
-    joinCall: () => patch({ inCall: true, callMuted: false, callCameraOff: false, callDurationSec: 0 }),
+    joinCall: () => {
+      // No real video/telehealth backend exists yet on mobile either. This
+      // used to flip into a fake call screen with a hardcoded doctor and
+      // patient name. Match the web app's approach: don't enter a call
+      // screen that looks live when nothing real is happening.
+      showToast('Video telehealth is coming soon — not yet available');
+    },
     endCall: () => {
       patch({ inCall: false });
       showToast('Call ended');
