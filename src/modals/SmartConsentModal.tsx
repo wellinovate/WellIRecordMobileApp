@@ -11,6 +11,8 @@ import {
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { ModalHeader } from '../components/ModalHeader';
+import { useTheme } from '../theme/ThemeContext';
+import { hapticFeedback } from '../utils/haptics';
 import { EXPIRY_LABEL_MAP } from '../utils/expiry';
 import type { WelliApp } from '../state/useWelliApp';
 import type { ShareExpiry } from '../data/types';
@@ -18,69 +20,38 @@ import type { ShareExpiry } from '../data/types';
 const EXPIRY_DEFS: [ShareExpiry, string, string?][] = [
   ['24h', '24 Hours', 'Emergency'],
   ['7d', '7 Days', 'Suggested'],
-  ['30d', '30 Days'],
-  ['custom', '90 Days'],
+  ['30d', '30 Days', 'Episode'],
+  ['custom', '90 Days', 'Extended'],
 ];
 
-function Tile({
-  label,
-  selected,
-  onClick,
-  badge,
-  solid,
-}: {
-  label: string;
-  selected: boolean;
-  onClick: () => void;
-  badge?: string;
-  solid?: boolean;
-}) {
-  return (
-    <View style={styles.tileWrapper}>
-      {badge ? (
-        <View style={styles.tileBadge}>
-          <Text style={styles.tileBadgeText}>{badge}</Text>
-        </View>
-      ) : null}
-      <TouchableOpacity
-        activeOpacity={0.7}
-        onPress={onClick}
-        style={[
-          styles.tile,
-          {
-            borderColor: selected ? '#10b981' : '#e2e8f0',
-            backgroundColor: selected
-              ? solid
-                ? '#059669'
-                : '#ecfdf5'
-              : '#ffffff',
-          },
-        ]}
-      >
-        <Text
-          style={[
-            styles.tileText,
-            {
-              color: selected
-                ? solid
-                  ? '#ffffff'
-                  : '#059669'
-                : '#0f172a',
-            },
-          ]}
-        >
-          {label}
-        </Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
+const PRESET_ORGS = [
+  { id: 'fac-lagoon', name: 'Lagoon Hospital Lekki', tag: 'Hospital' },
+  { id: 'fac-reddington', name: 'Reddington Multi-Specialist Hospital', tag: 'Hospital' },
+  { id: 'fac-synlab', name: 'SYNLAB Diagnostic Laboratories', tag: 'Diagnostics' },
+  { id: 'fac-evercare', name: 'Evercare Hospital Lekki', tag: 'Tertiary' },
+  { id: 'fac-st-nicholas', name: 'St. Nicholas Hospital Lagos Island', tag: 'Specialist' },
+];
 
 export function SmartConsentModal({ app }: { app: WelliApp }) {
+  const theme = useTheme();
   const { state, actions, consentScopes } = app;
   if (!state.showSmartConsent) return null;
 
   const isOrg = state.consentGranteeType === 'organization';
+
+  const handleSelectPresetOrg = (org: { id: string; name: string }) => {
+    hapticFeedback.selection();
+    actions.setConsentProviderId(org.name);
+  };
+
+  const handleGrant = () => {
+    if (!state.consentProviderId.trim()) {
+      actions.showToast('Please enter or select a recipient');
+      return;
+    }
+    hapticFeedback.success();
+    actions.grantSmartAccess();
+  };
 
   return (
     <Modal
@@ -89,7 +60,7 @@ export function SmartConsentModal({ app }: { app: WelliApp }) {
       transparent={false}
       onRequestClose={actions.closeSmartConsent}
     >
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]}>
         <ModalHeader
           title="Smart Consent Controls"
           onClose={actions.closeSmartConsent}
@@ -99,63 +70,208 @@ export function SmartConsentModal({ app }: { app: WelliApp }) {
         <ScrollView
           style={styles.scrollArea}
           contentContainerStyle={styles.scrollInner}
+          showsVerticalScrollIndicator={false}
         >
-          <View style={styles.infoBanner}>
-            <Text style={{ fontSize: 16 }}>🔗</Text>
-            <Text style={styles.infoBannerText}>
-              Grant access to a provider or organization.
+          {/* Header Banner */}
+          <View
+            style={[
+              styles.infoBanner,
+              {
+                backgroundColor: theme.darkMode
+                  ? 'rgba(14, 165, 233, 0.08)'
+                  : '#EEF4FF',
+                borderColor: theme.darkMode
+                  ? 'rgba(14, 165, 233, 0.25)'
+                  : '#DBEAFE',
+              },
+            ]}
+          >
+            <Text style={{ fontSize: 18 }}>🔐</Text>
+            <Text style={[styles.infoBannerText, { color: theme.darkMode ? '#7dd3fc' : '#1E3A8A' }]}>
+              Grant cryptographic, time-bound access to a verified hospital or attending physician under NDPR guidelines.
             </Text>
           </View>
 
-          <Text style={styles.sectionHeading}>Grantee Type</Text>
-          <View style={styles.gridTwo}>
-            <Tile
-              label="Individual Provider"
-              selected={!isOrg}
-              onClick={() => actions.setConsentGranteeType('individual')}
-            />
-            <Tile
-              label="Organization"
-              selected={isOrg}
-              onClick={() => actions.setConsentGranteeType('organization')}
-            />
+          {/* Grantee Type Selector */}
+          <Text style={[styles.sectionHeading, { color: theme.text }]}>Grantee Type</Text>
+          <View style={styles.segmentedRow}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => {
+                hapticFeedback.selection();
+                actions.setConsentGranteeType('individual');
+              }}
+              style={[
+                styles.segmentBtn,
+                !isOrg
+                  ? { backgroundColor: '#041E42', borderColor: '#041E42' }
+                  : { backgroundColor: theme.surface, borderColor: theme.border },
+              ]}
+            >
+              <Text style={{ fontSize: 15 }}>👨‍⚕️</Text>
+              <Text
+                style={[
+                  styles.segmentBtnText,
+                  { color: !isOrg ? '#FFFFFF' : theme.text },
+                ]}
+              >
+                Individual Doctor
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => {
+                hapticFeedback.selection();
+                actions.setConsentGranteeType('organization');
+              }}
+              style={[
+                styles.segmentBtn,
+                isOrg
+                  ? { backgroundColor: '#041E42', borderColor: '#041E42' }
+                  : { backgroundColor: theme.surface, borderColor: theme.border },
+              ]}
+            >
+              <Text style={{ fontSize: 15 }}>🏥</Text>
+              <Text
+                style={[
+                  styles.segmentBtnText,
+                  { color: isOrg ? '#FFFFFF' : theme.text },
+                ]}
+              >
+                Healthcare Facility
+              </Text>
+            </TouchableOpacity>
           </View>
 
-          <Text style={styles.sectionHeading}>
-            {isOrg ? 'Organization ID' : 'Provider User ID'}
+          {/* Quick Facility Presets (if Organization selected) */}
+          {isOrg && (
+            <View style={{ marginBottom: 14 }}>
+              <Text style={[styles.fieldSubLabel, { color: theme.mutedLight }]}>
+                POPULAR HEALTHCARE PARTNERS
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.presetScroll}>
+                {PRESET_ORGS.map((org) => {
+                  const isSelected = state.consentProviderId === org.name;
+                  return (
+                    <TouchableOpacity
+                      key={org.id}
+                      activeOpacity={0.7}
+                      onPress={() => handleSelectPresetOrg(org)}
+                      style={[
+                        styles.presetChip,
+                        isSelected
+                          ? { backgroundColor: '#059669', borderColor: '#059669' }
+                          : { backgroundColor: theme.surface, borderColor: theme.border },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.presetChipText,
+                          { color: isSelected ? '#FFFFFF' : theme.text },
+                        ]}
+                      >
+                        {org.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
+
+          {/* Recipient Input */}
+          <Text style={[styles.sectionHeading, { color: theme.text }]}>
+            {isOrg ? 'Organization / Facility Name' : 'Doctor Name or MDCN ID'}
           </Text>
           <TextInput
             value={state.consentProviderId}
             onChangeText={actions.setConsentProviderId}
-            placeholder={isOrg ? 'Enter organization ID' : 'Enter provider user ID'}
-            placeholderTextColor="#94a3b8"
-            style={styles.textInput}
+            placeholder={
+              isOrg
+                ? 'e.g. Lagoon Hospital Lekki or St. Nicholas'
+                : 'e.g. Dr. Sarah Chen or MDCN-88102'
+            }
+            placeholderTextColor={theme.mutedLight}
+            style={[
+              styles.textInput,
+              {
+                backgroundColor: theme.surface,
+                borderColor: theme.border,
+                color: theme.text,
+              },
+            ]}
           />
 
-          <Text style={styles.sectionHeading}>Access Scope</Text>
+          {/* Access Scope Selector */}
+          <Text style={[styles.sectionHeading, { color: theme.text }]}>Clinical Access Scope</Text>
           <View style={styles.gridTwo}>
-            {consentScopes.map((scope) => (
-              <Tile
-                key={scope}
-                label={scope}
-                selected={state.consentScope === scope}
-                onClick={() => actions.setConsentScope(scope)}
-              />
-            ))}
+            {consentScopes.map((scope) => {
+              const selected = state.consentScope === scope;
+              return (
+                <TouchableOpacity
+                  key={scope}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    hapticFeedback.selection();
+                    actions.setConsentScope(scope);
+                  }}
+                  style={[
+                    styles.scopeCard,
+                    {
+                      backgroundColor: selected
+                        ? theme.darkMode
+                          ? 'rgba(16, 185, 129, 0.15)'
+                          : '#ECFDF5'
+                        : theme.surface,
+                      borderColor: selected ? '#10B981' : theme.border,
+                    },
+                  ]}
+                >
+                  <View style={styles.scopeCardHeader}>
+                    <Text style={styles.scopeIcon}>
+                      {scope === 'All' ? '🗂️' : scope === 'Lab Results' ? '🧪' : scope === 'Prescriptions' ? '💊' : '📋'}
+                    </Text>
+                    {selected && (
+                      <View style={styles.checkPill}>
+                        <Text style={styles.checkPillText}>✓</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text
+                    style={[
+                      styles.scopeLabel,
+                      { color: selected ? '#059669' : theme.text },
+                    ]}
+                  >
+                    {scope}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
-          {/* Allow Write Access Toggle */}
+          {/* Write Access Permissions */}
           <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={actions.toggleConsentWrite}
-            style={styles.writeAccessCard}
+            activeOpacity={0.75}
+            onPress={() => {
+              hapticFeedback.selection();
+              actions.toggleConsentWrite();
+            }}
+            style={[
+              styles.writeAccessCard,
+              {
+                backgroundColor: theme.surface,
+                borderColor: state.consentAllowWrite ? '#059669' : theme.border,
+              },
+            ]}
           >
             <View
               style={[
                 styles.writeCheckbox,
                 {
-                  borderColor: state.consentAllowWrite ? '#059669' : '#cbd5e1',
-                  backgroundColor: state.consentAllowWrite ? '#059669' : '#ffffff',
+                  borderColor: state.consentAllowWrite ? '#059669' : theme.border,
+                  backgroundColor: state.consentAllowWrite ? '#059669' : 'transparent',
                 },
               ]}
             >
@@ -173,47 +289,101 @@ export function SmartConsentModal({ app }: { app: WelliApp }) {
               )}
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.writeTitle}>Allow write access</Text>
-              <Text style={styles.writeSub}>
-                This provider can add new records (e.g. lab orders, prescriptions) for you, not just view existing ones. Off by default.
+              <Text style={[styles.writeTitle, { color: theme.text }]}>
+                Allow Provider Write Access
+              </Text>
+              <Text style={[styles.writeSub, { color: theme.muted }]}>
+                Allows this facility to upload verified lab reports, prescriptions, and encounter discharge summaries directly into your vault.
               </Text>
             </View>
           </TouchableOpacity>
 
-          <Text style={styles.sectionHeading}>Auto-Expire Duration</Text>
+          {/* Auto-Expire Duration Selector */}
+          <Text style={[styles.sectionHeading, { color: theme.text }]}>
+            Auto-Expire Duration
+          </Text>
           <View style={styles.gridTwo}>
-            {EXPIRY_DEFS.map(([val, label, badge]) => (
-              <Tile
-                key={val}
-                label={label}
-                badge={badge}
-                selected={state.consentExpiry === val}
-                onClick={() => actions.setConsentExpiry(val)}
-                solid
-              />
-            ))}
+            {EXPIRY_DEFS.map(([val, label, badge]) => {
+              const selected = state.consentExpiry === val;
+              return (
+                <TouchableOpacity
+                  key={val}
+                  activeOpacity={0.75}
+                  onPress={() => {
+                    hapticFeedback.selection();
+                    actions.setConsentExpiry(val);
+                  }}
+                  style={[
+                    styles.expiryCard,
+                    {
+                      backgroundColor: selected ? '#059669' : theme.surface,
+                      borderColor: selected ? '#059669' : theme.border,
+                    },
+                  ]}
+                >
+                  {badge && (
+                    <View
+                      style={[
+                        styles.badgeTag,
+                        {
+                          backgroundColor: selected
+                            ? 'rgba(255,255,255,0.25)'
+                            : '#0EA5E9',
+                        },
+                      ]}
+                    >
+                      <Text style={styles.badgeTagText}>{badge}</Text>
+                    </View>
+                  )}
+                  <Text
+                    style={[
+                      styles.expiryLabel,
+                      { color: selected ? '#FFFFFF' : theme.text },
+                    ]}
+                  >
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
-          <Text style={styles.expireNotice}>
-            Expires {EXPIRY_LABEL_MAP[state.consentExpiry]}.
+          <Text style={[styles.expireNotice, { color: theme.mutedLight }]}>
+            Access automatically terminates after {EXPIRY_LABEL_MAP[state.consentExpiry]}.
           </Text>
 
-          <Text style={styles.sectionHeading}>Purpose</Text>
+          {/* Clinical Purpose Input */}
+          <Text style={[styles.sectionHeading, { color: theme.text }]}>Clinical Purpose</Text>
           <TextInput
             value={state.consentPurpose}
             onChangeText={actions.setConsentPurpose}
-            placeholder="Example: Second opinion, emergency treatment, lab review..."
-            placeholderTextColor="#94a3b8"
+            placeholder="e.g. Cardiology review, emergency admission, second opinion..."
+            placeholderTextColor={theme.mutedLight}
             multiline
             numberOfLines={3}
-            style={[styles.textInput, styles.textArea]}
+            style={[
+              styles.textInput,
+              styles.textArea,
+              {
+                backgroundColor: theme.surface,
+                borderColor: theme.border,
+                color: theme.text,
+              },
+            ]}
           />
 
+          {/* Submit Grant Button */}
           <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={actions.grantSmartAccess}
+            activeOpacity={0.85}
+            onPress={handleGrant}
             style={styles.grantBtn}
           >
-            <Text style={styles.grantBtnText}>Grant Access</Text>
+            <Svg width={18} height={18} viewBox="0 0 20 20" fill="none">
+              <Path
+                d="M10 2a8 8 0 100 16 8 8 0 000-16zm-1 11l-3-3 1.41-1.41L10 11.17l4.59-4.58L16 8l-7 5z"
+                fill="#ffffff"
+              />
+            </Svg>
+            <Text style={styles.grantBtnText}>Authorize & Grant Consent</Text>
           </TouchableOpacity>
         </ScrollView>
       </SafeAreaView>
@@ -224,159 +394,204 @@ export function SmartConsentModal({ app }: { app: WelliApp }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 10,
-  },
-  headerTitle: {
-    fontSize: 19,
-    fontWeight: '800',
-    color: '#0f172a',
-  },
-  closeBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#f1f5f9',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   scrollArea: {
     flex: 1,
   },
   scrollInner: {
     paddingHorizontal: 20,
-    paddingBottom: 36,
+    paddingTop: 8,
+    paddingBottom: 40,
   },
   infoBanner: {
-    borderRadius: 12,
-    backgroundColor: '#eef4ff',
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#dbeafe',
-    paddingVertical: 11,
-    paddingHorizontal: 13,
-    marginBottom: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9,
-  },
-  infoBannerText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#1e3a8a',
-    flex: 1,
-  },
-  sectionHeading: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#0f172a',
-    marginBottom: 10,
-  },
-  gridTwo: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 20,
-  },
-  tileWrapper: {
-    width: '48%',
-    position: 'relative',
-  },
-  tileBadge: {
-    position: 'absolute',
-    top: -7,
-    right: 8,
-    zIndex: 10,
-    backgroundColor: '#2563eb',
-    borderRadius: 999,
-    paddingVertical: 2,
-    paddingHorizontal: 7,
-  },
-  tileBadgeText: {
-    color: '#ffffff',
-    fontSize: 9.5,
-    fontWeight: '700',
-  },
-  tile: {
-    paddingVertical: 13,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tileText: {
-    fontSize: 13.5,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  textInput: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 14,
+    marginBottom: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  infoBannerText: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    flex: 1,
+    lineHeight: 18,
+  },
+  sectionHeading: {
+    fontSize: 14.5,
+    fontWeight: '800',
+    marginBottom: 10,
+    letterSpacing: -0.2,
+  },
+  fieldSubLabel: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  segmentedRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+  segmentBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  segmentBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  presetScroll: {
+    gap: 8,
+    paddingBottom: 4,
+  },
+  presetChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6.5,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginRight: 8,
+  },
+  presetChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  textInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     fontSize: 14,
     marginBottom: 20,
-    color: '#0f172a',
   },
   textArea: {
     height: 80,
     textAlignVertical: 'top',
   },
+  gridTwo: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 16,
+  },
+  scopeCard: {
+    width: '48%',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  scopeCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  scopeIcon: {
+    fontSize: 18,
+  },
+  checkPill: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#059669',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkPillText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  scopeLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
   writeAccessCard: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
     gap: 12,
     padding: 14,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   writeCheckbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 5,
-    borderWidth: 1.5,
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 2,
   },
   writeTitle: {
-    fontSize: 14,
+    fontSize: 13.5,
     fontWeight: '700',
-    color: '#0f172a',
     marginBottom: 3,
   },
   writeSub: {
     fontSize: 12,
-    color: '#64748b',
     lineHeight: 17,
   },
-  expireNotice: {
-    fontSize: 12,
-    color: '#94a3b8',
-    marginTop: -12,
-    marginBottom: 20,
-  },
-  grantBtn: {
-    backgroundColor: '#059669',
-    borderRadius: 14,
-    paddingVertical: 15,
+  expiryCard: {
+    width: '48%',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 6,
+    position: 'relative',
+  },
+  badgeTag: {
+    position: 'absolute',
+    top: -6,
+    right: 8,
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  badgeTagText: {
+    color: '#ffffff',
+    fontSize: 9.5,
+    fontWeight: '800',
+  },
+  expiryLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  expireNotice: {
+    fontSize: 11.5,
+    marginBottom: 20,
+    marginTop: -8,
+  },
+  grantBtn: {
+    backgroundColor: '#041E42',
+    borderRadius: 14,
+    paddingVertical: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
   },
   grantBtnText: {
     color: '#ffffff',
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '800',
   },
 });
