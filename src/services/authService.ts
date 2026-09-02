@@ -78,7 +78,7 @@ export const authService = {
   /**
    * Dispatches a 6-digit verification code to a Nigerian phone number via Termii SMS Gateway
    */
-  async sendPhoneOtp(phoneNumber: string): Promise<SendOtpResponse> {
+  async sendPhoneOtp(phoneNumber: string, mode: 'login' | 'signup' = 'signup'): Promise<SendOtpResponse> {
     const normalized = normalizeNigerianPhone(phoneNumber);
     if (CONFIG.demoMode) {
       await new Promise((res) => setTimeout(res, 400));
@@ -92,6 +92,7 @@ export const authService = {
 
     return await apiClient.post<SendOtpResponse>('/auth/otp/send', {
       phoneNumber: normalized || phoneNumber,
+      mode,
     });
   },
 
@@ -145,7 +146,7 @@ export const authService = {
   /**
    * Dispatches a 6-digit verification code to email
    */
-  async sendEmailOtp(email: string, fullName?: string): Promise<SendOtpResponse> {
+  async sendEmailOtp(email: string, fullName?: string, mode: 'login' | 'signup' = 'signup'): Promise<SendOtpResponse> {
     const cleanEmail = email.trim().toLowerCase();
     if (CONFIG.demoMode) {
       await new Promise((res) => setTimeout(res, 400));
@@ -159,6 +160,7 @@ export const authService = {
     return await apiClient.post<SendOtpResponse>('/auth/email/send', {
       email: cleanEmail,
       fullName,
+      mode,
     });
   },
 
@@ -212,12 +214,12 @@ export const authService = {
   /**
    * Unified Send OTP helper for Phone or Email
    */
-  async sendAuthOtp(identifier: string, explicitChannel?: 'phone' | 'email', fullName?: string): Promise<SendOtpResponse> {
+  async sendAuthOtp(identifier: string, explicitChannel?: 'phone' | 'email', fullName?: string, mode: 'login' | 'signup' = 'signup'): Promise<SendOtpResponse> {
     const isEmail = explicitChannel ? explicitChannel === 'email' : identifier.includes('@');
     if (isEmail) {
-      return this.sendEmailOtp(identifier.trim(), fullName);
+      return this.sendEmailOtp(identifier.trim(), fullName, mode);
     }
-    return this.sendPhoneOtp(identifier.trim());
+    return this.sendPhoneOtp(identifier.trim(), mode);
   },
 
   /**

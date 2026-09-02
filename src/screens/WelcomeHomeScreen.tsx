@@ -172,7 +172,7 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
     setIsSubmitting(true);
     try {
       const channel = loginIdentifier.includes('@') ? 'email' : 'phone';
-      await actions.sendAuthOtp(loginIdentifier.trim(), channel);
+      await actions.sendAuthOtp(loginIdentifier.trim(), channel, undefined, 'login');
       setPendingAuth({
         mode: 'signin',
         identifier: loginIdentifier.trim(),
@@ -249,7 +249,7 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
         insuranceId: cleanInsuranceId,
       };
 
-      await actions.sendAuthOtp(targetId, channel, signUpData.name.trim());
+      await actions.sendAuthOtp(targetId, channel, signUpData.name.trim(), 'signup');
       setPendingAuth({
         mode: 'signup',
         identifier: targetId,
@@ -298,7 +298,12 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
     if (!pendingAuth || resendCooldown > 0) return;
     setIsSubmitting(true);
     try {
-      await actions.sendAuthOtp(pendingAuth.identifier, pendingAuth.channel);
+      await actions.sendAuthOtp(
+        pendingAuth.identifier,
+        pendingAuth.channel,
+        undefined,
+        pendingAuth.mode === 'signin' ? 'login' : 'signup'
+      );
       setResendCooldown(30);
       setOtpDigits(['', '', '', '', '', '']);
       actions.showToast(`New 6-digit code sent to ${pendingAuth.identifier}`);

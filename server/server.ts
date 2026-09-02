@@ -58,12 +58,16 @@ app.get('/health', (_req: Request, res: Response) => {
 });
 
 // In-Memory OTP Store with 5-minute TTL
-const otpCache = new Map<string, { code: string; expiresAt: number }>();
+const otpCache = new Map<string, { code: string; expiresAt: number; mode: 'login' | 'signup' }>();
 
-function generateOtp(identifier: string): string {
+function generateOtp(identifier: string, mode: 'login' | 'signup' = 'signup'): string {
   const code = Math.floor(100000 + Math.random() * 900000).toString();
-  otpCache.set(identifier, { code, expiresAt: Date.now() + 5 * 60 * 1000 });
+  otpCache.set(identifier, { code, expiresAt: Date.now() + 5 * 60 * 1000, mode });
   return code;
+}
+
+function getOtpEntry(identifier: string) {
+  return otpCache.get(identifier);
 }
 
 function verifyStoredOtp(identifier: string, code: string): boolean {
@@ -108,14 +112,15 @@ function toLocalNigerianPhone(phone?: string): string {
 // 2. Termii Nigerian SMS OTP Dispatch
 app.post('/api/v1/auth/otp/send', async (req: Request, res: Response) => {
   const targetPhone = req.body.phoneNumber || req.body.phone || req.body.to;
+  const mode = req.body.mode === 'login' ? 'login' : 'signup';
 
   if (!targetPhone) {
     return res.status(400).json({ success: false, message: 'Phone number is required' });
   }
 
   const formattedPhone = targetPhone.replace(/[^0-9]/g, '');
-  const generatedCode = generateOtp(targetPhone);
-  generateOtp(formattedPhone);
+  const generatedCode = generateOtp(targetPhone, mode);
+  generateOtp(formattedPhone, mode);
 
   try {
     if (TERMII_API_KEY && TERMII_API_KEY !== 'TL_TEST_KEY') {
@@ -426,14 +431,14 @@ function renderSignInNotificationEmailHtml({ fullName, signedInAt, method, devic
 
 // 2c. Email OTP Dispatch
 app.post('/api/v1/auth/email/send', async (req: Request, res: Response) => {
-  const { email, fullName, name } = req.body;
+  const { email, fullName, name, mode } = req.body;
 
   if (!email) {
     return res.status(400).json({ success: false, message: 'Email address is required' });
   }
 
   const cleanEmail = email.toLowerCase().trim();
-  const generatedCode = generateOtp(cleanEmail);
+  const generatedCode = generateOtp(cleanEmail, mode === 'login' ? 'login' : 'signup');
   const recipientName = fullName || name || (cleanEmail.includes('@') ? cleanEmail.split('@')[0] : 'WelliRecord Patient');
 
   try {
@@ -491,6 +496,9 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
   const cleanPhone = phoneNumber ? phoneNumber.replace(/[^0-9]/g, '') : '';
   const cleanEmail = email ? email.toLowerCase().trim() : (req.body.email ? req.body.email.toLowerCase().trim() : undefined);
 
+  const otpEntry = getOtpEntry(targetIdentifier) || (cleanPhone ? getOtpEntry(cleanPhone) : undefined) || (cleanEmail ? getOtpEntry(cleanEmail) : undefined);
+  const requestedMode = otpEntry?.mode || (req.body.mode === 'login' ? 'login' : 'signup');
+
   if (
     !verifyStoredOtp(targetIdentifier, code) &&
     !(cleanPhone && verifyStoredOtp(cleanPhone, code)) &&
@@ -535,6 +543,12 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
     }
 
     if (!user) {
+      if (requestedMode === 'login') {
+        return res.status(404).json({
+          success: false,
+          message: 'No account found for this email or phone number. Please create a vault first.',
+        });
+      }
       if (mongoose.connection.readyState === 1) {
         const newPhone = normalizedE164 || (phoneNumber ? (phoneNumber.startsWith('+') ? phoneNumber : `+${cleanPhone}`) : undefined);
         const newEmail = cleanEmail || (req.body.email ? req.body.email.toLowerCase().trim() : undefined);
@@ -1245,6 +1259,24 @@ app.post('/api/v1/auth/register', async (req: Request, res: Response) => {
   }
 
   try {
+    if (mongoose.connection.readyState === 1) {
+      const cleanEmail = email ? email.toLowerCase().trim() : undefined;
+      const cleanPhone = phone ? phone.trim() : undefined;
+      const existing = await User.findOne({
+        $or: [
+          ...(cleanEmail ? [{ email: cleanEmail }] : []),
+          ...(cleanPhone ? [{ phoneNumber: cleanPhone }] : []),
+        ],
+      });
+      if (existing) {
+        const clashField = existing.email === cleanEmail ? 'email' : 'phone number';
+        return res.status(409).json({
+          success: false,
+          message: `An account with this ${clashField} already exists. Try signing in instead.`,
+        });
+      }
+    }
+
     const passwordHash = await bcrypt.hash(password, 10);
     let user = null;
     if (mongoose.connection.readyState === 1) {
