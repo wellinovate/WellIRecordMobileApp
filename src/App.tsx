@@ -41,7 +41,14 @@ import { EmailReportModal } from './modals/EmailReportModal';
 import { PrescriptionRefillModal } from './modals/PrescriptionRefillModal';
 import { VaultExportModal } from './modals/VaultExportModal';
 
-export default function App() {
+import { ClerkProvider, ClerkLoaded } from '@clerk/expo';
+import { tokenCache } from './utils/tokenCache';
+
+const publishableKey =
+  process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ||
+  'pk_test_aW1wcm92ZWQtaGVuLTQ3MTAuY2xlcmsuYWNjb3VudHMuZGV2JA';
+
+function MainWelliApp() {
   const app = useWelliApp();
   const { state } = app;
   const theme = themeFor(state.darkMode);
@@ -251,6 +258,16 @@ export default function App() {
         </SafeAreaView>
       </PhoneShell>
     </ThemeContext.Provider>
+  );
+}
+
+export default function App() {
+  return (
+    <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+      <ClerkLoaded>
+        <MainWelliApp />
+      </ClerkLoaded>
+    </ClerkProvider>
   );
 }
 
