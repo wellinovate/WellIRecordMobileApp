@@ -667,6 +667,7 @@ export const ONBOARDING: OnboardingSlide[] = [
   { emoji: '🔒', tint: '#dcfce7', title: 'Smart Consent Sharing', desc: 'Share specific records for a set time with 6-digit WelliBridge PINs or timed QR codes.' },
   { emoji: '👨‍👩‍👧‍👦', tint: '#ede9fe', title: 'Family & Dependent Vaults', desc: 'Manage your children’s vaccine milestones and elderly parents’ vitals in one account.' },
   { emoji: '🔔', tint: '#fef3c7', title: 'Stay Informed', desc: 'Get automated alerts when sharing access expires or upcoming appointments are due.', permission: true },
+  { emoji: '🔐', tint: '#e0f2fe', title: 'Secure Your Health Vault', desc: 'Authenticate with Google or Apple to encrypt and sync your family records across devices.', authStep: true },
 ];
 
 export const ACTIVITY_LOG: LogEntry[] = [

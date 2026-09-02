@@ -14,6 +14,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { Logo } from '../components/Logo';
 import { FormSelect } from '../components/FormSelect';
+import { SocialAuthButtons } from '../components/SocialAuthButtons';
+import { useUser } from '@clerk/expo';
 import { BLOOD_TYPES, GENOTYPES } from '../data/mockData';
 import { authenticateWithBiometrics } from '../utils/biometrics';
 import { hapticFeedback } from '../utils/haptics';
@@ -76,6 +78,7 @@ const SUPPORTED_RECORDS = [
 
 export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
   const { state, actions } = app;
+  const { user: clerkUser } = useUser();
   const activeTab: WelcomeTab = state.welcomeTab || 'about';
 
   // Authentication Flow Navigation & Mode State
@@ -424,7 +427,7 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
                 onPress={() => handleTabChange('signup')}
                 style={styles.heroPrimaryBtn}
               >
-                <Text style={styles.heroPrimaryText}>Create Free Vault ›</Text>
+                <Text style={styles.heroPrimaryText}>Create Vault ›</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 activeOpacity={0.85}
@@ -432,6 +435,13 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
                 style={styles.heroSecondaryBtn}
               >
                 <Text style={styles.heroSecondaryText}>Sign In</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => actions.openOnboarding()}
+                style={[styles.heroSecondaryBtn, { backgroundColor: 'rgba(255,255,255,0.12)', borderColor: 'rgba(255,255,255,0.25)' }]}
+              >
+                <Text style={styles.heroSecondaryText}>✨ Tour</Text>
               </TouchableOpacity>
             </View>
           </LinearGradient>
@@ -804,6 +814,22 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
               )}
             </TouchableOpacity>
 
+            {/* Clerk Google & Apple Social Authentication */}
+            <SocialAuthButtons
+              labelPrefix="Sign in with"
+              showDivider={true}
+              dividerText="or sign in with"
+              onSuccess={(details) => {
+                actions.signInWithClerk({
+                  provider: details.provider,
+                  fullName: clerkUser?.fullName || undefined,
+                  email: clerkUser?.primaryEmailAddress?.emailAddress || undefined,
+                  avatar: clerkUser?.imageUrl || undefined,
+                });
+              }}
+              onError={(err) => setSignInError(err)}
+            />
+
             {/* Switch to Sign Up */}
             <View style={styles.switchAuthRow}>
               <Text style={styles.switchAuthPrompt}>Don't have an account yet?</Text>
@@ -946,6 +972,22 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
                 <Text style={styles.submitBtnText}>Verify & Create Health Vault ›</Text>
               )}
             </TouchableOpacity>
+
+            {/* Clerk Google & Apple Social Authentication */}
+            <SocialAuthButtons
+              labelPrefix="Sign up with"
+              showDivider={true}
+              dividerText="or sign up with"
+              onSuccess={(details) => {
+                actions.signInWithClerk({
+                  provider: details.provider,
+                  fullName: clerkUser?.fullName || undefined,
+                  email: clerkUser?.primaryEmailAddress?.emailAddress || undefined,
+                  avatar: clerkUser?.imageUrl || undefined,
+                });
+              }}
+              onError={(err) => setSignUpError(err)}
+            />
 
             {/* Switch to Sign In */}
             <View style={styles.switchAuthRow}>

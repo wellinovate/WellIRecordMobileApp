@@ -208,6 +208,7 @@ function MainWelliApp() {
         <PhoneShell>
           <SafeAreaView style={[styles.safeArea, { backgroundColor: '#ffffff' }]}>
             <WelcomeHomeScreen app={app} />
+            <OnboardingModal app={app} />
             <Toast message={state.toast} />
           </SafeAreaView>
         </PhoneShell>

@@ -2,6 +2,7 @@
   "expo": {
     "name": "WelliRecord",
     "slug": "welli-record-mobile",
+    "scheme": "wellirecord",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -37,7 +38,8 @@
       }
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-web-browser"
     ]
   }
 }

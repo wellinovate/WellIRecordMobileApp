@@ -233,6 +233,7 @@ export interface OnboardingSlide {
   title: string;
   desc: string;
   permission?: boolean;
+  authStep?: boolean;
 }
 
 export interface Theme {

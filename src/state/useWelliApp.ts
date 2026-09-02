@@ -1603,6 +1603,56 @@ export function useWelliApp() {
       return session;
     },
 
+    signInWithClerk: (details?: { provider: 'google' | 'apple'; fullName?: string; email?: string; avatar?: string }) => {
+      hapticFeedback.success();
+      const providerLabel = details?.provider === 'google' ? 'Google' : 'Apple';
+      const rawName = details?.fullName || 'Amara Nwosu';
+      const email = details?.email || (details?.provider === 'google' ? 'amara.nwosu@gmail.com' : 'amara.nwosu@icloud.com');
+      const initials = rawName
+        ? rawName
+            .split(' ')
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((p) => p[0])
+            .join('')
+            .toUpperCase()
+        : 'AN';
+
+      patch((s) => {
+        const owner = s.familyMembers.find((f) => f.id === 'me') || s.familyMembers[0];
+        const updatedOwner: FamilyMember = {
+          ...owner,
+          name: rawName || owner.name,
+          initials: initials || owner.initials,
+          email: email || owner.email,
+          avatarUrl: details?.avatar || owner.avatarUrl,
+        };
+
+        const securityNotif: Notification = {
+          id: `clerk_auth_${Date.now()}`,
+          emoji: '🔐',
+          tint: '#0284c7',
+          title: `Authenticated with ${providerLabel}`,
+          desc: `Signed in to WelliRecord vault via verified ${providerLabel} account.`,
+          time: 'Just now',
+        };
+
+        return {
+          ...s,
+          isAuthenticated: true,
+          loggedOut: false,
+          showWelcomeHome: false,
+          showOnboarding: false,
+          tab: 'home',
+          activeFamilyId: 'me',
+          familyMembers: [updatedOwner, ...s.familyMembers.filter((f) => f.id !== 'me')],
+          notifications: [securityNotif, ...s.notifications],
+        };
+      });
+
+      showToast(`Welcome to WelliRecord, ${rawName.split(' ')[0]}!`);
+    },
+
     signInWithCredentials: async (identifier: string, password?: string) => {
       hapticFeedback.success();
       const trimmed = identifier.trim();
