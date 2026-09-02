@@ -1603,31 +1603,51 @@ export function useWelliApp() {
       return session;
     },
 
-    signInWithClerk: (details?: { provider: 'google' | 'apple'; fullName?: string; email?: string; avatar?: string }) => {
+    signInWithClerk: async (details?: { provider: 'google' | 'apple'; fullName?: string; email?: string; avatar?: string }) => {
+      if (!details?.email) {
+        showToast('Could not complete sign-in — no email returned. Please try again.');
+        return;
+      }
       hapticFeedback.success();
-      const providerLabel = details?.provider === 'google' ? 'Google' : 'Apple';
-      const rawName = details?.fullName || 'Amara Nwosu';
-      const email = details?.email || (details?.provider === 'google' ? 'amara.nwosu@gmail.com' : 'amara.nwosu@icloud.com');
-      const initials = rawName
-        ? rawName
-            .split(' ')
-            .filter(Boolean)
-            .slice(0, 2)
-            .map((p) => p[0])
-            .join('')
-            .toUpperCase()
-        : 'AN';
+      try {
+        const session = await authService.verifySocialAuth({
+          provider: details.provider,
+          email: details.email,
+          fullName: details.fullName,
+        });
 
-      patch((s) => {
-        const owner = s.familyMembers.find((f) => f.id === 'me') || s.familyMembers[0];
-        const updatedOwner: FamilyMember = {
-          ...owner,
-          name: rawName || owner.name,
-          initials: initials || owner.initials,
-          email: email || owner.email,
-          avatarUrl: details?.avatar || owner.avatarUrl,
+        const rawName = session.user.fullName || details.fullName || '';
+        const initials = rawName
+          ? rawName.split(' ').filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase()
+          : 'U';
+        const needsProfileCompletion = !session.user.dateOfBirth;
+
+        const newOwner: FamilyMember = {
+          id: 'me',
+          name: rawName,
+          initials,
+          role: 'owner',
+          dob: session.user.dateOfBirth || '',
+          gender: '',
+          bloodType: session.user.bloodType || '',
+          genotype: session.user.genotype || '',
+          height: '',
+          weight: '',
+          allergies: '',
+          conditions: '',
+          contact: '',
+          emergencyContacts: [],
+          email: session.user.email || details.email,
+          phone: session.user.phoneNumber || '',
+          address: '',
+          insuranceProvider: session.user.hmoProvider || '',
+          insuranceId: session.user.hmoPolicyNumber || '',
+          wrId: session.user.wrId || session.user.memberId || '',
+          memberId: session.user.wrId || session.user.memberId || '',
+          avatarUrl: details.avatar,
         };
 
+        const providerLabel = details.provider === 'google' ? 'Google' : 'Apple';
         const securityNotif: Notification = {
           id: `clerk_auth_${Date.now()}`,
           emoji: '🔐',
@@ -1637,20 +1657,45 @@ export function useWelliApp() {
           time: 'Just now',
         };
 
-        return {
-          ...s,
+        patch((s) => ({
           isAuthenticated: true,
+          user: session.user,
           loggedOut: false,
           showWelcomeHome: false,
           showOnboarding: false,
           tab: 'home',
           activeFamilyId: 'me',
-          familyMembers: [updatedOwner, ...s.familyMembers.filter((f) => f.id !== 'me')],
+          familyMembers: [newOwner, ...s.familyMembers.filter((f) => f.id !== 'me')],
           notifications: [securityNotif, ...s.notifications],
-        };
-      });
+          ...(needsProfileCompletion
+            ? { showPersonalInfo: true, personalInfoEditMode: true, personalInfoDraft: { ...newOwner } }
+            : {}),
+        }));
 
-      showToast(`Welcome to WelliRecord, ${rawName.split(' ')[0]}!`);
+        showToast(needsProfileCompletion
+          ? `Welcome to WelliRecord, ${rawName.split(' ')[0] || 'there'}! Please complete your profile.`
+          : `Welcome back, ${rawName.split(' ')[0] || 'there'}!`);
+
+        // Fetch dependents in background, same as every other sign-in path
+        familyService.fetchFamilyMembers().then((remoteFamily) => {
+          if (Array.isArray(remoteFamily) && remoteFamily.length > 0) {
+            patch((s) => ({
+              familyMembers: [s.familyMembers[0], ...remoteFamily.map((m: any) => ({
+                id: m.id || m._id, name: m.fullName || m.name, initials: m.initials,
+                role: 'dependent' as const, relationship: m.relationship || 'Dependent',
+                dob: m.dateOfBirth || m.dob || '', gender: m.gender || '', bloodType: m.bloodType || '',
+                genotype: m.genotype || '', height: m.height || '', weight: m.weight || '',
+                allergies: m.allergies || '', conditions: m.conditions || '',
+                contact: formatEmergencyContact(m) || m.contact || '', emergencyContacts: m.emergencyContacts || [],
+                email: m.email || '', phone: m.phone || '', address: m.address || '',
+                insuranceProvider: m.insuranceProvider || '', insuranceId: m.insuranceId || '',
+              }))],
+            }));
+          }
+        }).catch(() => {});
+      } catch (err: any) {
+        showToast(err?.message || 'Sign-in failed. Please try again.');
+      }
     },
 
     signInWithCredentials: async (identifier: string, password?: string) => {

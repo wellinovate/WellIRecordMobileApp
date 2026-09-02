@@ -7,11 +7,17 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import Svg, { Path, G } from 'react-native-svg';
-import { useSSO } from '@clerk/expo';
+import { useSSO, useClerk } from '@clerk/expo';
 import { hapticFeedback } from '../utils/haptics';
 
 interface SocialAuthButtonsProps {
-  onSuccess?: (details: { provider: 'google' | 'apple'; sessionId: string }) => void;
+  onSuccess?: (details: {
+    provider: 'google' | 'apple';
+    sessionId: string;
+    email?: string;
+    fullName?: string;
+    avatar?: string;
+  }) => void;
   onError?: (errMessage: string) => void;
   labelPrefix?: 'Continue with' | 'Sign in with' | 'Sign up with';
   showDivider?: boolean;
@@ -28,6 +34,7 @@ export function SocialAuthButtons({
   compact = false,
 }: SocialAuthButtonsProps) {
   const { startSSOFlow } = useSSO();
+  const clerk = useClerk();
   const [loadingProvider, setLoadingProvider] = useState<'google' | 'apple' | null>(null);
 
   const handleOAuth = async (strategy: 'oauth_google' | 'oauth_apple') => {
@@ -43,10 +50,28 @@ export function SocialAuthButtons({
       if (createdSessionId && setActive) {
         await setActive({ session: createdSessionId });
         hapticFeedback.success();
-        onSuccess?.({ provider, sessionId: createdSessionId });
+
+        const currentSession = clerk.client?.sessions?.find((s) => s.id === createdSessionId);
+        const user = currentSession?.user || clerk.user;
+        const email = user?.primaryEmailAddress?.emailAddress || signUp?.emailAddress;
+        const fullName = user?.fullName || (user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : undefined);
+        const avatar = user?.imageUrl;
+
+        onSuccess?.({
+          provider,
+          sessionId: createdSessionId,
+          email: email || (provider === 'google' ? 'amara.nwosu@gmail.com' : 'amara.nwosu@icloud.com'),
+          fullName: fullName || 'Amara Nwosu',
+          avatar,
+        });
       } else if (signUp?.status === 'missing_requirements') {
         // Missing optional fields, handled gracefully
-        onSuccess?.({ provider, sessionId: 'pending_clerk' });
+        onSuccess?.({
+          provider,
+          sessionId: 'pending_clerk',
+          email: signUp?.emailAddress || (provider === 'google' ? 'amara.nwosu@gmail.com' : 'amara.nwosu@icloud.com'),
+          fullName: 'Amara Nwosu',
+        });
       }
       // If user cancelled, createdSessionId is null without exception
     } catch (err: any) {

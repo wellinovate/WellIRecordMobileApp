@@ -293,6 +293,26 @@ export const authService = {
   },
 
   /**
+   * Verifies Social Authentication (Google / Apple via Clerk) with backend
+   */
+  async verifySocialAuth(details: { provider: 'google' | 'apple'; email: string; fullName?: string }): Promise<AuthSession & { isNewAccount?: boolean }> {
+    if (CONFIG.demoMode) {
+      throw new Error('Social sign-in is not available in demo mode');
+    }
+    const raw = await apiClient.post<any>('/auth/social/verify', {
+      provider: details.provider,
+      email: details.email.trim().toLowerCase(),
+      fullName: details.fullName,
+    });
+    const session = unwrapAuthSession(raw, {
+      email: details.email.trim().toLowerCase(),
+      fullName: details.fullName,
+    });
+    await this.saveSession(session);
+    return { ...session, isNewAccount: raw?.isNewAccount };
+  },
+
+  /**
    * Registers a new patient account with Health Vault
    */
   async registerUser(data: {

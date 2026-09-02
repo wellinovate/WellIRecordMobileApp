@@ -822,9 +822,9 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
               onSuccess={(details) => {
                 actions.signInWithClerk({
                   provider: details.provider,
-                  fullName: clerkUser?.fullName || undefined,
-                  email: clerkUser?.primaryEmailAddress?.emailAddress || undefined,
-                  avatar: clerkUser?.imageUrl || undefined,
+                  fullName: details.fullName || clerkUser?.fullName || undefined,
+                  email: details.email || clerkUser?.primaryEmailAddress?.emailAddress || undefined,
+                  avatar: details.avatar || clerkUser?.imageUrl || undefined,
                 });
               }}
               onError={(err) => setSignInError(err)}
@@ -981,9 +981,9 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
               onSuccess={(details) => {
                 actions.signInWithClerk({
                   provider: details.provider,
-                  fullName: clerkUser?.fullName || undefined,
-                  email: clerkUser?.primaryEmailAddress?.emailAddress || undefined,
-                  avatar: clerkUser?.imageUrl || undefined,
+                  fullName: details.fullName || clerkUser?.fullName || undefined,
+                  email: details.email || clerkUser?.primaryEmailAddress?.emailAddress || undefined,
+                  avatar: details.avatar || clerkUser?.imageUrl || undefined,
                 });
               }}
               onError={(err) => setSignUpError(err)}

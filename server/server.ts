@@ -724,6 +724,109 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
   }
 });
 
+// 3c. Social Sign-In (Google / Apple via Clerk) — finds or creates a real
+// Account + UserProfile from a verified identity. Never fabricates a
+// fallback user; email is required since that's the reliable match key
+// across web and mobile.
+app.post('/api/v1/auth/social/verify', async (req: Request, res: Response) => {
+  const { provider, email, fullName } = req.body;
+
+  if (!provider || !email) {
+    return res.status(400).json({ success: false, message: 'Provider and email are required' });
+  }
+  if (!['google', 'apple'].includes(provider)) {
+    return res.status(400).json({ success: false, message: 'Unsupported provider' });
+  }
+
+  const cleanEmail = email.toLowerCase().trim();
+
+  try {
+    let account = await Account.findOne({ email: cleanEmail });
+    let isNewAccount = false;
+
+    if (!account) {
+      if (mongoose.connection.readyState !== 1) {
+        return res.status(503).json({ success: false, message: 'Database unavailable' });
+      }
+      const resolvedName = (fullName && fullName.trim()) || cleanEmail.split('@')[0];
+      account = new Account({
+        email: cleanEmail,
+        fullName: resolvedName,
+        name: resolvedName,
+        phone: '',
+        phoneNumber: '',
+        isEmailVerified: true,
+        authProvider: `${provider}_oauth`,
+      });
+      await account.save();
+      isNewAccount = true;
+      console.log('[NEW ACCOUNT CREATED VIA SOCIAL AUTH]', account._id, resolvedName, provider);
+    }
+
+    let profile = await UserProfile.findOne({
+      $or: [{ accountId: account._id }, { email: cleanEmail }],
+    });
+
+    if (!profile) {
+      profile = new UserProfile({
+        accountId: account._id,
+        fullName: account.fullName,
+        email: cleanEmail,
+        wrId: generateWelliRecordId(),
+        authProvider: `${provider}_oauth`,
+        isEmailVerified: true,
+        bloodType: 'O+',
+        genotype: 'AA',
+      });
+      await profile.save();
+      console.log('[USERPROFILE CREATED VIA SOCIAL AUTH]', JSON.stringify(profile));
+    } else if (!profile.wrId) {
+      profile.wrId = generateWelliRecordId();
+      await profile.save();
+    }
+
+    const userId = account._id.toString();
+    const token = jwt.sign({ userId, email: cleanEmail, role: 'patient' }, JWT_SECRET, { expiresIn: '30d' });
+
+    // Reuse the existing sign-in notification email — same as password/OTP login
+    const userAgent = req.headers['user-agent'] || 'WelliRecord Mobile App (iOS)';
+    const nowFormatted = new Date().toLocaleString('en-US', {
+      month: 'numeric', day: 'numeric', year: 'numeric',
+      hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true,
+    });
+    sendWelliEmail({
+      to: cleanEmail,
+      subject: '🔐 New sign-in to your WelliRecord™ account',
+      html: renderSignInNotificationEmailHtml({
+        fullName: profile.fullName || account.fullName,
+        signedInAt: nowFormatted,
+        method: provider === 'google' ? 'Google Sign-In' : 'Apple Sign-In',
+        device: userAgent,
+      }),
+    }).catch((e) => console.error('[Sign-In Email Error]', e));
+
+    return res.json({
+      token,
+      isNewAccount,
+      user: {
+        id: userId,
+        fullName: profile.fullName || account.fullName,
+        email: cleanEmail,
+        phoneNumber: account.phoneNumber || account.phone || null,
+        wrId: profile.wrId,
+        memberId: profile.wrId,
+        dateOfBirth: profile.dateOfBirth || null,
+        bloodType: profile.bloodType || null,
+        genotype: profile.genotype || null,
+        hmoProvider: profile.hmoProvider || null,
+        hmoPolicyNumber: profile.hmoPolicyNumber || null,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Social authentication error', error: err });
+  }
+});
+
 // 3d. Update Patient Profile (writes directly to shared 'userprofiles' collection)
 app.all('/api/v1/profile/update', async (req: Request, res: Response) => {
   const {

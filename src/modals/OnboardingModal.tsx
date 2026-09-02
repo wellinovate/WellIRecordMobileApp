@@ -24,12 +24,18 @@ export function OnboardingModal({ app }: { app: WelliApp }) {
   const isPermissionSlide = Boolean(slide.permission);
   const isAuthSlide = Boolean(slide.authStep);
 
-  const handleSocialSuccess = (details: { provider: 'google' | 'apple'; sessionId: string }) => {
+  const handleSocialSuccess = (details: {
+    provider: 'google' | 'apple';
+    sessionId: string;
+    email?: string;
+    fullName?: string;
+    avatar?: string;
+  }) => {
     actions.signInWithClerk({
       provider: details.provider,
-      fullName: clerkUser?.fullName || (details.provider === 'google' ? 'Amara Nwosu' : 'Amara Nwosu'),
-      email: clerkUser?.primaryEmailAddress?.emailAddress || (details.provider === 'google' ? 'amara.nwosu@gmail.com' : 'amara.nwosu@icloud.com'),
-      avatar: clerkUser?.imageUrl,
+      fullName: details.fullName || clerkUser?.fullName || 'Amara Nwosu',
+      email: details.email || clerkUser?.primaryEmailAddress?.emailAddress || (details.provider === 'google' ? 'amara.nwosu@gmail.com' : 'amara.nwosu@icloud.com'),
+      avatar: details.avatar || clerkUser?.imageUrl,
     });
   };
 
