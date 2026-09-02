@@ -10,6 +10,7 @@ export interface IUser extends Document {
   phoneNumber: string;
   email?: string;
   fullName: string;
+  password?: string;
   bloodType: string;
   genotype: string;
   hmoProvider: string;
@@ -26,6 +27,7 @@ const UserSchema = new Schema<IUser>(
     phoneNumber: { type: String, required: true, unique: true, index: true },
     email: { type: String, lowercase: true, trim: true },
     fullName: { type: String, required: true },
+    password: { type: String },
     bloodType: { type: String, default: 'O+' },
     genotype: { type: String, default: 'AA' },
     hmoProvider: { type: String, default: 'Hygeia HMO' },

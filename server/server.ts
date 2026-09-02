@@ -6,6 +6,7 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 import {
   User,
@@ -1170,10 +1171,10 @@ app.delete('/api/v1/family/:id', async (req: Request, res: Response) => {
 
 // 3b. Sign In with Email / Phone and Password
 app.post('/api/v1/auth/login', async (req: Request, res: Response) => {
-  const { identifier, password: _password } = req.body;
+  const { identifier, password } = req.body;
 
-  if (!identifier) {
-    return res.status(400).json({ success: false, message: 'Email or phone number required' });
+  if (!identifier || !password) {
+    return res.status(400).json({ success: false, message: 'Email/phone and password required' });
   }
 
   try {
@@ -1184,36 +1185,36 @@ app.post('/api/v1/auth/login', async (req: Request, res: Response) => {
       });
     }
 
-    const userId = user ? user._id.toString() : 'u_amara_nwosu';
-    const fullName = user ? user.fullName : 'Amara Nwosu';
-    const email = user ? user.email : (identifier.includes('@') ? identifier : 'amara.nwosu@gmail.com');
-    const phoneNumber = user ? user.phoneNumber : (identifier.includes('@') ? '+234 805 335 5504' : identifier);
+    // No fallback to a fabricated account. No user, or no password on file,
+    // or a mismatched password all return the same generic 401 — never
+    // reveal which case it was, and never issue a token.
+    if (!user || !user.password) {
+      return res.status(401).json({ success: false, message: 'Invalid email/phone or password' });
+    }
+
+    const passwordMatches = await bcrypt.compare(password, user.password);
+    if (!passwordMatches) {
+      return res.status(401).json({ success: false, message: 'Invalid email/phone or password' });
+    }
+
+    const userId = user._id.toString();
+    const fullName = user.fullName;
+    const email = user.email;
+    const phoneNumber = user.phoneNumber;
 
     const token = jwt.sign({ userId, email, role: 'patient' }, JWT_SECRET, { expiresIn: '30d' });
 
-    // Send Sign-In Notification Email Asynchronously
     if (email) {
       const userAgent = req.headers['user-agent'] || 'Mozilla/5.0 (Macintosh; Intel Mac OS X) Chrome/Safari';
       const authMethod = identifier.includes('@') ? 'Email & Password' : 'Phone & Password';
       const nowFormatted = new Date().toLocaleString('en-US', {
-        month: 'numeric',
-        day: 'numeric',
-        year: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: true,
+        month: 'numeric', day: 'numeric', year: 'numeric',
+        hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true,
       });
-
       sendWelliEmail({
         to: email,
         subject: '🔐 New sign-in to your WelliRecord™ account',
-        html: renderSignInNotificationEmailHtml({
-          fullName,
-          signedInAt: nowFormatted,
-          method: authMethod,
-          device: userAgent,
-        }),
+        html: renderSignInNotificationEmailHtml({ fullName, signedInAt: nowFormatted, method: authMethod, device: userAgent }),
       }).catch((emailErr) => console.error('[Sign-In Email Error]', emailErr));
     }
 
@@ -1224,10 +1225,10 @@ app.post('/api/v1/auth/login', async (req: Request, res: Response) => {
         fullName,
         phoneNumber,
         email,
-        bloodType: user?.bloodType || 'O+',
-        genotype: user?.genotype || 'AA',
-        hmoProvider: user?.hmoProvider || 'Hygeia HMO',
-        hmoPolicyNumber: user?.hmoPolicyNumber || 'HYG-992014-LAG',
+        bloodType: user.bloodType || null,
+        genotype: user.genotype || null,
+        hmoProvider: user.hmoProvider || null,
+        hmoPolicyNumber: user.hmoPolicyNumber || null,
       },
     });
   } catch (err) {
@@ -1237,42 +1238,48 @@ app.post('/api/v1/auth/login', async (req: Request, res: Response) => {
 
 // 3c. Register New Health Vault Account
 app.post('/api/v1/auth/register', async (req: Request, res: Response) => {
-  const { name, email, phone, dob, bloodType, genotype, insuranceProvider, insuranceId } = req.body;
+  const { name, email, phone, password, dob, bloodType, genotype, insuranceProvider, insuranceId } = req.body;
 
-  if (!name || (!email && !phone)) {
-    return res.status(400).json({ success: false, message: 'Name and email or phone number required' });
+  if (!name || (!email && !phone) || !password) {
+    return res.status(400).json({ success: false, message: 'Name, email or phone, and password are required' });
   }
 
   try {
+    const passwordHash = await bcrypt.hash(password, 10);
     let user = null;
     if (mongoose.connection.readyState === 1) {
       user = await User.create({
         fullName: name.trim(),
-        email: email ? email.toLowerCase().trim() : `${name.toLowerCase().replace(/\s+/g, '.')}@wellirecord.com`,
-        phoneNumber: phone ? phone.trim() : '+234 800 000 0000',
+        email: email ? email.toLowerCase().trim() : undefined,
+        phoneNumber: phone ? phone.trim() : undefined,
+        password: passwordHash,
         dateOfBirth: dob ? new Date(dob) : undefined,
         bloodType: bloodType || 'O+',
         genotype: genotype || 'AA',
-        hmoProvider: insuranceProvider || 'Hygeia HMO',
-        hmoPolicyNumber: insuranceId || `HYG-${Math.floor(100000 + Math.random() * 900000)}`,
+        hmoProvider: insuranceProvider || null,
+        hmoPolicyNumber: insuranceId || null,
         isPhoneVerified: true,
       });
     }
 
-    const userId = user ? user._id.toString() : `u_${Date.now()}`;
-    const token = jwt.sign({ userId, email: user?.email || email, role: 'patient' }, JWT_SECRET, { expiresIn: '30d' });
+    if (!user) {
+      return res.status(500).json({ success: false, message: 'Database unavailable' });
+    }
+
+    const userId = user._id.toString();
+    const token = jwt.sign({ userId, email: user.email, role: 'patient' }, JWT_SECRET, { expiresIn: '30d' });
 
     return res.status(201).json({
       token,
       user: {
         id: userId,
-        fullName: name.trim(),
-        phoneNumber: phone || '+234 800 000 0000',
-        email: email || 'user@example.com',
-        bloodType: bloodType || 'O+',
-        genotype: genotype || 'AA',
-        hmoProvider: insuranceProvider || 'Hygeia HMO',
-        hmoPolicyNumber: insuranceId || `HYG-${Math.floor(100000 + Math.random() * 900000)}`,
+        fullName: user.fullName,
+        phoneNumber: user.phoneNumber || null,
+        email: user.email || null,
+        bloodType: user.bloodType || null,
+        genotype: user.genotype || null,
+        hmoProvider: user.hmoProvider || null,
+        hmoPolicyNumber: user.hmoPolicyNumber || null,
       },
     });
   } catch (err) {
