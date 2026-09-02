@@ -1452,6 +1452,69 @@ app.get('/api/v1/pharmacy/prescriptions', async (req: Request, res: Response) =>
   }
 });
 
+// 4c. Patient-Initiated Medication Order (distinct from doctor-issued refills).
+// Defaults to 'pending_review' rather than 'active' — no pharmacist/admin
+// review workflow exists yet, so orders sit here until one is built. This
+// avoids auto-dispensing prescription medication with zero human review.
+app.post('/api/v1/pharmacy/orders', async (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  const {
+    familyMemberId,
+    medicationName,
+    dosage,
+    quantity,
+    deliveryAddress,
+    deliveryType, // 'home' | 'hospital' | 'office' | 'pharmacy_pickup' | 'custom'
+    notes,
+  } = req.body;
+
+  if (!medicationName || !deliveryAddress) {
+    return res.status(400).json({ success: false, message: 'Medication name and delivery address are required' });
+  }
+  if (!authUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required to place an order' });
+  }
+
+  try {
+    let order: any = null;
+    if (mongoose.connection.readyState === 1) {
+      const newDoc = new Prescription({
+        accountId: new mongoose.Types.ObjectId(authUserId),
+        familyMemberId: familyMemberId || authUserId,
+        medicationName: medicationName.trim(),
+        dosage: dosage || '',
+        quantity: quantity || 1,
+        frequency: '',
+        prescriber: 'Patient-Requested Order',
+        prescribedDate: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
+        pharmacyProvider: 'WelliRecord Pharmacy Network',
+        deliveryAddress,
+        deliveryType: deliveryType || 'home',
+        notes: notes || '',
+        orderType: 'patient_order',
+        status: 'pending_review',
+        refillsTotal: 0,
+        refillsRemaining: 0,
+        totalPriceNaira: 0,
+        hmoCoveredNaira: 0,
+        patientCoPayNaira: 0,
+      });
+      order = await newDoc.save();
+      console.log('[MEDICATION ORDER CREATED]', order._id, medicationName, authUserId);
+    } else {
+      return res.status(503).json({ success: false, message: 'Database unavailable' });
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: 'Order submitted for pharmacist review',
+      order,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to create medication order', error: err });
+  }
+});
+
 // 5. Pre-signed Encrypted S3 Upload URL Generator
 app.post('/api/v1/records/upload-url', (req: Request, res: Response) => {
   const { fileName, contentType } = req.body;

@@ -39,6 +39,7 @@ import { InvoiceDetailModal } from './modals/InvoiceDetailModal';
 import { PrintLabResultModal } from './modals/PrintLabResultModal';
 import { EmailReportModal } from './modals/EmailReportModal';
 import { PrescriptionRefillModal } from './modals/PrescriptionRefillModal';
+import { OrderMedicationModal } from './modals/OrderMedicationModal';
 import { VaultExportModal } from './modals/VaultExportModal';
 
 import { ClerkProvider, ClerkLoaded } from '@clerk/expo';
@@ -59,6 +60,10 @@ function MainWelliApp() {
     const onBackPress = () => {
       if (state.showVaultExport) {
         app.actions.closeVaultExport();
+        return true;
+      }
+      if (state.showOrderMedication) {
+        app.actions.closeOrderMedication();
         return true;
       }
       if (state.showRefillModal) {
@@ -253,6 +258,7 @@ function MainWelliApp() {
           <PrintLabResultModal app={app} />
           <EmailReportModal app={app} />
           <PrescriptionRefillModal app={app} />
+          <OrderMedicationModal app={app} />
           <VaultExportModal app={app} />
 
           <Toast message={state.toast} />

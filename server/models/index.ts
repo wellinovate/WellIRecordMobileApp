@@ -161,48 +161,60 @@ const HealthRecordSchema = new Schema<IHealthRecord>(
 
 // 4. Prescription & E-Pharmacy Model
 export interface IPrescription extends Document {
-  userId: mongoose.Types.ObjectId;
-  familyMemberId: mongoose.Types.ObjectId;
+  userId?: mongoose.Types.ObjectId;
+  accountId?: mongoose.Types.ObjectId;
+  familyMemberId: mongoose.Types.ObjectId | string;
   medicationName: string;
   dosage: string;
-  frequency: string;
+  quantity?: number;
+  frequency?: string;
   prescriber: string;
+  prescribedDate?: string;
   pharmacyProvider: string;
   totalPriceNaira: number;
   hmoCoveredNaira: number;
   patientCoPayNaira: number;
   refillsTotal: number;
   refillsRemaining: number;
-  status: 'active' | 'refill_requested' | 'dispensed' | 'in_transit' | 'delivered';
+  status: 'active' | 'refill_requested' | 'dispensed' | 'in_transit' | 'delivered' | 'pending_review' | string;
   deliveryAddress: string;
+  deliveryType?: string;
+  notes?: string;
+  orderType?: string;
   eta?: string;
   hmoProvider?: string;
 }
 
 const PrescriptionSchema = new Schema<IPrescription>(
   {
-    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-    familyMemberId: { type: Schema.Types.ObjectId, ref: 'FamilyMember', required: true, index: true },
+    userId: { type: Schema.Types.ObjectId, ref: 'User', index: true },
+    accountId: { type: Schema.Types.ObjectId, ref: 'Account', index: true },
+    familyMemberId: { type: Schema.Types.Mixed, required: true, index: true },
     medicationName: { type: String, required: true },
-    dosage: { type: String, required: true },
-    frequency: { type: String, required: true },
+    dosage: { type: String, default: '' },
+    quantity: { type: Number, default: 1 },
+    frequency: { type: String, default: '' },
     prescriber: { type: String, required: true },
+    prescribedDate: { type: String },
     pharmacyProvider: { type: String, required: true },
-    totalPriceNaira: { type: Number, required: true },
-    hmoCoveredNaira: { type: Number, required: true },
-    patientCoPayNaira: { type: Number, required: true },
-    refillsTotal: { type: Number, default: 3 },
-    refillsRemaining: { type: Number, default: 3 },
+    totalPriceNaira: { type: Number, default: 0 },
+    hmoCoveredNaira: { type: Number, default: 0 },
+    patientCoPayNaira: { type: Number, default: 0 },
+    refillsTotal: { type: Number, default: 0 },
+    refillsRemaining: { type: Number, default: 0 },
     status: {
       type: String,
       default: 'active',
-      enum: ['active', 'refill_requested', 'dispensed', 'in_transit', 'delivered'],
+      enum: ['active', 'refill_requested', 'dispensed', 'in_transit', 'delivered', 'pending_review'],
     },
     deliveryAddress: { type: String },
+    deliveryType: { type: String, default: 'home' },
+    notes: { type: String },
+    orderType: { type: String },
     eta: { type: String },
     hmoProvider: { type: String },
   },
-  { timestamps: true }
+  { timestamps: true, strict: false }
 );
 
 // 5. Healthcare Facilities Model

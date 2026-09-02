@@ -331,6 +331,13 @@ export function CareScreen({ app }: { app: WelliApp }) {
           <View style={styles.rxWidgetHeader}>
             <Text style={{ fontSize: 16 }}>💊</Text>
             <Text style={[styles.rxWidgetTitle, { color: theme.text }]}>Active E-Prescriptions & Refills</Text>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={actions.openOrderMedication}
+              style={styles.orderNewBtn}
+            >
+              <Text style={styles.orderNewBtnText}>+ Order New</Text>
+            </TouchableOpacity>
           </View>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.rxScroll} contentContainerStyle={{ paddingRight: 10 }}>
@@ -789,6 +796,20 @@ const styles = StyleSheet.create({
   rxWidgetTitle: {
     fontSize: 14,
     fontWeight: '800',
+  },
+  orderNewBtn: {
+    marginLeft: 'auto',
+    backgroundColor: '#eff6ff',
+    borderRadius: 999,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  orderNewBtnText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#1d4ed8',
   },
   rxScroll: {
     flexDirection: 'row',
