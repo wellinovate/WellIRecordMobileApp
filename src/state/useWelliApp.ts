@@ -559,13 +559,8 @@ export function useWelliApp() {
         uploadedToastPending.current = false;
       }
     },
-    startScan: () => {
-      patch({ uploadStep: 1 });
-      setTimeout(() => {
-        patch({ uploadStep: 2 });
-        uploadedToastPending.current = true;
-      }, 1800);
-    },
+    setUploadStepScanning: () => patch({ uploadStep: 1 }),
+    setUploadStepReview: () => patch({ uploadStep: 2 }),
 
     openShareFlow: (prefillId?: string) => {
       const sel: Record<string, boolean> = {};

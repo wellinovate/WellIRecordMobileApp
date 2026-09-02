@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   StyleSheet,
   Modal,
@@ -19,6 +20,7 @@ import {
   type PickedMediaResult,
 } from '../utils/mediaPicker';
 import { hapticFeedback } from '../utils/haptics';
+import { ocrService, type OcrResult } from '../services/ocrService';
 import type { WelliApp } from '../state/useWelliApp';
 import type { RecordType } from '../data/types';
 
@@ -26,77 +28,15 @@ interface OcrPreset {
   type: RecordType;
   label: string;
   emoji: string;
-  defaultTitle: string;
-  provider: string;
-  summary: string;
-  keyValues: Array<{ label: string; value: string }>;
 }
 
 const OCR_PRESETS: OcrPreset[] = [
-  {
-    type: 'Lab Result',
-    label: 'Lab Report',
-    emoji: '🧪',
-    defaultTitle: 'Full Blood Count & Malaria MP',
-    provider: 'Central City Diagnostic Laboratory',
-    summary: 'Hemoglobin 13.8 g/dL (Normal). Malaria MP negative. WBC 6,200/uL within standard limits.',
-    keyValues: [
-      { label: 'Hemoglobin', value: '13.8 g/dL (Normal)' },
-      { label: 'Malaria MP', value: 'Negative (No parasites seen)' },
-      { label: 'Platelet Count', value: '240,000 /uL' },
-    ],
-  },
-  {
-    type: 'Prescription',
-    label: 'Prescription',
-    emoji: '💊',
-    defaultTitle: 'Augmentin 625mg & Paracetamol',
-    provider: 'Dr. Sarah Chen · Riverside Clinic',
-    summary: 'Take 1 tablet twice daily after food for 7 days. Completed course recommended.',
-    keyValues: [
-      { label: 'Dosage', value: '625mg BID × 7 days' },
-      { label: 'Prescriber', value: 'Dr. Sarah Chen (MD-88102)' },
-      { label: 'HMO Coverage', value: 'Covered (Hygeia HMO)' },
-    ],
-  },
-  {
-    type: 'Immunization',
-    label: 'Vaccine Card',
-    emoji: '💉',
-    defaultTitle: 'NPI Child Immunization Entry',
-    provider: 'Wellicare Hospital & Child Health',
-    summary: 'Rotavirus booster & Pneumococcal PCV series administered and verified.',
-    keyValues: [
-      { label: 'Vaccine Batch', value: 'PCV-LAG-4409' },
-      { label: 'Dose', value: '0.5mL IM' },
-      { label: 'Next Due Date', value: 'School Entry Booster' },
-    ],
-  },
-  {
-    type: 'Imaging',
-    label: 'Radiology Scan',
-    emoji: '🩻',
-    defaultTitle: 'Chest Digital Radiography (X-Ray)',
-    provider: 'Valley Imaging & Diagnostics Center',
-    summary: 'No acute cardiopulmonary disease. Lungs clear, heart size within normal limits.',
-    keyValues: [
-      { label: 'Modality', value: 'Digital X-Ray (PA View)' },
-      { label: 'Radiologist', value: 'Dr. T. Alabi (FRCR)' },
-    ],
-  },
-  {
-    type: 'Receipt',
-    label: 'Medical Receipt',
-    emoji: '🧾',
-    defaultTitle: 'Pharmacy & Consultation Invoice Receipt',
-    provider: 'MediTrust Pharmacy & Diagnostics',
-    summary: 'Total ₦14,500. HMO Covered ₦11,600 (80%). Patient Co-Pay ₦2,900 settled.',
-    keyValues: [
-      { label: 'Total Amount', value: '₦14,500' },
-      { label: 'HMO Co-Pay', value: '₦2,900 (Settled)' },
-      { label: 'Receipt Ref', value: 'REC-2026-9904' },
-    ],
-  },
+  { type: 'Lab Result', label: 'Lab Report', emoji: '🧪' },
+  { type: 'Prescription', label: 'Prescription', emoji: '💊' },
+  { type: 'Immunization', label: 'Vaccine Card', emoji: '💉' },
+  { type: 'Imaging', label: 'Radiology Scan', emoji: '🩻' },
+  { type: 'Receipt', label: 'Medical Receipt', emoji: '🧾' },
+  { type: 'Clinical Note', label: 'Clinical Note', emoji: '📋' },
 ];
 
 export function UploadModal({ app }: { app: WelliApp }) {
@@ -106,6 +46,15 @@ export function UploadModal({ app }: { app: WelliApp }) {
   const [selectedPreset, setSelectedPreset] = useState<OcrPreset>(OCR_PRESETS[0]);
   const [targetMemberId, setTargetMemberId] = useState<string>(state.activeFamilyId || 'me');
   const [flashEnabled, setFlashEnabled] = useState(false);
+
+  const [ocrResult, setOcrResult] = useState<OcrResult | null>(null);
+  const [ocrError, setOcrError] = useState<string | null>(null);
+
+  // Editable fields on Step 2
+  const [editedTitle, setEditedTitle] = useState('');
+  const [editedProvider, setEditedProvider] = useState('');
+  const [editedSummary, setEditedSummary] = useState('');
+  const [editedKeyValues, setEditedKeyValues] = useState<Array<{ label: string; value: string }>>([]);
 
   useEffect(() => {
     if (state.uploadStep === 1) {
@@ -138,44 +87,99 @@ export function UploadModal({ app }: { app: WelliApp }) {
   const handleScanDocument = async (preset: OcrPreset) => {
     hapticFeedback.light();
     setSelectedPreset(preset);
+    setOcrError(null);
     const result = await pickImageFromCamera(false);
-    if (result) {
-      setPickedFile(result);
+    if (!result?.uri) return;
+    setPickedFile(result);
+    actions.setUploadStepScanning(); // patches uploadStep: 1
+
+    try {
+      const extracted = await ocrService.extractFromImage(result.uri, preset.type);
+      if (extracted.success) {
+        setOcrResult(extracted);
+        setEditedTitle(extracted.title || `Scanned ${preset.label}`);
+        setEditedProvider(extracted.provider || '');
+        setEditedSummary(extracted.summary || '');
+        setEditedKeyValues(extracted.keyValues || []);
+        actions.setUploadStepReview(); // patches uploadStep: 2
+      } else {
+        setOcrError(extracted.message || 'Could not read this document.');
+        actions.openUpload(); // back to step 0 with error shown
+      }
+    } catch {
+      setOcrError('Document scanning failed. You can still add this record manually.');
+      actions.openUpload();
     }
-    actions.startScan();
   };
 
   const handleUploadFiles = async (preset: OcrPreset) => {
     hapticFeedback.light();
     setSelectedPreset(preset);
+    setOcrError(null);
     const result = await pickDocument();
-    if (result) {
-      setPickedFile(result);
+    if (!result?.uri) return;
+    setPickedFile(result);
+    actions.setUploadStepScanning();
+
+    try {
+      const extracted = await ocrService.extractFromImage(result.uri, preset.type);
+      if (extracted.success) {
+        setOcrResult(extracted);
+        setEditedTitle(extracted.title || result.name?.replace(/\.[^/.]+$/, '') || `Scanned ${preset.label}`);
+        setEditedProvider(extracted.provider || '');
+        setEditedSummary(extracted.summary || '');
+        setEditedKeyValues(extracted.keyValues || []);
+        actions.setUploadStepReview();
+      } else {
+        setOcrError(extracted.message || 'Could not read this document.');
+        actions.openUpload();
+      }
+    } catch {
+      setOcrError('Document scanning failed. You can still add this record manually.');
+      actions.openUpload();
     }
-    actions.startScan();
   };
 
   const handleSaveToVault = () => {
     hapticFeedback.success();
-    const title = pickedFile?.name
-      ? pickedFile.name.replace(/\.[^/.]+$/, '')
-      : selectedPreset.defaultTitle;
+    const finalTitle = editedTitle.trim() || ocrResult?.title || pickedFile?.name?.replace(/\.[^/.]+$/, '') || `Scanned ${selectedPreset.label}`;
+    const finalProvider = editedProvider.trim() || ocrResult?.provider || 'Not detected — edit to add';
+    const finalSummary = editedSummary.trim() || ocrResult?.summary || '';
+    const finalKeyValues = editedKeyValues.filter((kv) => kv.label.trim() || kv.value.trim());
 
     actions.addRecord({
       ownerId: targetMemberId,
-      title,
-      date: 'Today · May 14, 2026',
+      title: finalTitle,
+      date: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
       type: selectedPreset.type,
-      provider: selectedPreset.provider,
-      summary: selectedPreset.summary,
+      provider: finalProvider,
+      summary: finalSummary,
       extractedOcr: {
-        keyValues: selectedPreset.keyValues,
-        statusBadge: 'OCR Verified',
+        keyValues: finalKeyValues,
+        statusBadge: finalKeyValues.length ? 'OCR Extracted' : 'Manual Entry Needed',
       },
     });
 
     setPickedFile(null);
+    setOcrResult(null);
+    setOcrError(null);
     actions.closeUpload();
+  };
+
+  const handleAddKeyValue = () => {
+    hapticFeedback.selection();
+    setEditedKeyValues([...editedKeyValues, { label: '', value: '' }]);
+  };
+
+  const handleUpdateKeyValue = (index: number, field: 'label' | 'value', text: string) => {
+    const updated = [...editedKeyValues];
+    updated[index] = { ...updated[index], [field]: text };
+    setEditedKeyValues(updated);
+  };
+
+  const handleRemoveKeyValue = (index: number) => {
+    hapticFeedback.light();
+    setEditedKeyValues(editedKeyValues.filter((_, i) => i !== index));
   };
 
   const currentMember = state.familyMembers.find((f) => f.id === targetMemberId) || state.familyMembers[0];
@@ -187,6 +191,7 @@ export function UploadModal({ app }: { app: WelliApp }) {
       transparent={false}
       onRequestClose={() => {
         setPickedFile(null);
+        setOcrError(null);
         actions.closeUpload();
       }}
     >
@@ -195,6 +200,7 @@ export function UploadModal({ app }: { app: WelliApp }) {
           title={state.uploadStep === 1 ? 'OCR Document Scanner' : state.uploadStep === 2 ? 'Scanned Summary' : 'Add Health Record'}
           onClose={() => {
             setPickedFile(null);
+            setOcrError(null);
             actions.closeUpload();
           }}
           onBack={
@@ -205,6 +211,7 @@ export function UploadModal({ app }: { app: WelliApp }) {
                 }
               : () => {
                   setPickedFile(null);
+                  setOcrError(null);
                   actions.closeUpload();
                 }
           }
@@ -213,6 +220,20 @@ export function UploadModal({ app }: { app: WelliApp }) {
         {/* STEP 0: Capture & Category Selection */}
         {state.uploadStep === 0 && (
           <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+            {/* Dismissible OCR Error Banner */}
+            {ocrError && (
+              <View style={styles.errorBanner}>
+                <Text style={{ fontSize: 16 }}>⚠️</Text>
+                <Text style={styles.errorBannerText}>{ocrError}</Text>
+                <TouchableOpacity
+                  onPress={() => setOcrError(null)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Text style={styles.errorDismissText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             {/* Target Family Member Selector */}
             <View style={styles.memberSelectorCard}>
               <Text style={styles.cardSectionLabel}>SAVING RECORD FOR</Text>
@@ -345,8 +366,8 @@ export function UploadModal({ app }: { app: WelliApp }) {
                 ) : (
                   <View style={styles.docPlaceholder}>
                     <Text style={{ fontSize: 48 }}>{selectedPreset.emoji}</Text>
-                    <Text style={styles.docPlaceholderTitle}>{selectedPreset.defaultTitle}</Text>
-                    <Text style={styles.docPlaceholderSub}>{selectedPreset.provider}</Text>
+                    <Text style={styles.docPlaceholderTitle}>{selectedPreset.label}</Text>
+                    <Text style={styles.docPlaceholderSub}>Analyzing document text...</Text>
                   </View>
                 )}
 
@@ -370,7 +391,7 @@ export function UploadModal({ app }: { app: WelliApp }) {
               <View style={styles.analyzingFooter}>
                 <Text style={styles.analyzingTitle}>Extracting Medical Data…</Text>
                 <Text style={styles.analyzingDesc}>
-                  Analyzing headers, doctor signatures, and lab reference ranges
+                  Analyzing headers, clinical fields, and lab reference ranges
                 </Text>
               </View>
             </View>
@@ -393,43 +414,100 @@ export function UploadModal({ app }: { app: WelliApp }) {
                   />
                 </Svg>
               </View>
-              <Text style={styles.successTitle}>Document Digitized & Verified</Text>
+              <Text style={styles.successTitle}>Document Digitized</Text>
               <Text style={styles.successSub}>
-                OCR extracted the following clinical data for {currentMember.name}:
+                Review or edit the extracted details before saving to {currentMember.name}'s vault:
               </Text>
             </View>
 
-            {/* Extracted Clinical Metadata Card */}
+            {/* Extracted Clinical Metadata Card with Inline Editing */}
             <View style={styles.ocrResultCard}>
               <View style={styles.ocrHeaderRow}>
                 <Text style={styles.ocrBadgeEmoji}>{selectedPreset.emoji}</Text>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.ocrRecordTitle}>
-                    {pickedFile?.name ? pickedFile.name.replace(/\.[^/.]+$/, '') : selectedPreset.defaultTitle}
-                  </Text>
-                  <Text style={styles.ocrProviderText}>{selectedPreset.provider}</Text>
+                  <Text style={styles.inputLabelSmall}>DOCUMENT TITLE</Text>
+                  <TextInput
+                    value={editedTitle}
+                    onChangeText={setEditedTitle}
+                    placeholder="Document title"
+                    placeholderTextColor="#94a3b8"
+                    style={styles.inlineTitleInput}
+                  />
                 </View>
                 <View style={styles.verifiedTag}>
-                  <Text style={styles.verifiedTagText}>✓ Verified</Text>
+                  <Text style={styles.verifiedTagText}>
+                    {editedKeyValues.length ? '✓ OCR Extracted' : 'Manual Review'}
+                  </Text>
                 </View>
               </View>
 
               <View style={styles.ocrDivider} />
 
-              <Text style={styles.ocrValuesHeader}>EXTRACTED CLINICAL VALUES</Text>
-              <View style={styles.keyValuesGrid}>
-                {selectedPreset.keyValues.map((kv) => (
-                  <View key={kv.label} style={styles.keyValueRow}>
-                    <Text style={styles.kvLabel}>{kv.label}</Text>
-                    <Text style={styles.kvValue}>{kv.value}</Text>
-                  </View>
-                ))}
-              </View>
+              <Text style={styles.inputLabelSmall}>HEALTHCARE PROVIDER / FACILITY</Text>
+              <TextInput
+                value={editedProvider}
+                onChangeText={setEditedProvider}
+                placeholder="e.g. Central City Diagnostic Lab or Dr. Sarah Chen"
+                placeholderTextColor="#94a3b8"
+                style={styles.inlineTextInput}
+              />
 
               <View style={styles.ocrDivider} />
 
-              <Text style={styles.summaryLabel}>CLINICAL SUMMARY</Text>
-              <Text style={styles.summaryText}>{selectedPreset.summary}</Text>
+              <View style={styles.sectionTitleRow}>
+                <Text style={styles.ocrValuesHeader}>EXTRACTED CLINICAL VALUES</Text>
+                <TouchableOpacity onPress={handleAddKeyValue} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Text style={styles.addFieldBtnText}>+ Add Field</Text>
+                </TouchableOpacity>
+              </View>
+
+              {editedKeyValues.length === 0 ? (
+                <View style={styles.emptyKvCard}>
+                  <Text style={styles.emptyKvText}>
+                    No structured key values detected. Tap "+ Add Field" to add lab values or test metrics manually.
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.keyValuesGrid}>
+                  {editedKeyValues.map((kv, idx) => (
+                    <View key={idx} style={styles.keyValueEditRow}>
+                      <TextInput
+                        value={kv.label}
+                        onChangeText={(t) => handleUpdateKeyValue(idx, 'label', t)}
+                        placeholder="Test / Field"
+                        placeholderTextColor="#94a3b8"
+                        style={styles.kvLabelInput}
+                      />
+                      <TextInput
+                        value={kv.value}
+                        onChangeText={(t) => handleUpdateKeyValue(idx, 'value', t)}
+                        placeholder="Value / Result"
+                        placeholderTextColor="#94a3b8"
+                        style={styles.kvValueInput}
+                      />
+                      <TouchableOpacity
+                        onPress={() => handleRemoveKeyValue(idx)}
+                        style={styles.removeKvBtn}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Text style={styles.removeKvBtnText}>✕</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              <View style={styles.ocrDivider} />
+
+              <Text style={styles.summaryLabel}>CLINICAL SUMMARY / NOTES</Text>
+              <TextInput
+                value={editedSummary}
+                onChangeText={setEditedSummary}
+                placeholder="Clinical observations, findings, dosage instructions, etc."
+                placeholderTextColor="#94a3b8"
+                multiline
+                style={styles.summaryTextInput}
+              />
             </View>
 
             {/* Confirm & Save CTA */}
@@ -455,6 +533,29 @@ const styles = StyleSheet.create({
   scrollContainer: {
     padding: 18,
     paddingBottom: 40,
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#fef2f2',
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    marginBottom: 16,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: 12.5,
+    color: '#991b1b',
+    lineHeight: 17,
+  },
+  errorDismissText: {
+    fontSize: 14,
+    color: '#991b1b',
+    fontWeight: '700',
+    paddingHorizontal: 4,
   },
   memberSelectorCard: {
     backgroundColor: '#ffffff',
@@ -817,14 +918,29 @@ const styles = StyleSheet.create({
   ocrBadgeEmoji: {
     fontSize: 28,
   },
-  ocrRecordTitle: {
+  inputLabelSmall: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: '#64748b',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  inlineTitleInput: {
     fontSize: 15,
     fontWeight: '800',
     color: '#0f172a',
+    paddingVertical: 2,
+    paddingHorizontal: 0,
   },
-  ocrProviderText: {
-    fontSize: 12,
-    color: '#64748b',
+  inlineTextInput: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    fontSize: 13,
+    color: '#0f172a',
     marginTop: 2,
   },
   verifiedTag: {
@@ -845,33 +961,75 @@ const styles = StyleSheet.create({
     backgroundColor: '#f1f5f9',
     marginVertical: 14,
   },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
   ocrValuesHeader: {
     fontSize: 11,
     fontWeight: '800',
     color: '#64748b',
     letterSpacing: 0.5,
-    marginBottom: 10,
+  },
+  addFieldBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0284c7',
+  },
+  emptyKvCard: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderStyle: 'dashed',
+  },
+  emptyKvText: {
+    fontSize: 12,
+    color: '#64748b',
+    lineHeight: 16,
   },
   keyValuesGrid: {
     gap: 8,
   },
-  keyValueRow: {
+  keyValueEditRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  kvLabelInput: {
+    flex: 1,
     backgroundColor: '#f8fafc',
     borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
     paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  kvLabel: {
+    paddingHorizontal: 10,
     fontSize: 12.5,
     fontWeight: '600',
-    color: '#475569',
+    color: '#334155',
   },
-  kvValue: {
+  kvValueInput: {
+    flex: 1.2,
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     fontSize: 12.5,
     fontWeight: '700',
     color: '#0f172a',
+  },
+  removeKvBtn: {
+    padding: 6,
+  },
+  removeKvBtnText: {
+    color: '#94a3b8',
+    fontSize: 14,
+    fontWeight: '700',
   },
   summaryLabel: {
     fontSize: 11,
@@ -880,10 +1038,18 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: 6,
   },
-  summaryText: {
+  summaryTextInput: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     fontSize: 13,
     color: '#334155',
     lineHeight: 18,
+    minHeight: 60,
+    textAlignVertical: 'top',
   },
   saveBtn: {
     backgroundColor: '#041E42',

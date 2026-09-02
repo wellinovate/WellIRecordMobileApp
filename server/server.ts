@@ -1528,6 +1528,126 @@ app.post('/api/v1/records/upload-url', (req: Request, res: Response) => {
   });
 });
 
+// 5b. Document OCR Extraction (Google Cloud Vision + Claude structuring / heuristic fallback)
+// Structures raw OCR text into record fields. Uses Claude if configured
+// for reliable parsing of real-world document layouts; otherwise falls
+// back to basic heuristics. Never fabricates data — if nothing can be
+// extracted, returns null fields rather than inventing plausible values.
+async function structureOcrText(rawText: string, recordType: string): Promise<{
+  title: string;
+  provider: string;
+  summary: string;
+  keyValues: Array<{ label: string; value: string }>;
+}> {
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+
+  if (anthropicKey) {
+    try {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': anthropicKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 1000,
+          messages: [{
+            role: 'user',
+            content: `Extract structured data from this ${recordType} document's OCR text. Respond ONLY with valid JSON, no markdown, no preamble, in this exact shape:
+{"title": string, "provider": string, "summary": string, "keyValues": [{"label": string, "value": string}]}
+If a field genuinely cannot be determined from the text, use an empty string for it. Do not invent or guess values not present in the text.
+
+OCR TEXT:
+${rawText}`,
+          }],
+        }),
+      });
+      const data = await response.json();
+      const textBlock = data?.content?.find((b: any) => b.type === 'text')?.text;
+      if (textBlock) {
+        const cleaned = textBlock.replace(/```json|```/g, '').trim();
+        const parsed = JSON.parse(cleaned);
+        return {
+          title: parsed.title || '',
+          provider: parsed.provider || '',
+          summary: parsed.summary || '',
+          keyValues: Array.isArray(parsed.keyValues) ? parsed.keyValues : [],
+        };
+      }
+    } catch (e: any) {
+      console.error('[OCR Structuring - Claude Error]', e.message);
+      // fall through to heuristic parsing below
+    }
+  }
+
+  // Fallback: basic heuristic parsing — first non-empty line as title,
+  // rest as summary. No fabricated provider/keyValues; better to leave
+  // blank than invent plausible-looking clinical data.
+  const lines = rawText.split('\n').map((l) => l.trim()).filter(Boolean);
+  return {
+    title: lines[0] || `Scanned ${recordType}`,
+    provider: '',
+    summary: lines.slice(1).join(' ').slice(0, 500) || rawText.slice(0, 500),
+    keyValues: [],
+  };
+}
+
+app.post('/api/v1/records/ocr-extract', async (req: Request, res: Response) => {
+  const { imageBase64, recordType } = req.body;
+
+  if (!imageBase64) {
+    return res.status(400).json({ success: false, message: 'Image data is required' });
+  }
+
+  const visionKey = process.env.GOOGLE_CLOUD_VISION_KEY;
+  if (!visionKey) {
+    return res.status(503).json({
+      success: false,
+      message: 'Document scanning is not configured yet. Please enter details manually.',
+    });
+  }
+
+  try {
+    const visionRes = await fetch(
+      `https://vision.googleapis.com/v1/images:annotate?key=${visionKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requests: [{
+            image: { content: imageBase64 },
+            features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
+          }],
+        }),
+      }
+    );
+    const visionData = await visionRes.json();
+
+    if (visionData?.responses?.[0]?.error) {
+      console.error('[Vision API Error]', visionData.responses[0].error);
+      return res.status(502).json({ success: false, message: 'Document scanning service error. Please try again or enter details manually.' });
+    }
+
+    const rawText = visionData?.responses?.[0]?.fullTextAnnotation?.text;
+
+    if (!rawText || !rawText.trim()) {
+      return res.status(422).json({
+        success: false,
+        message: 'Could not read any text from this image. Try a clearer photo or enter details manually.',
+      });
+    }
+
+    const structured = await structureOcrText(rawText, recordType || 'document');
+
+    return res.json({ success: true, rawText, ...structured });
+  } catch (err) {
+    console.error('[OCR Error]', err);
+    return res.status(500).json({ success: false, message: 'Document scanning failed. Please try again.', error: err });
+  }
+});
+
 // 6. Fetch Lagos Healthcare Facilities (MongoDB)
 app.get(['/api/v1/care/facilities', '/api/v1/facilities'], async (_req: Request, res: Response) => {
   try {
