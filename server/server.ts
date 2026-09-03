@@ -1820,33 +1820,28 @@ app.get(['/api/v1/care/facilities', '/api/v1/facilities'], async (_req: Request,
 const OrganizationProfileSchema = new mongoose.Schema({}, { strict: false });
 const OrganizationProfile: mongoose.Model<any> =
   (mongoose.models.OrganizationProfile as any) ||
-  mongoose.model('OrganizationProfile', OrganizationProfileSchema, 'organizationprofiles'); // confirmed collection name
+  mongoose.model('OrganizationProfile', OrganizationProfileSchema, 'organizationprofiles');
 
 app.get(['/api/v1/care/providers', '/api/v1/providers'], async (_req: Request, res: Response) => {
   try {
     if (mongoose.connection.readyState !== 1) {
       return res.json({ success: true, providers: [] });
     }
-    let orgs: any[] = await OrganizationProfile.find({}).lean();
-    if (orgs.length === 0 && mongoose.connection.db) {
-      try {
-        const collections = await mongoose.connection.db.listCollections().toArray();
-        const altCol = collections.find(
-          (c) => c.name.toLowerCase() === 'organizationprofiles' && c.name !== 'organizationprofiles'
-        );
-        if (altCol) {
-          orgs = await mongoose.connection.db.collection(altCol.name).find({}).toArray();
-        }
-      } catch {
-        // ignore fallback collection check
-      }
-    }
+    const orgs: any[] = await OrganizationProfile.find(
+      {},
+      // Explicit field projection — never pull unbounded fields like a
+      // base64 logo blob into memory. Only what the directory needs.
+      'wrOrgId organizationName organizationType officeAddress verificationStatus'
+    )
+      .limit(200) // hard cap, prevents unbounded growth as orgs scale
+      .lean(); // skip Mongoose document overhead, return plain objects
+
     const providers = orgs.map((org: any) => ({
       id: org.wrOrgId || org._id.toString(),
       name: org.organizationName,
       type: org.organizationType,
       address: org.officeAddress || '',
-      logo: org.logo || null,
+      logo: null, // omit entirely from this endpoint — directory listing doesn't need it
       isVerified: org.verificationStatus === 'approved',
       wrOrgId: org.wrOrgId || null,
     }));
