@@ -69,8 +69,8 @@ export function HomeScreen({ app }: { app: WelliApp }) {
         </View>
       </View>
 
-      {/* Active Profile - Dynamic Family Tab Row (You + Dependents) */}
-      {family.length > 1 ? (
+      {/* Active Profile - Dynamic Family Tab Row (Only when dependents exist) */}
+      {family.length > 1 && (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -92,14 +92,6 @@ export function HomeScreen({ app }: { app: WelliApp }) {
             );
           })}
         </ScrollView>
-      ) : (
-        <View style={styles.familyScroll}>
-          <Chip
-            label="You"
-            active={true}
-            onClick={() => {}}
-          />
-        </View>
       )}
 
       {/* Greeting */}
@@ -248,21 +240,42 @@ export function HomeScreen({ app }: { app: WelliApp }) {
             { backgroundColor: theme.surface, borderColor: theme.border },
           ]}
         >
-          <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
-            <Path
-              d="M22 12h-4l-3 9L9 3l-3 9H2"
-              stroke={theme.mutedLight}
-              strokeWidth={1.8}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </Svg>
+          <View style={[styles.emptyIconCircle, { backgroundColor: '#eff6ff' }]}>
+            <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+              <Path
+                d="M22 12h-4l-3 9L9 3l-3 9H2"
+                stroke="#0EA5E9"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </Svg>
+          </View>
           <Text style={[styles.emptySectionTitle, { color: theme.text }]}>
             No vitals recorded yet
           </Text>
           <Text style={[styles.emptySectionSub, { color: theme.muted }]}>
             Blood pressure, glucose, and heart rate metrics will appear here once recorded.
           </Text>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => {
+              hapticFeedback.medium();
+              actions.openUpload();
+            }}
+            style={styles.emptyActionBtn}
+            accessibilityLabel="Add your first record"
+          >
+            <Svg width={14} height={14} viewBox="0 0 20 20">
+              <Path
+                d="M10 3v14M3 10h14"
+                stroke="#ffffff"
+                strokeWidth={2.2}
+                strokeLinecap="round"
+              />
+            </Svg>
+            <Text style={styles.emptyActionBtnText}>Add Your First Record</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <ScrollView
@@ -308,16 +321,37 @@ export function HomeScreen({ app }: { app: WelliApp }) {
             { backgroundColor: theme.surface, borderColor: theme.border },
           ]}
         >
-          <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
-            <Rect x={4} y={3} width={16} height={18} rx={2} stroke={theme.mutedLight} strokeWidth={1.8} />
-            <Path d="M8 8h8M8 12h8M8 16h5" stroke={theme.mutedLight} strokeWidth={1.6} strokeLinecap="round" />
-          </Svg>
+          <View style={[styles.emptyIconCircle, { backgroundColor: '#f0fdf4' }]}>
+            <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+              <Rect x={4} y={3} width={16} height={18} rx={2} stroke="#10b981" strokeWidth={2} />
+              <Path d="M8 8h8M8 12h8M8 16h5" stroke="#10b981" strokeWidth={1.8} strokeLinecap="round" />
+            </Svg>
+          </View>
           <Text style={[styles.emptySectionTitle, { color: theme.text }]}>
             No records in your vault yet
           </Text>
           <Text style={[styles.emptySectionSub, { color: theme.muted }]}>
             Upload a lab result, prescription, or clinical note to secure it in your vault.
           </Text>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => {
+              hapticFeedback.medium();
+              actions.openUpload();
+            }}
+            style={[styles.emptyActionBtn, { backgroundColor: '#059669' }]}
+            accessibilityLabel="Add your first record"
+          >
+            <Svg width={14} height={14} viewBox="0 0 20 20">
+              <Path
+                d="M10 3v14M3 10h14"
+                stroke="#ffffff"
+                strokeWidth={2.2}
+                strokeLinecap="round"
+              />
+            </Svg>
+            <Text style={styles.emptyActionBtnText}>Add Your First Record</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <View style={styles.recordsList}>
@@ -551,6 +585,29 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
     lineHeight: 17,
+  },
+  emptyIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  emptyActionBtn: {
+    backgroundColor: '#041E42',
+    paddingVertical: 9,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
+  },
+  emptyActionBtnText: {
+    color: '#ffffff',
+    fontSize: 12.5,
+    fontWeight: '700',
   },
   emptyVitals: {
     fontSize: 12.5,

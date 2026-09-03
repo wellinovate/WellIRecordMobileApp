@@ -7,7 +7,7 @@ import {
   ScrollView,
   StyleSheet,
 } from 'react-native';
-import Svg, { Path, Circle } from 'react-native-svg';
+import Svg, { Path, Circle, Rect } from 'react-native-svg';
 import { useTheme } from '../theme/ThemeContext';
 import { Chip } from '../components/Chip';
 import { RECORD_META, RECORD_TYPES } from '../data/mockData';
@@ -201,10 +201,43 @@ export function RecordsScreen({ app }: { app: WelliApp }) {
 
       {/* Empty State */}
       {filteredRecords.length === 0 && (
-        <View style={styles.emptyContainer}>
-          <Text style={[styles.emptyText, { color: theme.mutedLight }]}>
-            No records found for {activeMember.name.split(' ')[0]}.
+        <View
+          style={[
+            styles.emptyCardBox,
+            { backgroundColor: theme.surface, borderColor: theme.border },
+          ]}
+        >
+          <View style={[styles.emptyIconCircle, { backgroundColor: '#eff6ff' }]}>
+            <Svg width={26} height={26} viewBox="0 0 24 24" fill="none">
+              <Rect x={4} y={3} width={16} height={18} rx={2} stroke="#0EA5E9" strokeWidth={1.8} />
+              <Path d="M8 8h8M8 12h8M8 16h5" stroke="#0EA5E9" strokeWidth={1.6} strokeLinecap="round" />
+            </Svg>
+          </View>
+          <Text style={[styles.emptyCardTitle, { color: theme.text }]}>
+            No records in your vault yet
           </Text>
+          <Text style={[styles.emptyCardSub, { color: theme.muted }]}>
+            Scan or upload lab test results, prescriptions, or clinical summaries to organize them with verified OCR.
+          </Text>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => {
+              hapticFeedback.medium();
+              actions.openUpload();
+            }}
+            style={styles.emptyActionBtn}
+            accessibilityLabel="Add your first record"
+          >
+            <Svg width={15} height={15} viewBox="0 0 20 20">
+              <Path
+                d="M10 3v14M3 10h14"
+                stroke="#ffffff"
+                strokeWidth={2.2}
+                strokeLinecap="round"
+              />
+            </Svg>
+            <Text style={styles.emptyActionBtnText}>Add Your First Record</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -464,12 +497,51 @@ const styles = StyleSheet.create({
   filterScroll: {
     marginBottom: 14,
   },
-  emptyContainer: {
-    paddingVertical: 40,
+  emptyCardBox: {
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingVertical: 28,
+    paddingHorizontal: 20,
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 20,
+    marginTop: 8,
   },
-  emptyText: {
+  emptyIconCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  emptyCardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  emptyCardSub: {
+    fontSize: 12.5,
+    textAlign: 'center',
+    lineHeight: 18,
+    maxWidth: 280,
+    marginBottom: 6,
+  },
+  emptyActionBtn: {
+    backgroundColor: '#041E42',
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginTop: 4,
+  },
+  emptyActionBtnText: {
+    color: '#ffffff',
     fontSize: 13,
+    fontWeight: '700',
   },
   recordsList: {
     gap: 10,
