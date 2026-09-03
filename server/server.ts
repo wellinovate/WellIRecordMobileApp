@@ -526,7 +526,7 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
     }
 
     let user: any = account;
-    if (!user) {
+    if (!user && requestedMode === 'login') {
       if (cleanEmail) {
         user = await User.findOne({ email: cleanEmail });
       }
@@ -549,6 +549,24 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
           message: 'No account found for this email or phone number. Please create a vault first.',
         });
       }
+
+      // Cross-model duplicate check — a password-based User account with
+      // this email/phone already exists; don't create a separate Account.
+      if (mongoose.connection.readyState === 1) {
+        const existingUser = await User.findOne({
+          $or: [
+            ...(cleanEmail ? [{ email: cleanEmail }] : []),
+            ...(normalizedE164 ? [{ phoneNumber: normalizedE164 }] : []),
+          ],
+        });
+        if (existingUser) {
+          return res.status(409).json({
+            success: false,
+            message: 'An account with this email or phone number already exists. Try signing in with your password instead.',
+          });
+        }
+      }
+
       if (mongoose.connection.readyState === 1) {
         const newPhone = normalizedE164 || (phoneNumber ? (phoneNumber.startsWith('+') ? phoneNumber : `+${cleanPhone}`) : undefined);
         const newEmail = cleanEmail || (req.body.email ? req.body.email.toLowerCase().trim() : undefined);
@@ -748,6 +766,15 @@ app.post('/api/v1/auth/social/verify', async (req: Request, res: Response) => {
       if (mongoose.connection.readyState !== 1) {
         return res.status(503).json({ success: false, message: 'Database unavailable' });
       }
+
+      const existingUser = await User.findOne({ email: cleanEmail });
+      if (existingUser) {
+        return res.status(409).json({
+          success: false,
+          message: 'An account with this email already exists. Try signing in with your password instead.',
+        });
+      }
+
       const resolvedName = (fullName && fullName.trim()) || cleanEmail.split('@')[0];
       account = new Account({
         email: cleanEmail,

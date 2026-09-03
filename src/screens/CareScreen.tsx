@@ -188,7 +188,6 @@ export function CareScreen({ app }: { app: WelliApp }) {
   const theme = useTheme();
   const { state, actions, facilities, prescriptions } = app;
 
-  const hasUpcomingVisit = state.activeFamilyId === 'me';
   const cq = state.careQuery.trim().toLowerCase();
   const filtered = facilities
     .filter(
@@ -247,27 +246,9 @@ export function CareScreen({ app }: { app: WelliApp }) {
         <Text style={[styles.title, { color: theme.text }]}>Find Care</Text>
       </View>
 
-      {/* Telehealth Banner */}
-      {hasUpcomingVisit && (
-        <LinearGradient
-          colors={['#0B1F3A', '#0E5E6F']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.telehealthBanner}
-        >
-          <View style={{ flex: 1 }}>
-            <Text style={styles.telehealthMeta}>Upcoming Telehealth</Text>
-            <Text style={styles.telehealthTitle}>Dr. Sarah Chen · Today, 3:00 PM</Text>
-          </View>
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={actions.joinCall}
-            style={styles.joinCallBtn}
-          >
-            <Text style={styles.joinCallText}>Join</Text>
-          </TouchableOpacity>
-        </LinearGradient>
-      )}
+      {/* Telehealth Banner removed — no real appointment scheduling backend
+          exists yet. Previously showed a hardcoded fake appointment
+          ("Dr. Sarah Chen · Today, 3:00 PM") to every user unconditionally. */}
 
       {/* Search Input */}
       <View style={styles.searchWrapper}>
@@ -441,39 +422,6 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 22,
     fontWeight: '800',
-  },
-  telehealthBanner: {
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginBottom: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  telehealthMeta: {
-    color: '#93c5fd',
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 3,
-  },
-  telehealthTitle: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  joinCallBtn: {
-    backgroundColor: '#0EA5E9',
-    borderRadius: 999,
-    paddingVertical: 9,
-    paddingHorizontal: 16,
-  },
-  joinCallText: {
-    color: '#041E42',
-    fontSize: 13,
-    fontWeight: '700',
   },
   searchWrapper: {
     position: 'relative',
