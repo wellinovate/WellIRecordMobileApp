@@ -160,6 +160,7 @@ export function LabDirectoryModal({ app }: { app: WelliApp }) {
 
   const handleBookAppointment = (lab: LabDirectoryItem) => {
     hapticFeedback.selection();
+    actions.closeLabDirectory();
     actions.openBookAppointment('', {
       name: lab.name,
       address: lab.address,

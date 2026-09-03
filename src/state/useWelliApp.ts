@@ -657,6 +657,8 @@ export function useWelliApp() {
       });
       patch({
         showShareFlow: true,
+        showLabDirectory: false,
+        showPharmacyDirectory: false,
         shareStep: 1,
         shareSelected: selected,
         shareMethod: 'search',
@@ -1209,6 +1211,8 @@ export function useWelliApp() {
     ) =>
       patch({
         showBookAppointment: true,
+        showLabDirectory: false,
+        showPharmacyDirectory: false,
         bookingFacilityId: externalFacility ? null : facilityId,
         externalBookingFacility: externalFacility || null,
         bookingDate: '',
