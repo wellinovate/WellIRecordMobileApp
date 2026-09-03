@@ -1816,7 +1816,7 @@ app.get(['/api/v1/care/facilities', '/api/v1/facilities'], async (_req: Request,
 // Locator-only: separate from verified WelliRecord partner facilities.
 const ABUJA_PHARMACY_DISTRICTS = ['Wuse', 'Utako', 'Maitama', 'Asokoro', 'Jabi', 'Jahi', 'Wuye'];
 
-let pharmacyCache: { data: any[]; fetchedAt: number } | null = null;
+let pharmacyCache: { data: any[]; fetchedAt: number; usedFallback: boolean } | null = null;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 const ABUJA_FALLBACK_PHARMACIES = [
@@ -1916,13 +1916,13 @@ app.get('/api/v1/care/pharmacies', async (req: Request, res: Response) => {
   const placesKey = process.env.GOOGLE_PLACES_API_KEY;
 
   if (pharmacyCache && Date.now() - pharmacyCache.fetchedAt < CACHE_TTL_MS) {
-    return res.json({ success: true, pharmacies: pharmacyCache.data, cached: true });
+    return res.json({ success: true, pharmacies: pharmacyCache.data, usedFallback: pharmacyCache.usedFallback, cached: true });
   }
 
   if (!placesKey) {
     console.log('[Pharmacy Directory] GOOGLE_PLACES_API_KEY not set, using curated Abuja pharmacies');
-    pharmacyCache = { data: ABUJA_FALLBACK_PHARMACIES, fetchedAt: Date.now() };
-    return res.json({ success: true, pharmacies: ABUJA_FALLBACK_PHARMACIES, cached: false, fallback: true });
+    pharmacyCache = { data: ABUJA_FALLBACK_PHARMACIES, fetchedAt: Date.now(), usedFallback: true };
+    return res.json({ success: true, pharmacies: ABUJA_FALLBACK_PHARMACIES, usedFallback: true, cached: false });
   }
 
   try {
@@ -1962,9 +1962,10 @@ app.get('/api/v1/care/pharmacies', async (req: Request, res: Response) => {
       return true;
     });
 
-    const finalResults = dedupedResults.length > 0 ? dedupedResults : ABUJA_FALLBACK_PHARMACIES;
-    pharmacyCache = { data: finalResults, fetchedAt: Date.now() };
-    return res.json({ success: true, pharmacies: finalResults, cached: false });
+    const usedFallback = dedupedResults.length === 0;
+    const finalResults = usedFallback ? ABUJA_FALLBACK_PHARMACIES : dedupedResults;
+    pharmacyCache = { data: finalResults, fetchedAt: Date.now(), usedFallback };
+    return res.json({ success: true, pharmacies: finalResults, usedFallback, cached: false });
   } catch (err) {
     console.error('[Pharmacy Directory Error]', err);
     return res.status(500).json({ success: false, message: 'Failed to fetch pharmacy directory' });
