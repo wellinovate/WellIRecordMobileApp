@@ -478,6 +478,7 @@ export const DOCTORS: Doctor[] = [
 export const FACILITIES: CareFacility[] = [
   {
     id: 'f1',
+    wrOrgId: 'org_wellicare',
     name: 'Wellicare Hospital & Medical Center',
     type: 'Hospital',
     typeLabel: 'Hospital & Urgent Care',
@@ -488,6 +489,7 @@ export const FACILITIES: CareFacility[] = [
     acceptingPatients: true,
     accredited: true,
     verified: true,
+    isVerified: true,
     instantBooking: true,
     emoji: '🏥',
     gradient: 'linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%)',
@@ -496,6 +498,7 @@ export const FACILITIES: CareFacility[] = [
   },
   {
     id: 'f2',
+    wrOrgId: 'org_ageless',
     name: 'Ageless Medical Laboratory & Diagnostics',
     type: 'Laboratory',
     typeLabel: 'Diagnostic & Pathology Lab',
@@ -506,6 +509,7 @@ export const FACILITIES: CareFacility[] = [
     acceptingPatients: true,
     accredited: true,
     verified: true,
+    isVerified: true,
     instantBooking: true,
     emoji: '🧪',
     gradient: 'linear-gradient(135deg, #4c1d95 0%, #6d28d9 100%)',
@@ -514,6 +518,7 @@ export const FACILITIES: CareFacility[] = [
   },
   {
     id: 'f3',
+    wrOrgId: 'org_dovers',
     name: 'Dovers Hospital',
     type: 'Hospital',
     typeLabel: 'Specialist & Surgical Hospital',
@@ -524,6 +529,7 @@ export const FACILITIES: CareFacility[] = [
     acceptingPatients: true,
     accredited: true,
     verified: true,
+    isVerified: true,
     instantBooking: true,
     emoji: '🏥',
     gradient: 'linear-gradient(135deg, #065f46 0%, #047857 100%)',
@@ -532,6 +538,7 @@ export const FACILITIES: CareFacility[] = [
   },
   {
     id: 'f4',
+    wrOrgId: 'org_queens',
     name: 'Queens Clinic',
     type: 'Clinic',
     typeLabel: 'Family & Maternal Healthcare',
@@ -542,6 +549,7 @@ export const FACILITIES: CareFacility[] = [
     acceptingPatients: true,
     accredited: true,
     verified: true,
+    isVerified: true,
     instantBooking: true,
     emoji: '🩺',
     gradient: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',

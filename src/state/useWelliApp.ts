@@ -1234,7 +1234,8 @@ export function useWelliApp() {
         return;
       }
 
-      const facility = FACILITIES.find((f) => f.id === state.bookingFacilityId);
+      const allFacilities = state.facilitiesList?.length ? state.facilitiesList : FACILITIES;
+      const facility = allFacilities.find((f) => f.id === state.bookingFacilityId);
       if (!facility || !state.bookingDate || !state.bookingTimeSlot) {
         showToast('Choose a date and time to continue');
         return;

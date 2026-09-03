@@ -45,12 +45,16 @@ export function SmartConsentModal({ app }: { app: WelliApp }) {
   const theme = useTheme();
   const { state, actions, consentScopes, family } = app;
 
-  // Live facilities (replaces hardcoded PRESET_ORGS)
+  // Live facilities (replaces hardcoded PRESET_ORGS) — verified partners only
   const [presetOrgs, setPresetOrgs] = useState<{ id: string; name: string }[]>([]);
   useEffect(() => {
     if (!state.showSmartConsent) return;
     facilityService.fetchFacilities().then((list: any[]) =>
-      setPresetOrgs((list || []).map((f) => ({ id: f.id || f._id, name: f.name })))
+      setPresetOrgs(
+        (list || [])
+          .filter((f) => (f.isVerified ?? f.verified) === true)
+          .map((f) => ({ id: f.id || f._id, name: f.name }))
+      )
     );
   }, [state.showSmartConsent]);
 

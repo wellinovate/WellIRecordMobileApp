@@ -135,6 +135,9 @@ export interface CareFacility {
   acceptingPatients: boolean;
   accredited: boolean;
   verified: boolean;
+  isVerified?: boolean;
+  wrOrgId?: string | null;
+  logo?: string | null;
   instantBooking: boolean;
   emoji: string;
   gradient: string;

@@ -1812,6 +1812,51 @@ app.get(['/api/v1/care/facilities', '/api/v1/facilities'], async (_req: Request,
   }
 });
 
+// 6a. Organization Profiles / Healthcare Provider Directory (MongoDB)
+// Read-only mirror of the website's OrganizationProfile — same MongoDB
+// database, confirmed shared cluster. This model is never written to
+// from the mobile backend; organizations are only ever created via
+// the website's provider signup flow.
+const OrganizationProfileSchema = new mongoose.Schema({}, { strict: false });
+const OrganizationProfile: mongoose.Model<any> =
+  (mongoose.models.OrganizationProfile as any) ||
+  mongoose.model('OrganizationProfile', OrganizationProfileSchema, 'organizationprofiles'); // confirmed collection name
+
+app.get(['/api/v1/care/providers', '/api/v1/providers'], async (_req: Request, res: Response) => {
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.json({ success: true, providers: [] });
+    }
+    let orgs: any[] = await OrganizationProfile.find({}).lean();
+    if (orgs.length === 0 && mongoose.connection.db) {
+      try {
+        const collections = await mongoose.connection.db.listCollections().toArray();
+        const altCol = collections.find(
+          (c) => c.name.toLowerCase() === 'organizationprofiles' && c.name !== 'organizationprofiles'
+        );
+        if (altCol) {
+          orgs = await mongoose.connection.db.collection(altCol.name).find({}).toArray();
+        }
+      } catch {
+        // ignore fallback collection check
+      }
+    }
+    const providers = orgs.map((org: any) => ({
+      id: org.wrOrgId || org._id.toString(),
+      name: org.organizationName,
+      type: org.organizationType,
+      address: org.officeAddress || '',
+      logo: org.logo || null,
+      isVerified: org.verificationStatus === 'approved',
+      wrOrgId: org.wrOrgId || null,
+    }));
+    return res.json({ success: true, providers });
+  } catch (err) {
+    console.error('[Provider Directory Error]', err);
+    return res.status(500).json({ success: false, message: 'Failed to fetch provider directory' });
+  }
+});
+
 // 6b. Abuja Pharmacy Directory (Google Places API with 24-hour Cache)
 // Locator-only: separate from verified WelliRecord partner facilities.
 const ABUJA_PHARMACY_DISTRICTS = ['Wuse', 'Utako', 'Maitama', 'Asokoro', 'Jabi', 'Jahi', 'Wuye'];

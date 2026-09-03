@@ -97,7 +97,7 @@ function FacilityCard({
           )}
         </View>
 
-        {(facility.accredited || facility.verified) && (
+        {(facility.accredited || facility.verified || facility.isVerified) && (
           <View style={styles.badgeRow}>
             {facility.accredited && (
               <View style={styles.accreditedBox}>
@@ -107,7 +107,7 @@ function FacilityCard({
                 <Text style={styles.accreditedText}>Accredited Facility</Text>
               </View>
             )}
-            {facility.verified && (
+            {(facility.verified || facility.isVerified) && (
               <View style={styles.verifiedTag}>
                 <Svg width={12} height={12} viewBox="0 0 24 24" fill="none">
                   <Path
