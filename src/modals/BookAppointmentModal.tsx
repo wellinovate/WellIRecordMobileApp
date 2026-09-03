@@ -34,20 +34,22 @@ export function BookAppointmentModal({ app }: { app: WelliApp }) {
 
   if (!state.showBookAppointment) return null;
 
-  const external = state.externalBookingFacility;
-  const facility = external
-    ? {
-        id: external.placeId || state.bookingFacilityId || 'external',
-        name: external.name,
-        emoji: '🔬',
-        leadName: 'Attending Specialist / Pathologist',
-        leadTitle: 'Healthcare Facility',
-        specialty: 'Diagnostic Center / Clinic',
-        address: external.address,
-      }
+  const externalFacility = state.externalBookingFacility;
+  const facility = externalFacility
+    ? null
     : facilities.find((f) => f.id === state.bookingFacilityId);
 
-  if (!facility) return null;
+  if (!externalFacility && !facility) return null;
+
+  const displayName = externalFacility?.name || facility?.name || 'Facility';
+  const displayAddress = externalFacility?.address || facility?.address || '';
+  const displayEmoji = externalFacility ? '🔬' : facility?.emoji || '🏥';
+  const displayLead = externalFacility
+    ? 'Diagnostic Center / Lab Visit'
+    : `${facility?.leadName} · ${facility?.leadTitle}`;
+  const displaySpecialty = externalFacility
+    ? `Diagnostic Testing & Pathology · ${displayAddress}`
+    : `${facility?.specialty} · ${displayAddress}`;
 
   const activePatient = family.find((f) => f.id === selectedMemberId) ?? family[0];
   const disabled = !state.bookingDate || !state.bookingTimeSlot;
@@ -78,14 +80,19 @@ export function BookAppointmentModal({ app }: { app: WelliApp }) {
           {/* Facility Summary Card */}
           <View style={styles.facilityHeaderCard}>
             <View style={styles.facilityEmojiBox}>
-              <Text style={{ fontSize: 22 }}>{facility.emoji}</Text>
+              <Text style={{ fontSize: 22 }}>{displayEmoji}</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.facilityName}>{facility.name}</Text>
-              <Text style={styles.leadText}>
-                {facility.leadName} · {facility.leadTitle}
-              </Text>
-              <Text style={styles.specialtyText}>{facility.specialty} · {facility.address}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={styles.facilityName}>{displayName}</Text>
+                {externalFacility && (
+                  <View style={{ backgroundColor: '#D1FAE5', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#065F46' }}>External Lab</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.leadText}>{displayLead}</Text>
+              <Text style={styles.specialtyText}>{displaySpecialty}</Text>
             </View>
           </View>
 

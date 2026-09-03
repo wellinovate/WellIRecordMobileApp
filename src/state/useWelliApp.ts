@@ -99,7 +99,7 @@ export interface AppState {
   careQuery: string;
   showBookAppointment: boolean;
   bookingFacilityId: string | null;
-  externalBookingFacility?: { name: string; address: string; placeId?: string } | null;
+  externalBookingFacility: { name: string; address: string; placeId?: string } | null;
   bookingDate: string;
   bookingTimeSlot: string;
   showBilling: boolean;
@@ -111,6 +111,7 @@ export interface AppState {
   showRefillModal: string | null;
   showOrderMedication: boolean;
   showPharmacyDirectory: boolean;
+  showLabDirectory: boolean;
   inCall: boolean;
   callMuted: boolean;
   callCameraOff: boolean;
@@ -285,6 +286,7 @@ const initialState: AppState = {
   showRefillModal: null,
   showOrderMedication: false,
   showPharmacyDirectory: false,
+  showLabDirectory: false,
   inCall: false,
   callMuted: false,
   callCameraOff: false,
@@ -1207,8 +1209,8 @@ export function useWelliApp() {
     ) =>
       patch({
         showBookAppointment: true,
-        bookingFacilityId: facilityId,
-        externalBookingFacility: externalFacility ?? null,
+        bookingFacilityId: externalFacility ? null : facilityId,
+        externalBookingFacility: externalFacility || null,
         bookingDate: '',
         bookingTimeSlot: '',
       }),
@@ -1217,15 +1219,23 @@ export function useWelliApp() {
     setBookingDate: (v: string) => patch({ bookingDate: v }),
     setBookingTimeSlot: (v: string) => patch({ bookingTimeSlot: v }),
     confirmBooking: () => {
-      const external = state.externalBookingFacility;
-      const facility = external
-        ? { name: external.name }
-        : FACILITIES.find((f) => f.id === state.bookingFacilityId);
+      const externalFacility = state.externalBookingFacility;
+      if (externalFacility) {
+        if (!state.bookingDate || !state.bookingTimeSlot) {
+          showToast('Choose a date and time to continue');
+          return;
+        }
+        patch({ showBookAppointment: false, externalBookingFacility: null });
+        showToast(`Appointment requested with ${externalFacility.name} — ${state.bookingTimeSlot}`);
+        return;
+      }
+
+      const facility = FACILITIES.find((f) => f.id === state.bookingFacilityId);
       if (!facility || !state.bookingDate || !state.bookingTimeSlot) {
         showToast('Choose a date and time to continue');
         return;
       }
-      patch({ showBookAppointment: false, externalBookingFacility: null });
+      patch({ showBookAppointment: false });
       showToast(`Appointment requested with ${facility.name} — ${state.bookingTimeSlot}`);
     },
 
@@ -1907,6 +1917,11 @@ export function useWelliApp() {
       patch({ showPharmacyDirectory: true });
     },
     closePharmacyDirectory: () => patch({ showPharmacyDirectory: false }),
+    openLabDirectory: () => {
+      hapticFeedback.light();
+      patch({ showLabDirectory: true });
+    },
+    closeLabDirectory: () => patch({ showLabDirectory: false }),
 
     requestRefill: (data: { prescriptionId: string; deliveryAddress: string; notes?: string }) => {
       hapticFeedback.success();

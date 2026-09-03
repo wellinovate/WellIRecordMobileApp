@@ -393,6 +393,36 @@ export function CareScreen({ app }: { app: WelliApp }) {
         <Text style={[styles.locatorArrow, { color: '#0EA5E9' }]}>Explore ›</Text>
       </TouchableOpacity>
 
+      {/* Abuja Diagnostic Centers Directory Locator Card */}
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={actions.openLabDirectory}
+        style={[
+          styles.locatorBanner,
+          {
+            backgroundColor: theme.surface,
+            borderColor: theme.border,
+            marginTop: 8,
+          },
+        ]}
+      >
+        <View style={[styles.locatorIconBadge, { backgroundColor: '#ECFDF5' }]}>
+          <Text style={{ fontSize: 20 }}>🔬</Text>
+        </View>
+        <View style={{ flex: 1, paddingRight: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={[styles.locatorTitle, { color: theme.text }]}>Diagnostic Centers Directory</Text>
+            <View style={[styles.locatorNewBadge, { backgroundColor: '#D1FAE5' }]}>
+              <Text style={[styles.locatorNewText, { color: '#065F46' }]}>LABS</Text>
+            </View>
+          </View>
+          <Text style={[styles.locatorSub, { color: theme.muted }]}>
+            Find accredited labs & diagnostic imaging centers on Apple Maps across Abuja
+          </Text>
+        </View>
+        <Text style={[styles.locatorArrow, { color: '#059669' }]}>Explore ›</Text>
+      </TouchableOpacity>
+
       {/* Result Count */}
       <Text style={[styles.resultCount, { color: theme.mutedLight }]}>
         Showing {filtered.length} {filtered.length === 1 ? 'provider' : 'providers'} across{' '}

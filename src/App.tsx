@@ -41,6 +41,7 @@ import { EmailReportModal } from './modals/EmailReportModal';
 import { PrescriptionRefillModal } from './modals/PrescriptionRefillModal';
 import { OrderMedicationModal } from './modals/OrderMedicationModal';
 import { PharmacyDirectoryModal } from './modals/PharmacyDirectoryModal';
+import { LabDirectoryModal } from './modals/LabDirectoryModal';
 import { VaultExportModal } from './modals/VaultExportModal';
 
 import { ClerkProvider, ClerkLoaded } from '@clerk/expo';
@@ -261,6 +262,7 @@ function MainWelliApp() {
           <PrescriptionRefillModal app={app} />
           <OrderMedicationModal app={app} />
           <PharmacyDirectoryModal app={app} />
+          <LabDirectoryModal app={app} />
           <VaultExportModal app={app} />
 
           <Toast message={state.toast} />
