@@ -47,6 +47,7 @@ export function PharmacyDirectoryModal({ app }: { app: WelliApp }) {
   const mapRef = useRef<MapView>(null);
 
   const [pharmacies, setPharmacies] = useState<PharmacyDirectoryItem[]>([]);
+  const [usedFallback, setUsedFallback] = useState(false);
   const [selectedDistrict, setSelectedDistrict] = useState('All');
   const [selectedPharmacy, setSelectedPharmacy] = useState<PharmacyDirectoryItem | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -60,10 +61,11 @@ export function PharmacyDirectoryModal({ app }: { app: WelliApp }) {
 
     pharmacyService
       .fetchPharmacies()
-      .then((data) => {
+      .then((res) => {
         if (isMounted) {
-          setPharmacies(data);
-          setSelectedPharmacy((prev) => prev ?? (data.length > 0 ? data[0] : null));
+          setPharmacies(res.pharmacies);
+          setUsedFallback(res.usedFallback);
+          setSelectedPharmacy((prev) => prev ?? (res.pharmacies.length > 0 ? res.pharmacies[0] : null));
         }
       })
       .catch((err) => {
@@ -156,6 +158,16 @@ export function PharmacyDirectoryModal({ app }: { app: WelliApp }) {
             Public directory locator. To share records or manage consent, use verified WelliRecord partner facilities.
           </Text>
         </View>
+
+        {/* Fallback Notice Banner when Google Places API is offline or returns empty */}
+        {usedFallback && (
+          <View style={[styles.fallbackBanner, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
+            <Text style={{ fontSize: 13 }}>⚠️</Text>
+            <Text style={[styles.fallbackBannerText, { color: '#92400E' }]}>
+              Showing verified offline directory — live search currently unavailable.
+            </Text>
+          </View>
+        )}
 
         {/* District Filter Chips */}
         <View style={styles.filterSection}>
@@ -427,6 +439,23 @@ const styles = StyleSheet.create({
   disclaimerText: {
     flex: 1,
     fontSize: 11,
+    lineHeight: 15,
+  },
+  fallbackBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginHorizontal: 16,
+    marginTop: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 8,
+  },
+  fallbackBannerText: {
+    flex: 1,
+    fontSize: 11,
+    fontWeight: '500',
     lineHeight: 15,
   },
   filterSection: {

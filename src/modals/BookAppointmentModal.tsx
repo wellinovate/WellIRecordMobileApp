@@ -34,7 +34,19 @@ export function BookAppointmentModal({ app }: { app: WelliApp }) {
 
   if (!state.showBookAppointment) return null;
 
-  const facility = facilities.find((f) => f.id === state.bookingFacilityId);
+  const external = state.externalBookingFacility;
+  const facility = external
+    ? {
+        id: external.placeId || state.bookingFacilityId || 'external',
+        name: external.name,
+        emoji: '🔬',
+        leadName: 'Attending Specialist / Pathologist',
+        leadTitle: 'Healthcare Facility',
+        specialty: 'Diagnostic Center / Clinic',
+        address: external.address,
+      }
+    : facilities.find((f) => f.id === state.bookingFacilityId);
+
   if (!facility) return null;
 
   const activePatient = family.find((f) => f.id === selectedMemberId) ?? family[0];

@@ -1972,6 +1972,154 @@ app.get('/api/v1/care/pharmacies', async (req: Request, res: Response) => {
   }
 });
 
+// 6c. Abuja Diagnostic Laboratories Directory (Google Places API with 24-hour Cache)
+// Locator-only: separate from verified WelliRecord partner facilities.
+const ABUJA_LAB_DISTRICTS = [
+  'Wuse',
+  'Wuse Zone 1',
+  'Wuse Zone 2',
+  'Wuse Zone 3',
+  'Wuse Zone 4',
+  'Wuse Zone 5',
+  'Wuse Zone 6',
+  'Utako',
+  'Maitama',
+  'Asokoro',
+  'Jabi',
+  'Jahi',
+  'Wuye',
+];
+
+let labCache: { data: any[]; fetchedAt: number; usedFallback: boolean } | null = null;
+
+const ABUJA_FALLBACK_LABS = [
+  {
+    placeId: 'fallback_lab_1',
+    name: 'Synlab Diagnostics Wuse',
+    address: 'Plot 1083, Joseph Gomwalk Street, Garki II / Wuse II, Abuja',
+    district: 'Wuse',
+    lat: 9.0699,
+    lng: 7.4785,
+    rating: 4.6,
+    openNow: true,
+  },
+  {
+    placeId: 'fallback_lab_2',
+    name: 'Clina-Lancet Laboratories Maitama',
+    address: '3 Yedseram Street, Maitama, Abuja',
+    district: 'Maitama',
+    lat: 9.0935,
+    lng: 7.4951,
+    rating: 4.5,
+    openNow: true,
+  },
+  {
+    placeId: 'fallback_lab_3',
+    name: 'Echoscan Diagnostic Centre Utako',
+    address: 'Plot 288, Utako District, Shehu Yaradua Way, Abuja',
+    district: 'Utako',
+    lat: 9.0622,
+    lng: 7.4398,
+    rating: 4.3,
+    openNow: true,
+  },
+  {
+    placeId: 'fallback_lab_4',
+    name: 'Clinix Healthcare & Diagnostic Center Jabi',
+    address: 'Plot 1045, Off Obafemi Awolowo Way, Jabi, Abuja',
+    district: 'Jabi',
+    lat: 9.0718,
+    lng: 7.4215,
+    rating: 4.4,
+    openNow: true,
+  },
+  {
+    placeId: 'fallback_lab_5',
+    name: 'Nordica Diagnostic & Fertility Centre Asokoro',
+    address: 'Asokoro District, Near ECOWAS Secretariat, Abuja',
+    district: 'Asokoro',
+    lat: 9.0415,
+    lng: 7.5218,
+    rating: 4.7,
+    openNow: false,
+  },
+  {
+    placeId: 'fallback_lab_6',
+    name: 'MECURE Healthcare Diagnostics Wuye',
+    address: 'Olusegun Obasanjo Way, Wuye Commercial Zone, Abuja',
+    district: 'Wuye',
+    lat: 9.0542,
+    lng: 7.4512,
+    rating: 4.2,
+    openNow: true,
+  },
+  {
+    placeId: 'fallback_lab_7',
+    name: 'DNA Labs Nigeria Jahi',
+    address: 'Near Next Cash & Carry, Jahi District, Abuja',
+    district: 'Jahi',
+    lat: 9.0945,
+    lng: 7.4352,
+    rating: 4.5,
+    openNow: true,
+  },
+];
+
+app.get('/api/v1/care/labs', async (req: Request, res: Response) => {
+  const placesKey = process.env.GOOGLE_PLACES_API_KEY;
+
+  if (labCache && Date.now() - labCache.fetchedAt < CACHE_TTL_MS) {
+    return res.json({ success: true, labs: labCache.data, usedFallback: labCache.usedFallback, cached: true });
+  }
+
+  if (!placesKey) {
+    labCache = { data: ABUJA_FALLBACK_LABS, fetchedAt: Date.now(), usedFallback: true };
+    return res.json({ success: true, labs: ABUJA_FALLBACK_LABS, usedFallback: true, cached: false });
+  }
+
+  try {
+    const allResults: any[] = [];
+    for (const district of ABUJA_LAB_DISTRICTS) {
+      const query = encodeURIComponent(`diagnostic laboratory in ${district}, Abuja, Nigeria`);
+      const placesRes = await fetch(
+        `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${query}&key=${placesKey}`
+      );
+      const placesData: any = await placesRes.json();
+      if (placesData.status === 'OK' && Array.isArray(placesData.results)) {
+        placesData.results.forEach((place: any) => {
+          allResults.push({
+            placeId: place.place_id,
+            name: place.name,
+            address: place.formatted_address,
+            district,
+            lat: place.geometry?.location?.lat,
+            lng: place.geometry?.location?.lng,
+            rating: place.rating || null,
+            openNow: place.opening_hours?.open_now ?? null,
+          });
+        });
+      } else if (placesData.status !== 'ZERO_RESULTS') {
+        console.error(`[Places API Error - Labs - ${district}]`, placesData.status, placesData.error_message);
+      }
+    }
+
+    const seenPlaceIds = new Set<string>();
+    const dedupedResults = allResults.filter((p) => {
+      if (seenPlaceIds.has(p.placeId)) return false;
+      seenPlaceIds.add(p.placeId);
+      return true;
+    });
+
+    const usedFallback = dedupedResults.length === 0;
+    const finalResults = usedFallback ? ABUJA_FALLBACK_LABS : dedupedResults;
+    labCache = { data: finalResults, fetchedAt: Date.now(), usedFallback };
+    return res.json({ success: true, labs: finalResults, usedFallback, cached: false });
+  } catch (err) {
+    console.error('[Lab Directory Error]', err);
+    return res.status(500).json({ success: false, message: 'Failed to fetch lab directory' });
+  }
+});
+
 // 7. Create Share Grant & Audit Log (MongoDB)
 app.post('/api/v1/shares/grants', async (req: Request, res: Response) => {
   const { recipientId, recipientType, recipientName, recordIds, expiry } = req.body;

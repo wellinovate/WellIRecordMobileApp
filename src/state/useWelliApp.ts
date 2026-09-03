@@ -99,6 +99,7 @@ export interface AppState {
   careQuery: string;
   showBookAppointment: boolean;
   bookingFacilityId: string | null;
+  externalBookingFacility?: { name: string; address: string; placeId?: string } | null;
   bookingDate: string;
   bookingTimeSlot: string;
   showBilling: boolean;
@@ -272,6 +273,7 @@ const initialState: AppState = {
   careQuery: '',
   showBookAppointment: false,
   bookingFacilityId: null,
+  externalBookingFacility: null,
   bookingDate: '',
   bookingTimeSlot: '',
   showBilling: false,
@@ -1199,18 +1201,31 @@ export function useWelliApp() {
     toggleCallMute: () => patch((s) => ({ callMuted: !s.callMuted })),
     toggleCallCamera: () => patch((s) => ({ callCameraOff: !s.callCameraOff })),
 
-    openBookAppointment: (facilityId: string) =>
-      patch({ showBookAppointment: true, bookingFacilityId: facilityId, bookingDate: '', bookingTimeSlot: '' }),
-    closeBookAppointment: () => patch({ showBookAppointment: false }),
+    openBookAppointment: (
+      facilityId: string,
+      externalFacility?: { name: string; address: string; placeId?: string }
+    ) =>
+      patch({
+        showBookAppointment: true,
+        bookingFacilityId: facilityId,
+        externalBookingFacility: externalFacility ?? null,
+        bookingDate: '',
+        bookingTimeSlot: '',
+      }),
+    closeBookAppointment: () =>
+      patch({ showBookAppointment: false, externalBookingFacility: null }),
     setBookingDate: (v: string) => patch({ bookingDate: v }),
     setBookingTimeSlot: (v: string) => patch({ bookingTimeSlot: v }),
     confirmBooking: () => {
-      const facility = FACILITIES.find((f) => f.id === state.bookingFacilityId);
+      const external = state.externalBookingFacility;
+      const facility = external
+        ? { name: external.name }
+        : FACILITIES.find((f) => f.id === state.bookingFacilityId);
       if (!facility || !state.bookingDate || !state.bookingTimeSlot) {
         showToast('Choose a date and time to continue');
         return;
       }
-      patch({ showBookAppointment: false });
+      patch({ showBookAppointment: false, externalBookingFacility: null });
       showToast(`Appointment requested with ${facility.name} — ${state.bookingTimeSlot}`);
     },
 
