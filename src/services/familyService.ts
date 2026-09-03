@@ -38,12 +38,9 @@ export const familyService = {
    */
   async fetchFamilyMembers(): Promise<FamilyMember[]> {
     try {
-      console.log('[FAMILY FETCH] Requesting /family/list');
       const res = await apiClient.get<FamilyListResponse>('/family/list');
-      console.log('[FAMILY FETCH RESULT]', JSON.stringify(res));
       return res?.familyMembers || [];
-    } catch (err) {
-      console.error('[FAMILY FETCH ERROR]', err);
+    } catch {
       return [];
     }
   },

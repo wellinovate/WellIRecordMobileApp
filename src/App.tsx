@@ -188,12 +188,21 @@ function MainWelliApp() {
     return () => subscription.remove();
   }, [state, app.actions]);
 
-  const screens = {
-    home: <HomeScreen app={app} />,
-    records: <RecordsScreen app={app} />,
-    share: <ShareScreen app={app} />,
-    care: <CareScreen app={app} />,
-    profile: <ProfileScreen app={app} />,
+  const renderScreen = () => {
+    switch (state.tab) {
+      case 'home':
+        return <HomeScreen app={app} />;
+      case 'records':
+        return <RecordsScreen app={app} />;
+      case 'share':
+        return <ShareScreen app={app} />;
+      case 'care':
+        return <CareScreen app={app} />;
+      case 'profile':
+        return <ProfileScreen app={app} />;
+      default:
+        return <HomeScreen app={app} />;
+    }
   };
 
   // 1. Explicit Logged Out State -> Show LoggedOutScreen
@@ -215,7 +224,7 @@ function MainWelliApp() {
         <PhoneShell>
           <SafeAreaView style={[styles.safeArea, { backgroundColor: '#ffffff' }]}>
             <WelcomeHomeScreen app={app} />
-            <OnboardingModal app={app} />
+            {Boolean(state.showOnboarding) && <OnboardingModal app={app} />}
             <Toast message={state.toast} />
           </SafeAreaView>
         </PhoneShell>
@@ -229,41 +238,41 @@ function MainWelliApp() {
       <PhoneShell>
         <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}>
           <View style={styles.screenContainer}>
-            {screens[state.tab]}
+            {renderScreen()}
           </View>
 
           <TabBar active={state.tab} onSelect={app.actions.setTab} />
 
-          {/* Overlays & Modals */}
-          <NotificationsPanel app={app} />
-          <RecordDetailSheet app={app} />
-          <UploadModal app={app} />
-          <ShareFlowModal app={app} />
-          <SmartConsentModal app={app} />
-          <EmergencyModal app={app} />
-          <InCallModal app={app} />
-          <OnboardingModal app={app} />
-          <PersonalInfoModal app={app} />
-          <PrivacySecurityModal app={app} />
-          <PrivacyPolicyModal app={app} />
-          <LinkedAccountsModal app={app} />
-          <NotificationSettingsModal app={app} />
-          <FamilyAccessModal app={app} />
-          <AddFamilyMemberModal app={app} />
-          <ProxyLogModal app={app} />
-          <ActivityLogModal app={app} />
-          <LanguageModal app={app} />
-          <FaceIdLockScreen app={app} />
-          <BookAppointmentModal app={app} />
-          <BillingModal app={app} />
-          <InvoiceDetailModal app={app} />
-          <PrintLabResultModal app={app} />
-          <EmailReportModal app={app} />
-          <PrescriptionRefillModal app={app} />
-          <OrderMedicationModal app={app} />
-          <PharmacyDirectoryModal app={app} />
-          <LabDirectoryModal app={app} />
-          <VaultExportModal app={app} />
+          {/* Overlays & Modals - Lazy mounted only when open for maximum performance */}
+          {Boolean(state.showNotifications) && <NotificationsPanel app={app} />}
+          {Boolean(state.recordDetailId) && <RecordDetailSheet app={app} />}
+          {Boolean(state.showUpload) && <UploadModal app={app} />}
+          {Boolean(state.showShareFlow) && <ShareFlowModal app={app} />}
+          {Boolean(state.showSmartConsent) && <SmartConsentModal app={app} />}
+          {Boolean(state.showEmergency) && <EmergencyModal app={app} />}
+          {Boolean(state.inCall) && <InCallModal app={app} />}
+          {Boolean(state.showOnboarding) && <OnboardingModal app={app} />}
+          {Boolean(state.showPersonalInfo) && <PersonalInfoModal app={app} />}
+          {Boolean(state.showPrivacySecurity) && <PrivacySecurityModal app={app} />}
+          {Boolean(state.showPrivacyPolicy) && <PrivacyPolicyModal app={app} />}
+          {Boolean(state.showLinkedAccounts) && <LinkedAccountsModal app={app} />}
+          {Boolean(state.showNotificationSettings) && <NotificationSettingsModal app={app} />}
+          {Boolean(state.showFamilyAccess) && <FamilyAccessModal app={app} />}
+          {Boolean(state.showAddFamilyMember) && <AddFamilyMemberModal app={app} />}
+          {Boolean(state.showProxyLog) && <ProxyLogModal app={app} />}
+          {Boolean(state.showActivity) && <ActivityLogModal app={app} />}
+          {Boolean(state.showLanguage) && <LanguageModal app={app} />}
+          {Boolean(state.showLockScreen) && <FaceIdLockScreen app={app} />}
+          {Boolean(state.showBookAppointment) && <BookAppointmentModal app={app} />}
+          {Boolean(state.showBilling) && <BillingModal app={app} />}
+          {Boolean(state.showInvoiceDetail) && <InvoiceDetailModal app={app} />}
+          {Boolean(state.showPrintLabResult) && <PrintLabResultModal app={app} />}
+          {Boolean(state.showEmailLabResult) && <EmailReportModal app={app} />}
+          {Boolean(state.showRefillModal) && <PrescriptionRefillModal app={app} />}
+          {Boolean(state.showOrderMedication) && <OrderMedicationModal app={app} />}
+          {Boolean(state.showPharmacyDirectory) && <PharmacyDirectoryModal app={app} />}
+          {Boolean(state.showLabDirectory) && <LabDirectoryModal app={app} />}
+          {Boolean(state.showVaultExport) && <VaultExportModal app={app} />}
 
           <Toast message={state.toast} />
         </SafeAreaView>
