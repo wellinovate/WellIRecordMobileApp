@@ -1542,6 +1542,130 @@ app.post('/api/v1/pharmacy/orders', async (req: Request, res: Response) => {
   }
 });
 
+// Simple shared-secret admin auth — no staff/role system exists yet.
+// Protects the pending-order review endpoints only. Replace with real
+// staff accounts + RBAC once that system is built.
+function requireAdminSecret(req: Request, res: Response, next: () => void) {
+  const provided = req.headers['x-admin-secret'];
+  const expected = process.env.ADMIN_SECRET;
+  if (!expected) {
+    return res.status(503).json({ success: false, message: 'Admin review is not configured yet.' });
+  }
+  if (provided !== expected) {
+    return res.status(401).json({ success: false, message: 'Invalid admin credentials.' });
+  }
+  next();
+}
+
+// GET /api/v1/pharmacy/orders/pending — list all patient-initiated
+// orders awaiting review, most recent first.
+app.get('/api/v1/pharmacy/orders/pending', requireAdminSecret, async (req: Request, res: Response) => {
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.json({ success: true, orders: [] });
+    }
+    const orders = await Prescription.find({
+      orderType: 'patient_order',
+      status: 'pending_review',
+    }).sort({ createdAt: -1 });
+    return res.json({ success: true, orders });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch pending orders', error: err });
+  }
+});
+
+// POST /api/v1/pharmacy/orders/:id/approve — moves an order to 'active'
+// so it enters the normal dispatch/refill flow. Optionally accepts
+// pricing fields to populate at approval time.
+app.post('/api/v1/pharmacy/orders/:id/approve', requireAdminSecret, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { totalPriceNaira, hmoCoveredNaira, patientCoPayNaira, refillsTotal, eta } = req.body;
+
+  if (!mongoose.isValidObjectId(id)) {
+    return res.status(400).json({ success: false, message: 'Invalid order ID' });
+  }
+
+  try {
+    const order = await Prescription.findById(id);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+    if (order.status !== 'pending_review') {
+      return res.status(409).json({ success: false, message: `Order is already '${order.status}', not pending review.` });
+    }
+
+    order.status = 'active';
+    if (totalPriceNaira !== undefined) order.totalPriceNaira = totalPriceNaira;
+    if (hmoCoveredNaira !== undefined) order.hmoCoveredNaira = hmoCoveredNaira;
+    if (patientCoPayNaira !== undefined) order.patientCoPayNaira = patientCoPayNaira;
+    if (refillsTotal !== undefined) {
+      order.refillsTotal = refillsTotal;
+      order.refillsRemaining = refillsTotal;
+    }
+    if (eta !== undefined) order.eta = eta;
+    await order.save();
+
+    console.log('[MEDICATION ORDER APPROVED]', order._id, order.medicationName);
+
+    // Notify the patient
+    const account = order.accountId ? await Account.findById(order.accountId) : null;
+    if (account?.email) {
+      sendWelliEmail({
+        to: account.email,
+        subject: '✅ Your medication order has been approved',
+        html: `<p>Your order for <strong>${order.medicationName}</strong> has been reviewed and approved by a licensed pharmacist. It's now being prepared for dispatch.</p>`,
+      }).catch((e) => console.error('[Order Approval Email Error]', e));
+    }
+
+    return res.json({ success: true, message: 'Order approved', order });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to approve order', error: err });
+  }
+});
+
+// POST /api/v1/pharmacy/orders/:id/reject — marks an order rejected
+// with a reason, and notifies the patient why.
+app.post('/api/v1/pharmacy/orders/:id/reject', requireAdminSecret, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { reason } = req.body;
+
+  if (!mongoose.isValidObjectId(id)) {
+    return res.status(400).json({ success: false, message: 'Invalid order ID' });
+  }
+  if (!reason || !reason.trim()) {
+    return res.status(400).json({ success: false, message: 'A rejection reason is required.' });
+  }
+
+  try {
+    const order = await Prescription.findById(id);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+    if (order.status !== 'pending_review') {
+      return res.status(409).json({ success: false, message: `Order is already '${order.status}', not pending review.` });
+    }
+
+    order.status = 'rejected';
+    order.notes = `${order.notes || ''}\n[Rejected: ${reason.trim()}]`.trim();
+    await order.save();
+
+    console.log('[MEDICATION ORDER REJECTED]', order._id, order.medicationName, reason);
+
+    const account = order.accountId ? await Account.findById(order.accountId) : null;
+    if (account?.email) {
+      sendWelliEmail({
+        to: account.email,
+        subject: 'Update on your medication order',
+        html: `<p>Your order for <strong>${order.medicationName}</strong> could not be approved.</p><p><strong>Reason:</strong> ${reason.trim()}</p><p>Please contact support or your doctor if you have questions.</p>`,
+      }).catch((e) => console.error('[Order Rejection Email Error]', e));
+    }
+
+    return res.json({ success: true, message: 'Order rejected', order });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to reject order', error: err });
+  }
+});
+
 // 5. Pre-signed Encrypted S3 Upload URL Generator
 app.post('/api/v1/records/upload-url', (req: Request, res: Response) => {
   const { fileName, contentType } = req.body;

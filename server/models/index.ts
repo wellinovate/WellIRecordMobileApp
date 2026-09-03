@@ -176,7 +176,7 @@ export interface IPrescription extends Document {
   patientCoPayNaira: number;
   refillsTotal: number;
   refillsRemaining: number;
-  status: 'active' | 'refill_requested' | 'dispensed' | 'in_transit' | 'delivered' | 'pending_review' | string;
+  status: 'active' | 'refill_requested' | 'dispensed' | 'in_transit' | 'delivered' | 'pending_review' | 'rejected' | string;
   deliveryAddress: string;
   deliveryType?: string;
   notes?: string;
@@ -205,7 +205,7 @@ const PrescriptionSchema = new Schema<IPrescription>(
     status: {
       type: String,
       default: 'active',
-      enum: ['active', 'refill_requested', 'dispensed', 'in_transit', 'delivered', 'pending_review'],
+      enum: ['active', 'refill_requested', 'dispensed', 'in_transit', 'delivered', 'pending_review', 'rejected'],
     },
     deliveryAddress: { type: String },
     deliveryType: { type: String, default: 'home' },
