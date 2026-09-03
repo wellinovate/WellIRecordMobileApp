@@ -312,13 +312,22 @@ export function CareScreen({ app }: { app: WelliApp }) {
           <View style={styles.rxWidgetHeader}>
             <Text style={{ fontSize: 16 }}>💊</Text>
             <Text style={[styles.rxWidgetTitle, { color: theme.text }]}>Active E-Prescriptions & Refills</Text>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={actions.openOrderMedication}
-              style={styles.orderNewBtn}
-            >
-              <Text style={styles.orderNewBtnText}>+ Order New</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', marginLeft: 'auto' }}>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={actions.openPharmacyDirectory}
+                style={[styles.rxLocatorBtn, { backgroundColor: theme.surface2, borderColor: theme.border }]}
+              >
+                <Text style={[styles.rxLocatorBtnText, { color: '#1d4ed8' }]}>📍 Map</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={actions.openOrderMedication}
+                style={styles.orderNewBtn}
+              >
+                <Text style={styles.orderNewBtnText}>+ Order New</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.rxScroll} contentContainerStyle={{ paddingRight: 10 }}>
@@ -354,6 +363,35 @@ export function CareScreen({ app }: { app: WelliApp }) {
           </ScrollView>
         </View>
       )}
+
+      {/* Abuja Pharmacy Directory Locator Card */}
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={actions.openPharmacyDirectory}
+        style={[
+          styles.locatorBanner,
+          {
+            backgroundColor: theme.surface,
+            borderColor: theme.border,
+          },
+        ]}
+      >
+        <View style={styles.locatorIconBadge}>
+          <Text style={{ fontSize: 20 }}>🗺️</Text>
+        </View>
+        <View style={{ flex: 1, paddingRight: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={[styles.locatorTitle, { color: theme.text }]}>Abuja Pharmacy Directory</Text>
+            <View style={styles.locatorNewBadge}>
+              <Text style={styles.locatorNewText}>MAP</Text>
+            </View>
+          </View>
+          <Text style={[styles.locatorSub, { color: theme.muted }]}>
+            Find licensed pharmacies on Apple Maps across Wuse, Maitama, Jabi, Utako & more
+          </Text>
+        </View>
+        <Text style={[styles.locatorArrow, { color: '#0EA5E9' }]}>Explore ›</Text>
+      </TouchableOpacity>
 
       {/* Result Count */}
       <Text style={[styles.resultCount, { color: theme.mutedLight }]}>
@@ -824,6 +862,58 @@ const styles = StyleSheet.create({
   miniRefillBtnText: {
     color: '#ffffff',
     fontSize: 12,
+    fontWeight: '700',
+  },
+  rxLocatorBtn: {
+    borderRadius: 999,
+    paddingVertical: 5,
+    paddingHorizontal: 9,
+    borderWidth: 1,
+  },
+  rxLocatorBtnText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  locatorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 16,
+    gap: 12,
+  },
+  locatorIconBadge: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: '#eff6ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  locatorTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  locatorNewBadge: {
+    backgroundColor: '#0EA5E9',
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  locatorNewText: {
+    color: '#ffffff',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  locatorSub: {
+    fontSize: 11.5,
+    marginTop: 2,
+    lineHeight: 15,
+  },
+  locatorArrow: {
+    fontSize: 13,
     fontWeight: '700',
   },
 });

@@ -109,6 +109,7 @@ export interface AppState {
   prescriptions: PrescriptionItem[];
   showRefillModal: string | null;
   showOrderMedication: boolean;
+  showPharmacyDirectory: boolean;
   inCall: boolean;
   callMuted: boolean;
   callCameraOff: boolean;
@@ -281,6 +282,7 @@ const initialState: AppState = {
   prescriptions: [],
   showRefillModal: null,
   showOrderMedication: false,
+  showPharmacyDirectory: false,
   inCall: false,
   callMuted: false,
   callCameraOff: false,
@@ -1885,6 +1887,11 @@ export function useWelliApp() {
       patch({ showOrderMedication: true });
     },
     closeOrderMedication: () => patch({ showOrderMedication: false }),
+    openPharmacyDirectory: () => {
+      hapticFeedback.light();
+      patch({ showPharmacyDirectory: true });
+    },
+    closePharmacyDirectory: () => patch({ showPharmacyDirectory: false }),
 
     requestRefill: (data: { prescriptionId: string; deliveryAddress: string; notes?: string }) => {
       hapticFeedback.success();

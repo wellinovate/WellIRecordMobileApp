@@ -1812,6 +1812,156 @@ app.get(['/api/v1/care/facilities', '/api/v1/facilities'], async (_req: Request,
   }
 });
 
+// 6b. Abuja Pharmacy Directory (Google Places API with 24-hour Cache)
+// Locator-only: separate from verified WelliRecord partner facilities.
+const ABUJA_PHARMACY_DISTRICTS = ['Wuse', 'Utako', 'Maitama', 'Asokoro', 'Jabi', 'Jahi', 'Wuye'];
+
+let pharmacyCache: { data: any[]; fetchedAt: number } | null = null;
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+const ABUJA_FALLBACK_PHARMACIES = [
+  {
+    placeId: 'abuja_ph_1',
+    name: 'HealthPlus Pharmacy & Beauty',
+    address: 'Plot 1044, Adetokunbo Ademola Crescent, Wuse 2, Abuja',
+    district: 'Wuse',
+    lat: 9.0765,
+    lng: 7.4789,
+    rating: 4.6,
+    openNow: true,
+  },
+  {
+    placeId: 'abuja_ph_2',
+    name: 'H-Medix Pharmacy & Supermarket',
+    address: 'Adetokunbo Ademola Crescent, Wuse 2, Abuja',
+    district: 'Wuse',
+    lat: 9.0792,
+    lng: 7.4812,
+    rating: 4.8,
+    openNow: true,
+  },
+  {
+    placeId: 'abuja_ph_3',
+    name: 'Medplus Pharmacy Maitama',
+    address: 'Alvan Ikoku Way, Maitama, Abuja',
+    district: 'Maitama',
+    lat: 9.0882,
+    lng: 7.4935,
+    rating: 4.5,
+    openNow: true,
+  },
+  {
+    placeId: 'abuja_ph_4',
+    name: 'Nett Pharmacy Jabi Lake Mall',
+    address: 'Bala Sokoto Way, Jabi, Abuja',
+    district: 'Jabi',
+    lat: 9.0734,
+    lng: 7.4241,
+    rating: 4.4,
+    openNow: true,
+  },
+  {
+    placeId: 'abuja_ph_5',
+    name: 'Rays Pharmacy & Stores',
+    address: 'Plot 726, Cadastral Zone B04, Jabi, Abuja',
+    district: 'Jabi',
+    lat: 9.0689,
+    lng: 7.4208,
+    rating: 4.3,
+    openNow: true,
+  },
+  {
+    placeId: 'abuja_ph_6',
+    name: 'Next Pharmacy & Wellness',
+    address: 'Next Cash and Carry, Jahi District, Abuja',
+    district: 'Jahi',
+    lat: 9.0911,
+    lng: 7.4385,
+    rating: 4.7,
+    openNow: true,
+  },
+  {
+    placeId: 'abuja_ph_7',
+    name: 'Bio-Organics Pharmacy',
+    address: 'Yakubu Gowon Crescent, Asokoro, Abuja',
+    district: 'Asokoro',
+    lat: 9.0435,
+    lng: 7.5255,
+    rating: 4.4,
+    openNow: false,
+  },
+  {
+    placeId: 'abuja_ph_8',
+    name: 'Mabushi/Wuye Community Pharmacy',
+    address: 'Olusegun Obasanjo Way, Wuye District, Abuja',
+    district: 'Wuye',
+    lat: 9.0521,
+    lng: 7.4529,
+    rating: 4.2,
+    openNow: true,
+  },
+  {
+    placeId: 'abuja_ph_9',
+    name: 'Utako Express Pharmacy',
+    address: 'Shehu Yar’Adua Way, Utako, Abuja',
+    district: 'Utako',
+    lat: 9.0645,
+    lng: 7.4412,
+    rating: 4.3,
+    openNow: true,
+  },
+];
+
+app.get('/api/v1/care/pharmacies', async (req: Request, res: Response) => {
+  const placesKey = process.env.GOOGLE_PLACES_API_KEY;
+
+  if (pharmacyCache && Date.now() - pharmacyCache.fetchedAt < CACHE_TTL_MS) {
+    return res.json({ success: true, pharmacies: pharmacyCache.data, cached: true });
+  }
+
+  if (!placesKey) {
+    console.log('[Pharmacy Directory] GOOGLE_PLACES_API_KEY not set, using curated Abuja pharmacies');
+    pharmacyCache = { data: ABUJA_FALLBACK_PHARMACIES, fetchedAt: Date.now() };
+    return res.json({ success: true, pharmacies: ABUJA_FALLBACK_PHARMACIES, cached: false, fallback: true });
+  }
+
+  try {
+    const allResults: any[] = [];
+
+    for (const district of ABUJA_PHARMACY_DISTRICTS) {
+      const query = encodeURIComponent(`pharmacy in ${district}, Abuja, Nigeria`);
+      const placesRes = await fetch(
+        `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${query}&key=${placesKey}`
+      );
+      const placesData: any = await placesRes.json();
+
+      if (placesData.status === 'OK' && Array.isArray(placesData.results)) {
+        placesData.results.forEach((place: any) => {
+          allResults.push({
+            placeId: place.place_id,
+            name: place.name,
+            address: place.formatted_address,
+            district,
+            lat: place.geometry?.location?.lat,
+            lng: place.geometry?.location?.lng,
+            rating: place.rating || null,
+            openNow: place.opening_hours?.open_now ?? null,
+          });
+        });
+      } else if (placesData.status !== 'ZERO_RESULTS') {
+        console.error(`[Places API Error - ${district}]`, placesData.status, placesData.error_message);
+      }
+    }
+
+    const finalResults = allResults.length > 0 ? allResults : ABUJA_FALLBACK_PHARMACIES;
+    pharmacyCache = { data: finalResults, fetchedAt: Date.now() };
+    return res.json({ success: true, pharmacies: finalResults, cached: false });
+  } catch (err) {
+    console.error('[Pharmacy Directory Error]', err);
+    return res.status(500).json({ success: false, message: 'Failed to fetch pharmacy directory' });
+  }
+});
+
 // 7. Create Share Grant & Audit Log (MongoDB)
 app.post('/api/v1/shares/grants', async (req: Request, res: Response) => {
   const { recipientId, recipientType, recipientName, recordIds, expiry } = req.body;

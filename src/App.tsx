@@ -40,6 +40,7 @@ import { PrintLabResultModal } from './modals/PrintLabResultModal';
 import { EmailReportModal } from './modals/EmailReportModal';
 import { PrescriptionRefillModal } from './modals/PrescriptionRefillModal';
 import { OrderMedicationModal } from './modals/OrderMedicationModal';
+import { PharmacyDirectoryModal } from './modals/PharmacyDirectoryModal';
 import { VaultExportModal } from './modals/VaultExportModal';
 
 import { ClerkProvider, ClerkLoaded } from '@clerk/expo';
@@ -259,6 +260,7 @@ function MainWelliApp() {
           <EmailReportModal app={app} />
           <PrescriptionRefillModal app={app} />
           <OrderMedicationModal app={app} />
+          <PharmacyDirectoryModal app={app} />
           <VaultExportModal app={app} />
 
           <Toast message={state.toast} />

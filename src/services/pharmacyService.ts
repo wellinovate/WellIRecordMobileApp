@@ -78,4 +78,32 @@ export const pharmacyService = {
 
     return apiClient.get<{ step: number; statusText: string; eta: string }>(`/pharmacy/orders/${orderId}/status`);
   },
+
+  /**
+   * Fetches locator-only pharmacies (e.g. Abuja districts) from Google Places
+   */
+  async fetchPharmacies(): Promise<PharmacyDirectoryItem[]> {
+    try {
+      const res = await apiClient.get<{ success: boolean; pharmacies: PharmacyDirectoryItem[] }>('/care/pharmacies');
+      if (res && Array.isArray(res.pharmacies)) {
+        return res.pharmacies;
+      }
+      return [];
+    } catch (err) {
+      console.error('[PharmacyService] fetchPharmacies error:', err);
+      return [];
+    }
+  },
 };
+
+export interface PharmacyDirectoryItem {
+  placeId: string;
+  name: string;
+  address: string;
+  district: string;
+  lat: number;
+  lng: number;
+  rating: number | null;
+  openNow: boolean | null;
+}
+
