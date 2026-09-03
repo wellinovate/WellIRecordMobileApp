@@ -1953,7 +1953,16 @@ app.get('/api/v1/care/pharmacies', async (req: Request, res: Response) => {
       }
     }
 
-    const finalResults = allResults.length > 0 ? allResults : ABUJA_FALLBACK_PHARMACIES;
+    // Deduplicate — a pharmacy near a district border can appear in
+    // multiple districts' search results. Keep the first occurrence.
+    const seenPlaceIds = new Set<string>();
+    const dedupedResults = allResults.filter((p) => {
+      if (seenPlaceIds.has(p.placeId)) return false;
+      seenPlaceIds.add(p.placeId);
+      return true;
+    });
+
+    const finalResults = dedupedResults.length > 0 ? dedupedResults : ABUJA_FALLBACK_PHARMACIES;
     pharmacyCache = { data: finalResults, fetchedAt: Date.now() };
     return res.json({ success: true, pharmacies: finalResults, cached: false });
   } catch (err) {
