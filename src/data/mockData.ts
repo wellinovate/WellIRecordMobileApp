@@ -559,10 +559,10 @@ export const FACILITIES: CareFacility[] = [
 ];
 
 export const FACILITY_TYPE_FILTERS: { value: FacilityType | 'All'; label: string }[] = [
-  { value: 'All', label: 'All Facilities' },
+  { value: 'All', label: 'All Providers' },
   { value: 'Hospital', label: 'Hospitals & Clinics' },
   { value: 'Pharmacy', label: 'Pharmacies' },
-  { value: 'Laboratory', label: 'Laboratories' },
+  { value: 'Laboratory', label: 'Diagnostic Centers' },
   { value: 'Private Practice', label: 'Private Practices' },
 ];
 

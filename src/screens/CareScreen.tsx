@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -8,13 +8,11 @@ import {
   StyleSheet,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Path, Circle, Rect } from 'react-native-svg';
+import Svg, { Path, Circle } from 'react-native-svg';
 import { useTheme } from '../theme/ThemeContext';
-import { Chip } from '../components/Chip';
 import {
   FACILITY_SECTIONS,
   FACILITY_TYPE_FILTERS,
-  SPECIALTY_FILTERS,
 } from '../data/mockData';
 import type { CareFacility } from '../data/types';
 import type { WelliApp } from '../state/useWelliApp';
@@ -28,109 +26,92 @@ function FacilityCard({
   onBook: () => void;
   onShareVault: () => void;
 }) {
-  const isRich = facility.type !== 'Private Practice';
+  const theme = useTheme();
+  const [showCredentials, setShowCredentials] = useState(false);
 
-  if (!isRich) {
-    return (
-      <View style={styles.simpleCard}>
-        <View style={styles.simpleEmojiBox}>
-          <Text style={{ fontSize: 18 }}>{facility.emoji}</Text>
-        </View>
-        <View style={styles.simpleInfo}>
-          <Text style={styles.simpleName}>{facility.name}</Text>
-          <Text style={styles.simpleSub}>
-            {facility.leadTitle} · {facility.specialty}
-          </Text>
-        </View>
-        <View style={{ flexDirection: 'row', gap: 6 }}>
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={onShareVault}
-            style={styles.shareSmallBtn}
-            accessibilityLabel={`Share vault with ${facility.name}`}
-          >
-            <Text style={styles.shareSmallText}>Share</Text>
-          </TouchableOpacity>
-          {facility.acceptingPatients ? (
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={onBook}
-              style={styles.bookSmallBtn}
-            >
-              <Text style={styles.bookSmallText}>Book</Text>
-            </TouchableOpacity>
-          ) : (
-            <Text style={styles.notAcceptingText}>Not accepting</Text>
-          )}
-        </View>
-      </View>
-    );
-  }
-
-  // Parse gradient colors or fallback
+  // Parse gradient colors or fallback based on facility type
   const gradColors: [string, string] =
     facility.type === 'Hospital'
       ? ['#1e3a8a', '#1d4ed8']
       : facility.type === 'Pharmacy'
       ? ['#047857', '#059669']
-      : ['#6b21a8', '#7c3aed'];
+      : facility.type === 'Laboratory'
+      ? ['#6b21a8', '#7c3aed']
+      : ['#0f766e', '#0d9488'];
+
+  const isVerified = Boolean(facility.verified || facility.isVerified);
 
   return (
-    <View style={styles.richCard}>
+    <View style={[styles.richCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      {/* Card Header: Strictly 2 badges — Status and Verified */}
       <LinearGradient
         colors={gradColors}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.richCardHeader}
       >
-        <View style={styles.headerTopRow}>
-          <View style={styles.facilityPill}>
-            <Text style={styles.facilityPillText}>
-              {facility.emoji} {facility.typeLabel}
+        <View style={styles.headerBadgeRow}>
+          {/* Badge 1: Accepting Patients Status */}
+          <View
+            style={[
+              styles.statusPill,
+              facility.acceptingPatients ? styles.statusPillOpen : styles.statusPillClosed,
+            ]}
+          >
+            <View
+              style={[
+                styles.statusDot,
+                { backgroundColor: facility.acceptingPatients ? '#ffffff' : '#fca5a5' },
+              ]}
+            />
+            <Text style={styles.statusPillText}>
+              {facility.acceptingPatients ? 'Accepting Patients' : 'Capacity Full'}
             </Text>
           </View>
-          {facility.acceptingPatients && (
-            <View style={styles.acceptingPill}>
-              <View style={styles.whiteDot} />
-              <Text style={styles.acceptingPillText}>Accepting Patients</Text>
+
+          {/* Badge 2: Verified Partner */}
+          {isVerified && (
+            <View style={styles.verifiedTag}>
+              <Svg width={12} height={12} viewBox="0 0 24 24" fill="none">
+                <Path
+                  d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6l7-3z"
+                  stroke="#5eead4"
+                  strokeWidth={2}
+                />
+                <Path
+                  d="M9 12l2 2 4-4"
+                  stroke="#5eead4"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </Svg>
+              <Text style={styles.verifiedTagText}>Verified</Text>
             </View>
           )}
         </View>
-
-        {(facility.accredited || facility.verified || facility.isVerified) && (
-          <View style={styles.badgeRow}>
-            {facility.accredited && (
-              <View style={styles.accreditedBox}>
-                <View style={styles.accreditedBadge}>
-                  <Text style={styles.accreditedW}>W</Text>
-                </View>
-                <Text style={styles.accreditedText}>Accredited Facility</Text>
-              </View>
-            )}
-            {(facility.verified || facility.isVerified) && (
-              <View style={styles.verifiedTag}>
-                <Svg width={12} height={12} viewBox="0 0 24 24" fill="none">
-                  <Path
-                    d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6l7-3z"
-                    stroke="#5eead4"
-                    strokeWidth={2}
-                  />
-                </Svg>
-                <Text style={styles.verifiedTagText}>Verified</Text>
-              </View>
-            )}
-          </View>
-        )}
       </LinearGradient>
 
-      <View style={styles.richCardBody}>
-        <Text style={styles.facilityName}>{facility.name}</Text>
-        <Text style={styles.leadInfo}>
-          {facility.leadName} · {facility.leadTitle}
+      {/* Card Body: Provider & Doctor breathing room */}
+      <View style={[styles.richCardBody, { backgroundColor: theme.surface }]}>
+        {/* Facility Name */}
+        <Text style={[styles.facilityName, { color: theme.text }]}>
+          {facility.name}
         </Text>
 
-        <View style={styles.addressBox}>
-          <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" style={{ marginTop: 2 }}>
+        {/* Doctor & Lead info with clear hierarchy */}
+        <View style={styles.doctorRow}>
+          <Text style={[styles.doctorName, { color: theme.text }]}>
+            👨‍⚕️ {facility.leadName}
+          </Text>
+          <Text style={[styles.doctorSub, { color: theme.muted }]}>
+            {facility.leadTitle} · {facility.specialty}
+          </Text>
+        </View>
+
+        {/* Facility Type & Address */}
+        <View style={[styles.addressBox, { backgroundColor: theme.surface2 }]}>
+          <Svg width={15} height={15} viewBox="0 0 24 24" fill="none" style={{ marginTop: 2 }}>
             <Path
               d="M12 21s-7-6.2-7-11a7 7 0 1114 0c0 4.8-7 11-7 11z"
               stroke="#059669"
@@ -138,17 +119,61 @@ function FacilityCard({
             />
             <Circle cx={12} cy={10} r={2.5} stroke="#059669" strokeWidth={1.8} />
           </Svg>
-          <Text style={styles.addressText}>{facility.address}</Text>
+          <Text style={[styles.addressText, { color: theme.muted }]} numberOfLines={2}>
+            {facility.emoji} {facility.typeLabel || facility.type} · {facility.address}
+          </Text>
         </View>
 
-        {facility.instantBooking && (
-          <View style={styles.instantBookingTag}>
-            <Text style={{ fontSize: 12 }}>⚡</Text>
-            <Text style={styles.instantBookingText}>Instant Booking</Text>
+        {/* Secondary Details: Available on Tap */}
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => setShowCredentials(!showCredentials)}
+          style={styles.detailsToggleBtn}
+        >
+          <Text style={[styles.detailsToggleText, { color: '#0ea5e9' }]}>
+            {showCredentials ? '▲ Hide credentials & HMOs' : '▼ View accreditation & HMO coverage'}
+          </Text>
+        </TouchableOpacity>
+
+        {showCredentials && (
+          <View style={[styles.drawerContent, { backgroundColor: theme.surface2, borderColor: theme.border }]}>
+            {facility.accredited && (
+              <View style={styles.drawerItem}>
+                <Text style={{ fontSize: 13 }}>🎖️</Text>
+                <Text style={[styles.drawerItemText, { color: theme.text }]}>
+                  Accredited Healthcare Facility (NHIA & HEFAMAA Compliant)
+                </Text>
+              </View>
+            )}
+            {facility.acceptedHmos && facility.acceptedHmos.length > 0 && (
+              <View style={styles.drawerItem}>
+                <Text style={{ fontSize: 13 }}>🛡️</Text>
+                <Text style={[styles.drawerItemText, { color: theme.text }]}>
+                  Accepted HMOs: {facility.acceptedHmos.join(', ')}
+                </Text>
+              </View>
+            )}
+            {facility.instantBooking && (
+              <View style={styles.drawerItem}>
+                <Text style={{ fontSize: 13 }}>⚡</Text>
+                <Text style={[styles.drawerItemText, { color: theme.text }]}>
+                  Instant Online Booking Supported
+                </Text>
+              </View>
+            )}
+            {Boolean(facility.consultationFeeNaira) && (
+              <View style={styles.drawerItem}>
+                <Text style={{ fontSize: 13 }}>💳</Text>
+                <Text style={[styles.drawerItemText, { color: theme.text }]}>
+                  Standard Consultation: ₦{facility.consultationFeeNaira?.toLocaleString()}
+                </Text>
+              </View>
+            )}
           </View>
         )}
 
-        <View style={styles.cardDivider} />
+        {/* Divider & Action Buttons */}
+        <View style={[styles.cardDivider, { backgroundColor: theme.border }]} />
 
         <View style={styles.cardActionsRow}>
           {facility.acceptingPatients && (
@@ -157,26 +182,18 @@ function FacilityCard({
               onPress={onBook}
               style={styles.bookAppointmentBtn}
             >
-              <Svg width={15} height={15} viewBox="0 0 20 20" fill="none">
-                <Rect x={3} y={4} width={14} height={13} rx={2} stroke="#ffffff" strokeWidth={1.6} />
-                <Path d="M3 8h14M7 2v4M13 2v4" stroke="#ffffff" strokeWidth={1.6} strokeLinecap="round" />
-              </Svg>
-              <Text style={styles.bookAppointmentText}>Book Visit</Text>
+              <Text style={styles.bookAppointmentText}>📅 Book Visit</Text>
             </TouchableOpacity>
           )}
 
           <TouchableOpacity
             activeOpacity={0.8}
             onPress={onShareVault}
-            style={styles.shareOrgBtn}
+            style={[styles.shareOrgBtn, { borderColor: theme.border }]}
           >
-            <Svg width={15} height={15} viewBox="0 0 24 24" fill="none">
-              <Circle cx={6} cy={12} r={2.6} stroke="#041E42" strokeWidth={2} />
-              <Circle cx={17} cy={6} r={2.6} stroke="#041E42" strokeWidth={2} />
-              <Circle cx={17} cy={18} r={2.6} stroke="#041E42" strokeWidth={2} />
-              <Path d="M8.3 10.8l6.4-3.6M8.3 13.2l6.4 3.6" stroke="#041E42" strokeWidth={1.8} />
-            </Svg>
-            <Text style={styles.shareOrgBtnText}>Share Vault with Hospital ›</Text>
+            <Text style={[styles.shareOrgBtnText, { color: theme.text }]}>
+              Share Vault ›
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -192,11 +209,6 @@ export function CareScreen({ app }: { app: WelliApp }) {
   const filtered = facilities
     .filter(
       (f) => state.careFacilityType === 'All' || f.type === state.careFacilityType
-    )
-    .filter(
-      (f) =>
-        state.careSpecialty === 'All Specialties' ||
-        f.specialty === state.careSpecialty
     )
     .filter(
       (f) =>
@@ -246,10 +258,6 @@ export function CareScreen({ app }: { app: WelliApp }) {
         <Text style={[styles.title, { color: theme.text }]}>Find Care</Text>
       </View>
 
-      {/* Telehealth Banner removed — no real appointment scheduling backend
-          exists yet. Previously showed a hardcoded fake appointment
-          ("Dr. Sarah Chen · Today, 3:00 PM") to every user unconditionally. */}
-
       {/* Search Input */}
       <View style={styles.searchWrapper}>
         <Svg width={16} height={16} viewBox="0 0 20 20" style={styles.searchIcon}>
@@ -272,41 +280,91 @@ export function CareScreen({ app }: { app: WelliApp }) {
         />
       </View>
 
-      {/* Filter Category Chips */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.chipScroll}
-        contentContainerStyle={{ paddingRight: 10 }}
-      >
-        {FACILITY_TYPE_FILTERS.map((f) => (
-          <Chip
-            key={f.value}
-            label={f.label}
-            active={state.careFacilityType === f.value}
-            onClick={() => actions.setCareFacilityType(f.value)}
-          />
-        ))}
-      </ScrollView>
+      {/* Filter Category Tabs — single unified row with edge bleed so pills never cut off */}
+      <View style={styles.filterSectionWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.filterScrollView}
+          contentContainerStyle={styles.filterContentContainer}
+        >
+          {FACILITY_TYPE_FILTERS.map((f) => {
+            const isActive = state.careFacilityType === f.value;
+            return (
+              <TouchableOpacity
+                key={f.value}
+                activeOpacity={0.7}
+                onPress={() => actions.setCareFacilityType(f.value)}
+                style={[
+                  styles.tabChip,
+                  {
+                    backgroundColor: isActive ? '#041E42' : theme.surface,
+                    borderColor: isActive ? '#041E42' : theme.border,
+                  },
+                ]}
+              >
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.tabChipText,
+                    {
+                      color: isActive ? '#ffffff' : theme.text,
+                      fontWeight: isActive ? '700' : '500',
+                    },
+                  ]}
+                >
+                  {f.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
 
-      {/* Specialty Chips */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.chipScroll}
-        contentContainerStyle={{ paddingRight: 10 }}
-      >
-        {SPECIALTY_FILTERS.map((s) => (
-          <Chip
-            key={s}
-            label={s}
-            active={state.careSpecialty === s}
-            onClick={() => actions.setCareSpecialty(s)}
-          />
-        ))}
-      </ScrollView>
+      {/* Inline Interactive Map Launcher (shown when Pharmacies or Diagnostic Centers tab is selected) */}
+      {state.careFacilityType === 'Pharmacy' && (
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={actions.openPharmacyDirectory}
+          style={[styles.directoryInlineBar, { backgroundColor: theme.surface, borderColor: theme.border }]}
+        >
+          <View style={styles.directoryInlineLeft}>
+            <Text style={{ fontSize: 16 }}>🗺️</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.directoryInlineTitle, { color: theme.text }]}>Abuja Pharmacy Locator Map</Text>
+              <Text style={[styles.directoryInlineSub, { color: theme.muted }]} numberOfLines={1}>
+                View licensed pharmacies on interactive Apple Maps
+              </Text>
+            </View>
+          </View>
+          <View style={[styles.directoryInlineBtn, { backgroundColor: '#0EA5E9' }]}>
+            <Text style={styles.directoryInlineBtnText}>Open Map ›</Text>
+          </View>
+        </TouchableOpacity>
+      )}
 
-      {/* Active E-Prescriptions & Fast Refills Widget */}
+      {state.careFacilityType === 'Laboratory' && (
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={actions.openLabDirectory}
+          style={[styles.directoryInlineBar, { backgroundColor: theme.surface, borderColor: theme.border }]}
+        >
+          <View style={styles.directoryInlineLeft}>
+            <Text style={{ fontSize: 16 }}>🔬</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.directoryInlineTitle, { color: theme.text }]}>Abuja Diagnostic Centers Map</Text>
+              <Text style={[styles.directoryInlineSub, { color: theme.muted }]} numberOfLines={1}>
+                View accredited labs and imaging centers on interactive Apple Maps
+              </Text>
+            </View>
+          </View>
+          <View style={[styles.directoryInlineBtn, { backgroundColor: '#059669' }]}>
+            <Text style={styles.directoryInlineBtnText}>Open Map ›</Text>
+          </View>
+        </TouchableOpacity>
+      )}
+
+      {/* Active E-Prescriptions & Fast Refills Widget (if active) */}
       {prescriptions && prescriptions.length > 0 && (
         <View style={styles.prescriptionsWidget}>
           <View style={styles.rxWidgetHeader}>
@@ -364,66 +422,7 @@ export function CareScreen({ app }: { app: WelliApp }) {
         </View>
       )}
 
-      {/* Abuja Pharmacy Directory Locator Card */}
-      <TouchableOpacity
-        activeOpacity={0.85}
-        onPress={actions.openPharmacyDirectory}
-        style={[
-          styles.locatorBanner,
-          {
-            backgroundColor: theme.surface,
-            borderColor: theme.border,
-          },
-        ]}
-      >
-        <View style={styles.locatorIconBadge}>
-          <Text style={{ fontSize: 20 }}>🗺️</Text>
-        </View>
-        <View style={{ flex: 1, paddingRight: 8 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={[styles.locatorTitle, { color: theme.text }]}>Abuja Pharmacy Directory</Text>
-            <View style={styles.locatorNewBadge}>
-              <Text style={styles.locatorNewText}>MAP</Text>
-            </View>
-          </View>
-          <Text style={[styles.locatorSub, { color: theme.muted }]}>
-            Find licensed pharmacies on Apple Maps across Wuse, Maitama, Jabi, Utako & more
-          </Text>
-        </View>
-        <Text style={[styles.locatorArrow, { color: '#0EA5E9' }]}>Explore ›</Text>
-      </TouchableOpacity>
-
-      {/* Abuja Diagnostic Centers Directory Locator Card */}
-      <TouchableOpacity
-        activeOpacity={0.85}
-        onPress={actions.openLabDirectory}
-        style={[
-          styles.locatorBanner,
-          {
-            backgroundColor: theme.surface,
-            borderColor: theme.border,
-            marginTop: 8,
-          },
-        ]}
-      >
-        <View style={[styles.locatorIconBadge, { backgroundColor: '#ECFDF5' }]}>
-          <Text style={{ fontSize: 20 }}>🔬</Text>
-        </View>
-        <View style={{ flex: 1, paddingRight: 8 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={[styles.locatorTitle, { color: theme.text }]}>Diagnostic Centers Directory</Text>
-            <View style={[styles.locatorNewBadge, { backgroundColor: '#D1FAE5' }]}>
-              <Text style={[styles.locatorNewText, { color: '#065F46' }]}>LABS</Text>
-            </View>
-          </View>
-          <Text style={[styles.locatorSub, { color: theme.muted }]}>
-            Find accredited labs & diagnostic imaging centers on Apple Maps across Abuja
-          </Text>
-        </View>
-        <Text style={[styles.locatorArrow, { color: '#059669' }]}>Explore ›</Text>
-      </TouchableOpacity>
-
-      {/* Result Count */}
+      {/* Result Count Header */}
       <Text style={[styles.resultCount, { color: theme.mutedLight }]}>
         Showing {filtered.length} {filtered.length === 1 ? 'provider' : 'providers'} across{' '}
         {categoryCount} {categoryCount === 1 ? 'category' : 'categories'}
@@ -441,14 +440,15 @@ export function CareScreen({ app }: { app: WelliApp }) {
       {/* Categorized Facility Sections */}
       {sectionsWithResults.map((section) => (
         <View key={section.type} style={styles.sectionBlock}>
+          {/* Section Header with count directly anchored */}
           <View style={styles.sectionHeader}>
             <Text style={{ fontSize: 16 }}>{section.emoji}</Text>
             <Text style={[styles.sectionLabel, { color: theme.text }]}>
               {section.label}
             </Text>
-            <View style={styles.countBadge}>
-              <Text style={styles.countBadgeText}>{section.items.length}</Text>
-            </View>
+            <Text style={[styles.sectionCountText, { color: theme.mutedLight }]}>
+              ({section.items.length})
+            </Text>
           </View>
 
           <View style={styles.facilityList}>
@@ -494,7 +494,7 @@ const styles = StyleSheet.create({
   searchWrapper: {
     position: 'relative',
     justifyContent: 'center',
-    marginBottom: 14,
+    marginBottom: 12,
   },
   searchIcon: {
     position: 'absolute',
@@ -510,12 +510,162 @@ const styles = StyleSheet.create({
     paddingRight: 14,
     fontSize: 14,
   },
-  chipScroll: {
+  filterSectionWrapper: {
+    marginBottom: 12,
+  },
+  filterScrollView: {
+    marginHorizontal: -20,
+  },
+  filterContentContainer: {
+    paddingHorizontal: 20,
+    gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tabChip: {
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  tabChipText: {
+    fontSize: 13,
+  },
+  directoryInlineBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 14,
+    gap: 10,
+  },
+  directoryInlineLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  directoryInlineTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 1,
+  },
+  directoryInlineSub: {
+    fontSize: 11,
+  },
+  directoryInlineBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 7,
+  },
+  directoryInlineBtnText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  prescriptionsWidget: {
+    marginBottom: 16,
+  },
+  rxWidgetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     marginBottom: 10,
+  },
+  rxWidgetTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  rxLocatorBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  rxLocatorBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  orderNewBtn: {
+    backgroundColor: '#041E42',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+  },
+  orderNewBtnText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  rxScroll: {
+    marginHorizontal: -20,
+    paddingHorizontal: 20,
+  },
+  rxMiniCard: {
+    width: 200,
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+    marginRight: 10,
+  },
+  rxCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  rxMiniName: {
+    fontSize: 13,
+    fontWeight: '700',
+    flex: 1,
+    marginRight: 6,
+  },
+  rxCountPill: {
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  rxCountPillEmpty: {
+    backgroundColor: '#f1f5f9',
+  },
+  rxCountPillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#1d4ed8',
+  },
+  rxCountPillTextEmpty: {
+    color: '#94a3b8',
+  },
+  rxMiniDosage: {
+    fontSize: 11,
+    marginBottom: 2,
+  },
+  rxMiniHmo: {
+    fontSize: 10,
+    color: '#059669',
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  miniRefillBtn: {
+    backgroundColor: '#059669',
+    paddingVertical: 5,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  miniRefillBtnDisabled: {
+    backgroundColor: '#94a3b8',
+  },
+  miniRefillBtnText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '700',
   },
   resultCount: {
     fontSize: 12,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   emptyContainer: {
     alignItems: 'center',
@@ -525,12 +675,12 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
   },
   sectionBlock: {
-    marginBottom: 22,
+    marginBottom: 20,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     marginBottom: 10,
   },
   sectionLabel: {
@@ -538,168 +688,57 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    flex: 1,
   },
-  countBadge: {
-    backgroundColor: 'rgba(14,165,233,0.12)',
-    borderRadius: 999,
-    paddingVertical: 2,
-    paddingHorizontal: 9,
-  },
-  countBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#0EA5E9',
-  },
-  facilityList: {
-    gap: 12,
-  },
-  simpleCard: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 16,
-    padding: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  simpleEmojiBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: '#f1f5f9',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  simpleInfo: {
-    flex: 1,
-  },
-  simpleName: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  simpleSub: {
+  sectionCountText: {
     fontSize: 12,
-    color: '#64748b',
-    marginTop: 2,
-  },
-  bookSmallBtn: {
-    backgroundColor: '#f0fdfa',
-    borderWidth: 1,
-    borderColor: '#99f6e4',
-    borderRadius: 999,
-    paddingVertical: 7,
-    paddingHorizontal: 13,
-  },
-  bookSmallText: {
-    color: '#041E42',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  shareSmallBtn: {
-    backgroundColor: '#eff6ff',
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-    borderRadius: 999,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-  },
-  shareSmallText: {
-    color: '#1d4ed8',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  notAcceptingText: {
-    fontSize: 11,
-    color: '#94a3b8',
     fontWeight: '600',
   },
+  facilityList: {
+    gap: 14,
+  },
   richCard: {
-    borderRadius: 18,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
     overflow: 'hidden',
   },
   richCardHeader: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
-  headerTopRow: {
+  headerBadgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
   },
-  facilityPill: {
-    backgroundColor: '#ffffff',
+  statusPill: {
     borderRadius: 999,
-    paddingVertical: 5,
-    paddingHorizontal: 11,
-  },
-  facilityPillText: {
-    fontSize: 11.5,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  acceptingPill: {
-    backgroundColor: 'rgba(16,185,129,0.9)',
-    borderRadius: 999,
-    paddingVertical: 5,
-    paddingHorizontal: 11,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
   },
-  whiteDot: {
+  statusPillOpen: {
+    backgroundColor: 'rgba(16,185,129,0.9)',
+  },
+  statusPillClosed: {
+    backgroundColor: 'rgba(239,68,68,0.85)',
+  },
+  statusDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#ffffff',
   },
-  acceptingPillText: {
+  statusPillText: {
     color: '#ffffff',
     fontSize: 11,
     fontWeight: '700',
   },
-  badgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  accreditedBox: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  accreditedBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 8,
-    backgroundColor: '#ecfdf5',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  accreditedW: {
-    color: '#059669',
-    fontWeight: '800',
-    fontSize: 11,
-  },
-  accreditedText: {
-    fontSize: 11.5,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
   verifiedTag: {
-    backgroundColor: 'rgba(15,23,42,0.55)',
+    backgroundColor: 'rgba(15,23,42,0.65)',
     borderRadius: 999,
-    paddingVertical: 5,
-    paddingHorizontal: 11,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
@@ -710,240 +749,98 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   richCardBody: {
-    backgroundColor: '#ffffff',
     padding: 16,
   },
   facilityName: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#0f172a',
+    fontSize: 18,
+    fontWeight: '700',
+    lineHeight: 23,
+    marginBottom: 8,
+  },
+  doctorRow: {
+    marginBottom: 10,
+  },
+  doctorName: {
+    fontSize: 13.5,
+    fontWeight: '600',
     marginBottom: 2,
   },
-  leadInfo: {
-    fontSize: 12.5,
-    color: '#64748b',
-    marginBottom: 12,
+  doctorSub: {
+    fontSize: 12,
+    lineHeight: 16,
   },
   addressBox: {
-    backgroundColor: '#f8fafc',
-    borderRadius: 12,
+    borderRadius: 10,
     padding: 10,
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   addressText: {
-    fontSize: 12.5,
-    color: '#334155',
+    fontSize: 12,
     flex: 1,
-    lineHeight: 18,
+    lineHeight: 17,
   },
-  instantBookingTag: {
-    backgroundColor: '#fef3c7',
-    borderRadius: 999,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
+  detailsToggleBtn: {
     alignSelf: 'flex-start',
+    paddingVertical: 4,
+    marginBottom: 10,
+  },
+  detailsToggleText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+  },
+  drawerContent: {
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 10,
+    marginBottom: 10,
+    gap: 6,
+  },
+  drawerItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    marginBottom: 12,
+    gap: 6,
   },
-  instantBookingText: {
+  drawerItemText: {
     fontSize: 11.5,
-    fontWeight: '700',
-    color: '#92400e',
+    flex: 1,
+    lineHeight: 16,
   },
   cardDivider: {
     height: 1,
-    backgroundColor: '#e2e8f0',
-    marginBottom: 14,
+    marginBottom: 12,
   },
   cardActionsRow: {
-    gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   bookAppointmentBtn: {
     backgroundColor: '#041E42',
-    borderRadius: 14,
-    paddingVertical: 12,
-    flexDirection: 'row',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
   },
   bookAppointmentText: {
     color: '#ffffff',
-    fontSize: 13.5,
+    fontSize: 13,
     fontWeight: '700',
   },
   shareOrgBtn: {
-    backgroundColor: '#f0fdf4',
-    borderRadius: 14,
-    paddingVertical: 12,
     borderWidth: 1,
-    borderColor: '#bbf7d0',
-    flexDirection: 'row',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    flex: 1,
   },
   shareOrgBtnText: {
-    color: '#166534',
-    fontSize: 13.5,
-    fontWeight: '700',
-  },
-  notAcceptingLongText: {
-    textAlign: 'center',
-    fontSize: 12.5,
-    color: '#94a3b8',
+    fontSize: 13,
     fontWeight: '600',
-    paddingVertical: 6,
-  },
-  prescriptionsWidget: {
-    marginBottom: 20,
-  },
-  rxWidgetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 10,
-  },
-  rxWidgetTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  orderNewBtn: {
-    marginLeft: 'auto',
-    backgroundColor: '#eff6ff',
-    borderRadius: 999,
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-  },
-  orderNewBtnText: {
-    fontSize: 11.5,
-    fontWeight: '700',
-    color: '#1d4ed8',
-  },
-  rxScroll: {
-    flexDirection: 'row',
-  },
-  rxMiniCard: {
-    width: 220,
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 14,
-    marginRight: 10,
-    justifyContent: 'space-between',
-  },
-  rxCardTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  rxMiniName: {
-    fontSize: 13,
-    fontWeight: '800',
-    flex: 1,
-    marginRight: 6,
-  },
-  rxCountPill: {
-    backgroundColor: '#eff6ff',
-    borderRadius: 999,
-    paddingVertical: 2,
-    paddingHorizontal: 6,
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-  },
-  rxCountPillEmpty: {
-    backgroundColor: '#fef2f2',
-    borderColor: '#fecaca',
-  },
-  rxCountPillText: {
-    fontSize: 9.5,
-    fontWeight: '700',
-    color: '#1d4ed8',
-  },
-  rxCountPillTextEmpty: {
-    color: '#dc2626',
-  },
-  rxMiniDosage: {
-    fontSize: 11,
-    marginBottom: 4,
-  },
-  rxMiniHmo: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#059669',
-    marginBottom: 10,
-  },
-  miniRefillBtn: {
-    backgroundColor: '#041E42',
-    borderRadius: 10,
-    paddingVertical: 8,
-    alignItems: 'center',
-  },
-  miniRefillBtnDisabled: {
-    backgroundColor: '#e2e8f0',
-  },
-  miniRefillBtnText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  rxLocatorBtn: {
-    borderRadius: 999,
-    paddingVertical: 5,
-    paddingHorizontal: 9,
-    borderWidth: 1,
-  },
-  rxLocatorBtnText: {
-    fontSize: 11.5,
-    fontWeight: '700',
-  },
-  locatorBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-    marginBottom: 16,
-    gap: 12,
-  },
-  locatorIconBadge: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: '#eff6ff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  locatorTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  locatorNewBadge: {
-    backgroundColor: '#0EA5E9',
-    borderRadius: 4,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-  },
-  locatorNewText: {
-    color: '#ffffff',
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  locatorSub: {
-    fontSize: 11.5,
-    marginTop: 2,
-    lineHeight: 15,
-  },
-  locatorArrow: {
-    fontSize: 13,
-    fontWeight: '700',
   },
 });
