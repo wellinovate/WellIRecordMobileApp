@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Platform,
   StatusBar,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path, Circle } from 'react-native-svg';
@@ -65,16 +66,6 @@ const FAQ_ITEMS: FAQItem[] = [
   },
 ];
 
-const SUPPORTED_RECORDS = [
-  '📄 Lab Reports & Blood Tests',
-  '💊 Prescriptions & Dosages',
-  '💉 Immunization & Vaccine Cards',
-  '🩻 Radiology & Scan Summaries',
-  '🪪 Emergency Medical ID',
-  '📑 Discharge Summaries',
-  '🛡️ HMO Policy & Claims',
-  '🔐 Timed Doctor Share Links',
-];
 
 export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
   const { state, actions } = app;
@@ -446,112 +437,152 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
             </View>
           </LinearGradient>
 
-          {/* Core Value Pillars Grid */}
-          <Text style={styles.sectionTitle}>Why Families Choose WelliRecord</Text>
-          <View style={styles.pillarsGrid}>
-            <View style={styles.pillarCard}>
-              <Text style={styles.pillarEmoji}>🪪</Text>
-              <Text style={styles.pillarTitle}>Emergency ID</Text>
-              <Text style={styles.pillarDesc}>
-                First-responder scannable QR for blood type, genotype, and allergies.
+          {/* 1. Real Product Screenshot Showcase */}
+          <View style={styles.showcaseSection}>
+            <View style={styles.showcaseHeader}>
+              <View style={styles.showcaseBadge}>
+                <Text style={styles.showcaseBadgeText}>LIVE VAULT PREVIEW</Text>
+              </View>
+              <Text style={styles.showcaseTitle}>Inside Your WelliRecord Vault</Text>
+              <Text style={styles.showcaseSub}>
+                Your Emergency ID, verified OCR lab diagnostics, and instant WelliBridge doctor sharing in one unified screen.
               </Text>
             </View>
 
-            <View style={styles.pillarCard}>
-              <Text style={styles.pillarEmoji}>🔐</Text>
-              <Text style={styles.pillarTitle}>Smart Consent</Text>
-              <Text style={styles.pillarDesc}>
-                Grant timed, revocable access to doctors without passwords.
-              </Text>
+            <View style={styles.screenshotFrame}>
+              <Image
+                source={require('../../assets/product_preview.png')}
+                style={styles.screenshotImage}
+                resizeMode="contain"
+                accessibilityLabel="WelliRecord Patient Health Dashboard Mobile Screenshot"
+              />
             </View>
 
-            <View style={styles.pillarCard}>
-              <Text style={styles.pillarEmoji}>👨‍👩‍👧‍👦</Text>
-              <Text style={styles.pillarTitle}>Family & Dependent Vaults</Text>
-              <Text style={styles.pillarDesc}>
-                Manage children and elder dependents with proxy audit trails.
-              </Text>
-            </View>
-
-            <View style={styles.pillarCard}>
-              <Text style={styles.pillarEmoji}>🇳🇬</Text>
-              <Text style={styles.pillarTitle}>HMO & Naira</Text>
-              <Text style={styles.pillarDesc}>
-                Reconcile HMO claims and track out-of-pocket medical bills.
-              </Text>
+            {/* Proof Points Strip */}
+            <View style={styles.proofPointsRow}>
+              <View style={styles.proofPointItem}>
+                <Text style={styles.proofPointIcon}>🔒</Text>
+                <Text style={styles.proofPointText}>AES-256 Encrypted</Text>
+              </View>
+              <View style={styles.proofPointDivider} />
+              <View style={styles.proofPointItem}>
+                <Text style={styles.proofPointIcon}>⚡</Text>
+                <Text style={styles.proofPointText}>Under 5s ER Retrieval</Text>
+              </View>
+              <View style={styles.proofPointDivider} />
+              <View style={styles.proofPointItem}>
+                <Text style={styles.proofPointIcon}>🛡️</Text>
+                <Text style={styles.proofPointText}>NDPR Compliant</Text>
+              </View>
             </View>
           </View>
 
-          {/* Old Paper Way vs WelliRecord Way Comparison Card */}
+          {/* 2. How WelliRecord Works 3-Step Guide */}
+          <View style={styles.howItWorksSection}>
+            <Text style={styles.sectionTitle}>How WelliRecord Works in 3 Steps</Text>
+            <View style={styles.stepsContainer}>
+              <View style={styles.stepItem}>
+                <View style={[styles.stepNumberBadge, { backgroundColor: '#0EA5E9' }]}>
+                  <Text style={styles.stepNumberText}>1</Text>
+                </View>
+                <View style={styles.stepContent}>
+                  <Text style={styles.stepTitle}>Digitize & Upload</Text>
+                  <Text style={styles.stepDesc}>
+                    Snap photos of physical cards, prescriptions, and lab tests. Our clinical OCR extracts key metrics in seconds.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.stepItem}>
+                <View style={[styles.stepNumberBadge, { backgroundColor: '#10b981' }]}>
+                  <Text style={styles.stepNumberText}>2</Text>
+                </View>
+                <View style={styles.stepContent}>
+                  <Text style={styles.stepTitle}>Smart Consent Sharing</Text>
+                  <Text style={styles.stepDesc}>
+                    Share via 6-digit WelliBridge PIN or timed QR with verified doctors. Full revocation and audit logs at any moment.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.stepItem}>
+                <View style={[styles.stepNumberBadge, { backgroundColor: '#6366f1' }]}>
+                  <Text style={styles.stepNumberText}>3</Text>
+                </View>
+                <View style={styles.stepContent}>
+                  <Text style={styles.stepTitle}>Consult, Book & Track</Text>
+                  <Text style={styles.stepDesc}>
+                    Book visits at 100+ partner hospitals, manage dependents in one account, and track health history seamlessly.
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+
+          {/* 3. The Numbers: Old Paper Way vs WelliRecord Way (Closer) */}
           <View style={styles.comparisonBox}>
-            <Text style={styles.comparisonHeading}>Old Paper Way vs WelliRecord Way</Text>
+            <View style={styles.comparisonHeader}>
+              <Text style={styles.comparisonHeading}>The Numbers: Paper Folders vs WelliRecord</Text>
+              <Text style={styles.comparisonSub}>
+                Every comparison backed by concrete costs, wait times, and verified Nigerian healthcare outcomes.
+              </Text>
+            </View>
+
             <View style={styles.compRow}>
+              {/* Paper Way Column */}
               <View style={styles.compColumnOld}>
                 <Text style={styles.compColTitleRed}>❌ Old Paper Way</Text>
-                <Text style={styles.compItem}>• Lost hospital cards & paper receipts</Text>
-                <Text style={styles.compItem}>• Duplicate N25,000 lab tests</Text>
-                <Text style={styles.compItem}>• Zero access to dependent records</Text>
-                <Text style={styles.compItem}>• HMO disputes & unreconciled billing</Text>
+                <View style={styles.compMetricCardRed}>
+                  <Text style={styles.compMetricLabelRed}>REPEAT LAB COSTS</Text>
+                  <Text style={styles.compItem}>• ₦25,000+ repeat tests every time paper results are lost</Text>
+                </View>
+                <View style={styles.compMetricCardRed}>
+                  <Text style={styles.compMetricLabelRed}>RETRIEVAL WAIT TIME</Text>
+                  <Text style={styles.compItem}>• 45–90 mins waiting for physical hospital folders to be located</Text>
+                </View>
+                <View style={styles.compMetricCardRed}>
+                  <Text style={styles.compMetricLabelRed}>FAMILY VISIBILITY</Text>
+                  <Text style={styles.compItem}>• 0 shared access: scattered immunization cards for 2+ kids</Text>
+                </View>
+                <View style={styles.compMetricCardRed}>
+                  <Text style={styles.compMetricLabelRed}>HMO REIMBURSEMENT</Text>
+                  <Text style={styles.compItem}>• 30+ day HMO reimbursement delays with lost paper receipts</Text>
+                </View>
               </View>
 
+              {/* WelliRecord Way Column */}
               <View style={styles.compColumnNew}>
                 <Text style={styles.compColTitleGreen}>✅ WelliRecord Way</Text>
-                <Text style={styles.compItem}>• Immutable digital health vault</Text>
-                <Text style={styles.compItem}>• Instant cross-hospital sharing</Text>
-                <Text style={styles.compItem}>• Family & dependent vaults</Text>
-                <Text style={styles.compItem}>• Reconciled HMO billing in Naira</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* How It Works 3-Step Guide */}
-          <Text style={styles.sectionTitle}>How WelliRecord Works</Text>
-          <View style={styles.stepsContainer}>
-            <View style={styles.stepItem}>
-              <View style={[styles.stepNumberBadge, { backgroundColor: '#0EA5E9' }]}>
-                <Text style={styles.stepNumberText}>1</Text>
-              </View>
-              <View style={styles.stepContent}>
-                <Text style={styles.stepTitle}>Digitize & Upload</Text>
-                <Text style={styles.stepDesc}>
-                  Snap photos of existing cards, prescriptions, and lab tests or connect linked accounts.
-                </Text>
+                <View style={styles.compMetricCardGreen}>
+                  <Text style={styles.compMetricLabelGreen}>ZERO DUPLICATION</Text>
+                  <Text style={styles.compItem}>• ₦0 repeat test fees: permanent cloud vault across hospitals</Text>
+                </View>
+                <View style={styles.compMetricCardGreen}>
+                  <Text style={styles.compMetricLabelGreen}>INSTANT ACCESS</Text>
+                  <Text style={styles.compItem}>• Under 5 seconds retrieval with a 6-digit WelliBridge PIN</Text>
+                </View>
+                <View style={styles.compMetricCardGreen}>
+                  <Text style={styles.compMetricLabelGreen}>CENTRALIZED VAULT</Text>
+                  <Text style={styles.compItem}>• Up to 6 family members in 1 account with proxy audit logs</Text>
+                </View>
+                <View style={styles.compMetricCardGreen}>
+                  <Text style={styles.compMetricLabelGreen}>FASTER CLAIMS</Text>
+                  <Text style={styles.compItem}>• 1-tap PDF & Naira receipt export for instant HMO claims</Text>
+                </View>
               </View>
             </View>
 
-            <View style={styles.stepItem}>
-              <View style={[styles.stepNumberBadge, { backgroundColor: '#10b981' }]}>
-                <Text style={styles.stepNumberText}>2</Text>
-              </View>
-              <View style={styles.stepContent}>
-                <Text style={styles.stepTitle}>Smart Consent Sharing</Text>
-                <Text style={styles.stepDesc}>
-                  Share via 6-digit WelliBridge code or timed QR with specific doctors. Revoke anytime.
-                </Text>
-              </View>
+            {/* Bottom Conversion Closer */}
+            <View style={styles.closerCtaBox}>
+              <Text style={styles.closerCtaTitle}>Never lose a health record or repay ₦25,000 for a lost test again.</Text>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => handleTabChange('signup')}
+                style={styles.closerCtaBtn}
+              >
+                <Text style={styles.closerCtaBtnText}>Create Your Free Vault ›</Text>
+              </TouchableOpacity>
             </View>
-
-            <View style={styles.stepItem}>
-              <View style={[styles.stepNumberBadge, { backgroundColor: '#6366f1' }]}>
-                <Text style={styles.stepNumberText}>3</Text>
-              </View>
-              <View style={styles.stepContent}>
-                <Text style={styles.stepTitle}>Consult, Book & Track</Text>
-                <Text style={styles.stepDesc}>
-                  Book hospital appointments, initiate telehealth consultations, and monitor health metrics.
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Supported Formats Badges */}
-          <Text style={styles.sectionTitle}>Supported Records & Formats</Text>
-          <View style={styles.partnerBadgesRow}>
-            {SUPPORTED_RECORDS.map((p) => (
-              <View key={p} style={styles.partnerBadge}>
-                <Text style={styles.partnerBadgeText}>{p}</Text>
-              </View>
-            ))}
           </View>
         </View>
       )}
@@ -1227,84 +1258,225 @@ const styles = StyleSheet.create({
     color: '#0f172a',
     marginBottom: 14,
   },
-  pillarsGrid: {
-    gap: 12,
-    marginBottom: 24,
+  showcaseSection: {
+    marginBottom: 26,
+    alignItems: 'center',
+    width: '100%',
   },
-  pillarCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 16,
+  showcaseHeader: {
+    alignItems: 'center',
+    marginBottom: 14,
+    paddingHorizontal: 10,
+  },
+  showcaseBadge: {
+    backgroundColor: '#eff6ff',
+    borderColor: '#bfdbfe',
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginBottom: 6,
   },
-  pillarEmoji: {
-    fontSize: 26,
-    marginBottom: 8,
+  showcaseBadgeText: {
+    color: '#0284c7',
+    fontSize: 10.5,
+    fontWeight: '800',
+    letterSpacing: 0.8,
   },
-  pillarTitle: {
-    fontSize: 15,
-    fontWeight: '700',
+  showcaseTitle: {
+    fontSize: 17,
+    fontWeight: '800',
     color: '#0f172a',
+    textAlign: 'center',
     marginBottom: 4,
   },
-  pillarDesc: {
-    fontSize: 13,
+  showcaseSub: {
+    fontSize: 12.5,
     color: '#64748b',
+    textAlign: 'center',
     lineHeight: 18,
+    maxWidth: 320,
+  },
+  screenshotFrame: {
+    width: '100%',
+    height: 460,
+    borderRadius: 24,
+    overflow: 'hidden',
+    backgroundColor: '#041E42',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#e2e8f0',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    elevation: 8,
+    marginBottom: 12,
+  },
+  screenshotImage: {
+    width: '100%',
+    height: '100%',
+  },
+  proofPointsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: '#f8fafc',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    width: '100%',
+  },
+  proofPointItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  proofPointIcon: {
+    fontSize: 12,
+  },
+  proofPointText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  proofPointDivider: {
+    width: 1,
+    height: 14,
+    backgroundColor: '#cbd5e1',
+  },
+  howItWorksSection: {
+    marginBottom: 26,
+    width: '100%',
   },
   comparisonBox: {
     backgroundColor: '#ffffff',
-    borderRadius: 18,
+    borderRadius: 20,
     padding: 16,
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    marginBottom: 24,
+    marginBottom: 28,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 2,
+    width: '100%',
+  },
+  comparisonHeader: {
+    marginBottom: 14,
   },
   comparisonHeading: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '800',
     color: '#0f172a',
-    marginBottom: 12,
+    marginBottom: 4,
+  },
+  comparisonSub: {
+    fontSize: 12,
+    color: '#64748b',
+    lineHeight: 16,
   },
   compRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
+    marginBottom: 16,
   },
   compColumnOld: {
     flex: 1,
     backgroundColor: '#fef2f2',
-    borderRadius: 12,
-    padding: 12,
-    gap: 6,
+    borderRadius: 14,
+    padding: 10,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#fee2e2',
   },
   compColTitleRed: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '800',
-    color: '#dc2626',
-    marginBottom: 4,
+    color: '#b91c1c',
+    marginBottom: 2,
+  },
+  compMetricCardRed: {
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    padding: 7,
+    borderLeftWidth: 3,
+    borderLeftColor: '#ef4444',
+  },
+  compMetricLabelRed: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#ef4444',
+    letterSpacing: 0.4,
+    marginBottom: 2,
   },
   compColumnNew: {
     flex: 1,
-    backgroundColor: '#ecfdf5',
-    borderRadius: 12,
-    padding: 12,
-    gap: 6,
+    backgroundColor: '#f0fdf4',
+    borderRadius: 14,
+    padding: 10,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#dcfce7',
   },
   compColTitleGreen: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '800',
-    color: '#059669',
-    marginBottom: 4,
+    color: '#15803d',
+    marginBottom: 2,
+  },
+  compMetricCardGreen: {
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    padding: 7,
+    borderLeftWidth: 3,
+    borderLeftColor: '#10b981',
+  },
+  compMetricLabelGreen: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#10b981',
+    letterSpacing: 0.4,
+    marginBottom: 2,
   },
   compItem: {
-    fontSize: 11.5,
+    fontSize: 10.5,
     color: '#334155',
-    lineHeight: 16,
+    lineHeight: 14.5,
+  },
+  closerCtaBox: {
+    backgroundColor: '#041E42',
+    borderRadius: 14,
+    padding: 14,
+    alignItems: 'center',
+    gap: 10,
+  },
+  closerCtaTitle: {
+    color: '#ffffff',
+    fontSize: 12.5,
+    fontWeight: '700',
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  closerCtaBtn: {
+    backgroundColor: '#0EA5E9',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 999,
+  },
+  closerCtaBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '800',
   },
   stepsContainer: {
-    gap: 14,
-    marginBottom: 24,
+    gap: 12,
+    marginBottom: 10,
   },
   stepItem: {
     flexDirection: 'row',
@@ -1342,25 +1514,6 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     color: '#64748b',
     lineHeight: 17,
-  },
-  partnerBadgesRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 20,
-  },
-  partnerBadge: {
-    backgroundColor: '#ffffff',
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  partnerBadgeText: {
-    fontSize: 11.5,
-    fontWeight: '600',
-    color: '#334155',
   },
   formCard: {
     backgroundColor: '#ffffff',
