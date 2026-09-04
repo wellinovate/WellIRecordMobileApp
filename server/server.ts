@@ -64,7 +64,7 @@ app.use((req, res, next) => {
 mongoose
   .connect(MONGODB_URI)
   .then(() => {
-    console.log(`[WelliRecord API] Connected to MongoDB database: ${MONGODB_URI}`);
+    console.log(`[WelliRecord API] Connected to MongoDB database: ${mongoose.connection.name}`);
   })
   .catch((err) => {
     console.warn(`[WelliRecord API] MongoDB connection notice (running in hybrid/demo mode): ${err.message}`);
