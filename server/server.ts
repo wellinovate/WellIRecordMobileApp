@@ -1666,6 +1666,194 @@ app.post('/api/v1/pharmacy/orders/:id/reject', requireAdminSecret, async (req: R
   }
 });
 
+// Minimal internal admin page for reviewing patient-initiated medication
+// orders. No staff/role system exists yet — gated by the same
+// ADMIN_SECRET used by the /pharmacy/orders/* endpoints. Not linked from
+// anywhere in the app; access this directly at /admin/orders.
+app.get('/admin/orders', (_req: Request, res: Response) => {
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WelliRecord — Order Review</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #F8FAFC; margin: 0; padding: 24px; color: #0F172A; }
+  .container { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 20px; font-weight: 800; margin-bottom: 4px; }
+  .sub { color: #64748B; font-size: 13px; margin-bottom: 24px; }
+  #authGate { background: #fff; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+  #authGate input { width: 100%; padding: 10px 12px; border: 1px solid #E2E8F0; border-radius: 8px; font-size: 14px; margin-bottom: 10px; }
+  #authGate button { background: #041E42; color: #fff; border: none; padding: 10px 18px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 14px; }
+  #authError { color: #DC2626; font-size: 13px; margin-top: 8px; display: none; }
+  #ordersSection { display: none; }
+  .order-card { background: #fff; border: 1px solid #E2E8F0; border-radius: 14px; padding: 16px; margin-bottom: 14px; }
+  .order-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+  .med-name { font-size: 15px; font-weight: 800; }
+  .meta { font-size: 12px; color: #64748B; margin-top: 3px; }
+  .status-badge { background: #FEF3C7; color: #92400E; font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 999px; white-space: nowrap; }
+  .field-row { font-size: 12.5px; color: #334155; margin: 3px 0; }
+  .field-row b { color: #0F172A; }
+  .actions { display: flex; gap: 8px; margin-top: 14px; }
+  .actions button { flex: 1; padding: 10px; border-radius: 10px; border: none; font-weight: 700; font-size: 13px; cursor: pointer; }
+  .approve-btn { background: #059669; color: #fff; }
+  .reject-btn { background: #fff; color: #DC2626; border: 1.5px solid #FECACA !important; }
+  .empty { text-align: center; color: #94A3B8; padding: 60px 0; font-size: 14px; }
+  .msg { font-size: 13px; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; display: none; }
+  .msg.success { background: #ECFDF5; color: #065F46; border: 1px solid #A7F3D0; }
+  .msg.error { background: #FEF2F2; color: #991B1B; border: 1px solid #FECACA; }
+  #refreshBtn { background: #EFF6FF; color: #1D4ED8; border: 1px solid #BFDBFE; padding: 8px 14px; border-radius: 8px; font-weight: 700; font-size: 12.5px; cursor: pointer; margin-bottom: 16px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Medication Order Review</h1>
+  <div class="sub">Internal tool — orders pending pharmacist approval</div>
+
+  <div id="authGate">
+    <input type="password" id="secretInput" placeholder="Enter admin secret">
+    <button onclick="authenticate()">Unlock</button>
+    <div id="authError">Invalid admin credentials.</div>
+  </div>
+
+  <div id="ordersSection">
+    <div id="msg" class="msg"></div>
+    <button id="refreshBtn" onclick="loadOrders()">↻ Refresh</button>
+    <div id="ordersList"></div>
+  </div>
+</div>
+
+<script>
+  let ADMIN_SECRET = '';
+
+  async function authenticate() {
+    const secret = document.getElementById('secretInput').value.trim();
+    if (!secret) return;
+    try {
+      const res = await fetch('/api/v1/pharmacy/orders/pending', {
+        headers: { 'x-admin-secret': secret }
+      });
+      if (res.status === 401) {
+        document.getElementById('authError').style.display = 'block';
+        return;
+      }
+      ADMIN_SECRET = secret;
+      document.getElementById('authGate').style.display = 'none';
+      document.getElementById('ordersSection').style.display = 'block';
+      loadOrders();
+    } catch (err) {
+      document.getElementById('authError').textContent = 'Could not reach server.';
+      document.getElementById('authError').style.display = 'block';
+    }
+  }
+
+  function showMsg(text, type) {
+    const el = document.getElementById('msg');
+    el.textContent = text;
+    el.className = 'msg ' + type;
+    el.style.display = 'block';
+    setTimeout(() => { el.style.display = 'none'; }, 4000);
+  }
+
+  async function loadOrders() {
+    const list = document.getElementById('ordersList');
+    list.innerHTML = '<div class="empty">Loading…</div>';
+    try {
+      const res = await fetch('/api/v1/pharmacy/orders/pending', {
+        headers: { 'x-admin-secret': ADMIN_SECRET }
+      });
+      const data = await res.json();
+      const orders = data.orders || [];
+      if (orders.length === 0) {
+        list.innerHTML = '<div class="empty">No orders pending review.</div>';
+        return;
+      }
+      list.innerHTML = orders.map(renderOrder).join('');
+    } catch (err) {
+      list.innerHTML = '<div class="empty">Failed to load orders.</div>';
+    }
+  }
+
+  function renderOrder(o) {
+    const created = o.createdAt ? new Date(o.createdAt).toLocaleString() : '';
+    return \`
+      <div class="order-card">
+        <div class="order-top">
+          <div>
+            <div class="med-name">\${escapeHtml(o.medicationName || 'Unnamed medication')}</div>
+            <div class="meta">Submitted \${created}</div>
+          </div>
+          <div class="status-badge">PENDING REVIEW</div>
+        </div>
+        <div class="field-row"><b>Dosage:</b> \${escapeHtml(o.dosage || '—')}</div>
+        <div class="field-row"><b>Quantity:</b> \${o.quantity || 1}</div>
+        <div class="field-row"><b>Delivery:</b> \${escapeHtml(o.deliveryAddress || '—')} (\${escapeHtml(o.deliveryType || 'home')})</div>
+        \${o.notes ? '<div class="field-row"><b>Notes:</b> ' + escapeHtml(o.notes) + '</div>' : ''}
+        <div class="actions">
+          <button class="approve-btn" onclick="approveOrder('\${o._id}')">Approve</button>
+          <button class="reject-btn" onclick="rejectOrder('\${o._id}')">Reject</button>
+        </div>
+      </div>
+    \`;
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  async function approveOrder(id) {
+    if (!confirm('Approve this order? It will move to active status.')) return;
+    try {
+      const res = await fetch('/api/v1/pharmacy/orders/' + id + '/approve', {
+        method: 'POST',
+        headers: { 'x-admin-secret': ADMIN_SECRET, 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      const data = await res.json();
+      if (data.success) {
+        showMsg('Order approved.', 'success');
+        loadOrders();
+      } else {
+        showMsg(data.message || 'Failed to approve.', 'error');
+      }
+    } catch (err) {
+      showMsg('Network error approving order.', 'error');
+    }
+  }
+
+  async function rejectOrder(id) {
+    const reason = prompt('Reason for rejection (required):');
+    if (!reason || !reason.trim()) return;
+    try {
+      const res = await fetch('/api/v1/pharmacy/orders/' + id + '/reject', {
+        method: 'POST',
+        headers: { 'x-admin-secret': ADMIN_SECRET, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showMsg('Order rejected.', 'success');
+        loadOrders();
+      } else {
+        showMsg(data.message || 'Failed to reject.', 'error');
+      }
+    } catch (err) {
+      showMsg('Network error rejecting order.', 'error');
+    }
+  }
+
+  document.getElementById('secretInput').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') authenticate();
+  });
+</script>
+</body>
+</html>`);
+});
+
+
 // 5. Pre-signed Encrypted S3 Upload URL Generator
 app.post('/api/v1/records/upload-url', (req: Request, res: Response) => {
   const { fileName, contentType } = req.body;
