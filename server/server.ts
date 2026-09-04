@@ -72,7 +72,7 @@ function getOtpEntry(identifier: string) {
 
 function verifyStoredOtp(identifier: string, code: string): boolean {
   const entry = otpCache.get(identifier);
-  if (!entry) return true; // Allow initial fallback if not found in memory
+  if (!entry) return false; // No OTP was ever issued for this identifier — reject
   if (Date.now() > entry.expiresAt) {
     otpCache.delete(identifier);
     return false;
@@ -120,7 +120,14 @@ app.post('/api/v1/auth/otp/send', async (req: Request, res: Response) => {
 
   const formattedPhone = targetPhone.replace(/[^0-9]/g, '');
   const generatedCode = generateOtp(targetPhone, mode);
-  generateOtp(formattedPhone, mode);
+  const otpRec = otpCache.get(targetPhone);
+  if (otpRec) {
+    if (formattedPhone) otpCache.set(formattedPhone, otpRec);
+    const normalizedE164 = normalizeNigerianPhone(targetPhone);
+    if (normalizedE164) otpCache.set(normalizedE164, otpRec);
+    const localPhone = toLocalNigerianPhone(targetPhone);
+    if (localPhone) otpCache.set(localPhone, otpRec);
+  }
 
   try {
     if (TERMII_API_KEY && TERMII_API_KEY !== 'TL_TEST_KEY') {
@@ -495,22 +502,35 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
   const targetIdentifier = (email ? email.toLowerCase().trim() : phoneNumber?.trim()) || '';
   const cleanPhone = phoneNumber ? phoneNumber.replace(/[^0-9]/g, '') : '';
   const cleanEmail = email ? email.toLowerCase().trim() : (req.body.email ? req.body.email.toLowerCase().trim() : undefined);
+  const normalizedE164 = phoneNumber ? normalizeNigerianPhone(phoneNumber) : '';
+  const normalizedLocal = phoneNumber ? toLocalNigerianPhone(phoneNumber) : '';
 
-  const otpEntry = getOtpEntry(targetIdentifier) || (cleanPhone ? getOtpEntry(cleanPhone) : undefined) || (cleanEmail ? getOtpEntry(cleanEmail) : undefined);
+  const otpEntry =
+    getOtpEntry(targetIdentifier) ||
+    (cleanPhone ? getOtpEntry(cleanPhone) : undefined) ||
+    (normalizedE164 ? getOtpEntry(normalizedE164) : undefined) ||
+    (normalizedLocal ? getOtpEntry(normalizedLocal) : undefined) ||
+    (cleanEmail ? getOtpEntry(cleanEmail) : undefined);
   const requestedMode = otpEntry?.mode || (req.body.mode === 'login' ? 'login' : 'signup');
 
   if (
     !verifyStoredOtp(targetIdentifier, code) &&
     !(cleanPhone && verifyStoredOtp(cleanPhone, code)) &&
+    !(normalizedE164 && verifyStoredOtp(normalizedE164, code)) &&
+    !(normalizedLocal && verifyStoredOtp(normalizedLocal, code)) &&
     !(cleanEmail && verifyStoredOtp(cleanEmail, code))
   ) {
     return res.status(400).json({ success: false, message: 'Invalid or expired authorization code' });
   }
 
-  try {
-    const normalizedE164 = phoneNumber ? normalizeNigerianPhone(phoneNumber) : '';
-    const normalizedLocal = phoneNumber ? toLocalNigerianPhone(phoneNumber) : '';
+  // Clean up any remaining aliases for this verified OTP
+  otpCache.delete(targetIdentifier);
+  if (cleanPhone) otpCache.delete(cleanPhone);
+  if (normalizedE164) otpCache.delete(normalizedE164);
+  if (normalizedLocal) otpCache.delete(normalizedLocal);
+  if (cleanEmail) otpCache.delete(cleanEmail);
 
+  try {
     let account = null;
     if (cleanEmail) {
       account = await Account.findOne({ email: cleanEmail });
@@ -2487,3 +2507,7 @@ app.delete('/api/v1/auth/account', async (req: Request, res: Response) => {
 app.listen(PORT, () => {
   console.log(`[WelliRecord API] Cloud server running with MongoDB on port ${PORT}`);
 });
+
+export { app, otpCache, verifyStoredOtp, generateOtp };
+export default app;
+
