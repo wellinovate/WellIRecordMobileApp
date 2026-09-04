@@ -3,11 +3,14 @@
  * Node.js / Express backend with Mongoose, Termii SMS Gateway & NDPR Compliant Endpoints.
  */
 
+import crypto from 'crypto';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
+import dotenv from 'dotenv';
+dotenv.config();
 import {
   User,
   Account,
@@ -24,7 +27,10 @@ import {
 const app = express();
 const PORT = process.env.PORT || 4000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/wellirecord';
-const JWT_SECRET = process.env.JWT_SECRET || 'wellirecord_prod_super_secret_jwt_key_2026';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required — refusing to start without it.');
+}
 const TERMII_API_KEY = process.env.TERMII_API_KEY || 'TL_TEST_KEY';
 
 app.use(cors());
@@ -1571,7 +1577,9 @@ function requireAdminSecret(req: Request, res: Response, next: () => void) {
   if (!expected) {
     return res.status(503).json({ success: false, message: 'Admin review is not configured yet.' });
   }
-  if (provided !== expected) {
+  const providedBuf = Buffer.from(String(provided || ''));
+  const expectedBuf = Buffer.from(expected);
+  if (providedBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(providedBuf, expectedBuf)) {
     return res.status(401).json({ success: false, message: 'Invalid admin credentials.' });
   }
   next();
