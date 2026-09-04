@@ -2212,6 +2212,20 @@ const ABUJA_FALLBACK_PHARMACIES = [
   },
 ];
 
+let pharmacyFetchInFlight: Promise<any> | null = null;
+let labFetchInFlight: Promise<any> | null = null;
+
+async function fetchWithTimeout(url: string, ms: number) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), ms);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    return await res.json();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 app.get('/api/v1/care/pharmacies', async (req: Request, res: Response) => {
   const placesKey = process.env.GOOGLE_PLACES_API_KEY;
 
@@ -2225,51 +2239,71 @@ app.get('/api/v1/care/pharmacies', async (req: Request, res: Response) => {
     return res.json({ success: true, pharmacies: ABUJA_FALLBACK_PHARMACIES, usedFallback: true, cached: false });
   }
 
-  try {
-    const allResults: any[] = [];
-
-    for (const district of ABUJA_PHARMACY_DISTRICTS) {
-      const query = encodeURIComponent(`pharmacy in ${district}, Abuja, Nigeria`);
-      const placesRes = await fetch(
-        `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${query}&key=${placesKey}`
-      );
-      const placesData: any = await placesRes.json();
-
-      if (placesData.status === 'OK' && Array.isArray(placesData.results)) {
-        placesData.results.forEach((place: any) => {
-          allResults.push({
-            placeId: place.place_id,
-            name: place.name,
-            address: place.formatted_address,
-            district,
-            lat: place.geometry?.location?.lat,
-            lng: place.geometry?.location?.lng,
-            rating: place.rating || null,
-            openNow: place.opening_hours?.open_now ?? null,
-          });
-        });
-      } else if (placesData.status !== 'ZERO_RESULTS') {
-        console.error(`[Places API Error - ${district}]`, placesData.status, placesData.error_message);
-      }
-    }
-
-    // Deduplicate — a pharmacy near a district border can appear in
-    // multiple districts' search results. Keep the first occurrence.
-    const seenPlaceIds = new Set<string>();
-    const dedupedResults = allResults.filter((p) => {
-      if (seenPlaceIds.has(p.placeId)) return false;
-      seenPlaceIds.add(p.placeId);
-      return true;
-    });
-
-    const usedFallback = dedupedResults.length === 0;
-    const finalResults = usedFallback ? ABUJA_FALLBACK_PHARMACIES : dedupedResults;
-    pharmacyCache = { data: finalResults, fetchedAt: Date.now(), usedFallback };
-    return res.json({ success: true, pharmacies: finalResults, usedFallback, cached: false });
-  } catch (err) {
-    console.error('[Pharmacy Directory Error]', err);
-    return res.status(500).json({ success: false, message: 'Failed to fetch pharmacy directory' });
+  // In-flight lock: if a fetch is already running, wait for it instead
+  // of starting a duplicate set of Places calls. Prevents concurrent
+  // requests from multiplying memory/network load.
+  if (pharmacyFetchInFlight) {
+    const result = await pharmacyFetchInFlight;
+    return res.json(result);
   }
+
+  pharmacyFetchInFlight = (async () => {
+    try {
+      const allResults: any[] = [];
+
+      for (const district of ABUJA_PHARMACY_DISTRICTS) {
+        const query = encodeURIComponent(`pharmacy in ${district}, Abuja, Nigeria`);
+        try {
+          const placesData: any = await fetchWithTimeout(
+            `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${query}&key=${placesKey}`,
+            5000 // 5s timeout per district — don't let one slow call hang the whole batch
+          );
+
+          if (placesData.status === 'OK' && Array.isArray(placesData.results)) {
+            placesData.results.forEach((place: any) => {
+              allResults.push({
+                placeId: place.place_id,
+                name: place.name,
+                address: place.formatted_address,
+                district,
+                lat: place.geometry?.location?.lat,
+                lng: place.geometry?.location?.lng,
+                rating: place.rating || null,
+                openNow: place.opening_hours?.open_now ?? null,
+              });
+            });
+          } else if (placesData.status !== 'ZERO_RESULTS') {
+            console.error(`[Places API Error - Pharmacies - ${district}]`, placesData.status, placesData.error_message);
+          }
+        } catch (fetchErr) {
+          console.error(`[Places API Timeout/Error - Pharmacies - ${district}]`, fetchErr);
+          // continue to next district rather than failing the whole batch
+        }
+      }
+
+      // Deduplicate — a pharmacy near a district border can appear in
+      // multiple districts' search results. Keep the first occurrence.
+      const seenPlaceIds = new Set<string>();
+      const dedupedResults = allResults.filter((p) => {
+        if (seenPlaceIds.has(p.placeId)) return false;
+        seenPlaceIds.add(p.placeId);
+        return true;
+      });
+
+      const usedFallback = dedupedResults.length === 0;
+      const finalResults = usedFallback ? ABUJA_FALLBACK_PHARMACIES : dedupedResults;
+      pharmacyCache = { data: finalResults, fetchedAt: Date.now(), usedFallback };
+      return { success: true, pharmacies: finalResults, usedFallback, cached: false };
+    } catch (err) {
+      console.error('[Pharmacy Directory Error]', err);
+      return { success: false, message: 'Failed to fetch pharmacy directory' };
+    } finally {
+      pharmacyFetchInFlight = null;
+    }
+  })();
+
+  const result = await pharmacyFetchInFlight;
+  return res.json(result);
 });
 
 // 6c. Abuja Diagnostic Laboratories Directory (Google Places API with 24-hour Cache)
@@ -2377,47 +2411,67 @@ app.get('/api/v1/care/labs', async (req: Request, res: Response) => {
     return res.json({ success: true, labs: ABUJA_FALLBACK_LABS, usedFallback: true, cached: false });
   }
 
-  try {
-    const allResults: any[] = [];
-    for (const district of ABUJA_LAB_DISTRICTS) {
-      const query = encodeURIComponent(`diagnostic laboratory in ${district}, Abuja, Nigeria`);
-      const placesRes = await fetch(
-        `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${query}&key=${placesKey}`
-      );
-      const placesData: any = await placesRes.json();
-      if (placesData.status === 'OK' && Array.isArray(placesData.results)) {
-        placesData.results.forEach((place: any) => {
-          allResults.push({
-            placeId: place.place_id,
-            name: place.name,
-            address: place.formatted_address,
-            district,
-            lat: place.geometry?.location?.lat,
-            lng: place.geometry?.location?.lng,
-            rating: place.rating || null,
-            openNow: place.opening_hours?.open_now ?? null,
-          });
-        });
-      } else if (placesData.status !== 'ZERO_RESULTS') {
-        console.error(`[Places API Error - Labs - ${district}]`, placesData.status, placesData.error_message);
-      }
-    }
-
-    const seenPlaceIds = new Set<string>();
-    const dedupedResults = allResults.filter((p) => {
-      if (seenPlaceIds.has(p.placeId)) return false;
-      seenPlaceIds.add(p.placeId);
-      return true;
-    });
-
-    const usedFallback = dedupedResults.length === 0;
-    const finalResults = usedFallback ? ABUJA_FALLBACK_LABS : dedupedResults;
-    labCache = { data: finalResults, fetchedAt: Date.now(), usedFallback };
-    return res.json({ success: true, labs: finalResults, usedFallback, cached: false });
-  } catch (err) {
-    console.error('[Lab Directory Error]', err);
-    return res.status(500).json({ success: false, message: 'Failed to fetch lab directory' });
+  // In-flight lock: if a fetch is already running, wait for it instead
+  // of starting a duplicate set of 13 Places calls. Prevents concurrent
+  // requests from multiplying memory/network load.
+  if (labFetchInFlight) {
+    const result = await labFetchInFlight;
+    return res.json(result);
   }
+
+  labFetchInFlight = (async () => {
+    try {
+      const allResults: any[] = [];
+      for (const district of ABUJA_LAB_DISTRICTS) {
+        const query = encodeURIComponent(`diagnostic laboratory in ${district}, Abuja, Nigeria`);
+        try {
+          const placesData: any = await fetchWithTimeout(
+            `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${query}&key=${placesKey}`,
+            5000 // 5s timeout per district — don't let one slow call hang the whole batch
+          );
+          if (placesData.status === 'OK' && Array.isArray(placesData.results)) {
+            placesData.results.forEach((place: any) => {
+              allResults.push({
+                placeId: place.place_id,
+                name: place.name,
+                address: place.formatted_address,
+                district,
+                lat: place.geometry?.location?.lat,
+                lng: place.geometry?.location?.lng,
+                rating: place.rating || null,
+                openNow: place.opening_hours?.open_now ?? null,
+              });
+            });
+          } else if (placesData.status !== 'ZERO_RESULTS') {
+            console.error(`[Places API Error - Labs - ${district}]`, placesData.status, placesData.error_message);
+          }
+        } catch (fetchErr) {
+          console.error(`[Places API Timeout/Error - Labs - ${district}]`, fetchErr);
+          // continue to next district rather than failing the whole batch
+        }
+      }
+
+      const seenPlaceIds = new Set<string>();
+      const dedupedResults = allResults.filter((p) => {
+        if (seenPlaceIds.has(p.placeId)) return false;
+        seenPlaceIds.add(p.placeId);
+        return true;
+      });
+
+      const usedFallback = dedupedResults.length === 0;
+      const finalResults = usedFallback ? ABUJA_FALLBACK_LABS : dedupedResults;
+      labCache = { data: finalResults, fetchedAt: Date.now(), usedFallback };
+      return { success: true, labs: finalResults, usedFallback, cached: false };
+    } catch (err) {
+      console.error('[Lab Directory Error]', err);
+      return { success: false, message: 'Failed to fetch lab directory' };
+    } finally {
+      labFetchInFlight = null;
+    }
+  })();
+
+  const result = await labFetchInFlight;
+  return res.json(result);
 });
 
 // 7. Create Share Grant & Audit Log (MongoDB)
