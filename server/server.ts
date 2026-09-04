@@ -36,8 +36,18 @@ const TERMII_API_KEY = process.env.TERMII_API_KEY || 'TL_TEST_KEY';
 app.use(cors());
 app.use(express.json());
 
+const SENSITIVE_PATHS = [
+  '/api/v1/auth',
+  '/api/v1/profile',
+  '/api/v1/family',
+  '/api/v1/records',
+  '/api/v1/prescriptions',
+  '/api/v1/pharmacy',
+];
+
 app.use((req, res, next) => {
-  console.log(`[REQUEST] ${req.method} ${req.path}`, JSON.stringify(req.body));
+  const isSensitive = SENSITIVE_PATHS.some((p) => req.path.startsWith(p));
+  console.log(`[REQUEST] ${req.method} ${req.path}`, isSensitive ? '[body redacted]' : JSON.stringify(req.body));
   next();
 });
 
@@ -63,16 +73,46 @@ app.get('/health', (_req: Request, res: Response) => {
   });
 });
 
-// In-Memory OTP Store with 5-minute TTL
-const otpCache = new Map<string, { code: string; expiresAt: number; mode: 'login' | 'signup' }>();
+// In-Memory OTP Store with 5-minute TTL and max 5 attempts to prevent brute force
+const MAX_OTP_ATTEMPTS = 5;
 
-function generateOtp(identifier: string, mode: 'login' | 'signup' = 'signup'): string {
+interface OtpEntry {
+  code: string;
+  expiresAt: number;
+  mode: 'login' | 'signup';
+  attempts: number;
+  aliases: string[];
+}
+
+const otpCache = new Map<string, OtpEntry>();
+
+function deleteOtpWithAliases(identifier: string, entry?: OtpEntry) {
+  const record = entry || otpCache.get(identifier);
+  if (record?.aliases && record.aliases.length > 0) {
+    for (const alias of record.aliases) {
+      otpCache.delete(alias);
+    }
+  }
+  otpCache.delete(identifier);
+}
+
+function generateOtp(identifier: string, mode: 'login' | 'signup' = 'signup', additionalAliases: string[] = []): string {
   const code = Math.floor(100000 + Math.random() * 900000).toString();
-  otpCache.set(identifier, { code, expiresAt: Date.now() + 5 * 60 * 1000, mode });
+  const allAliases = Array.from(new Set([identifier, ...additionalAliases].filter(Boolean)));
+  const entry: OtpEntry = {
+    code,
+    expiresAt: Date.now() + 5 * 60 * 1000,
+    mode,
+    attempts: 0,
+    aliases: allAliases,
+  };
+  for (const id of allAliases) {
+    otpCache.set(id, entry);
+  }
   return code;
 }
 
-function getOtpEntry(identifier: string) {
+function getOtpEntry(identifier: string): OtpEntry | undefined {
   return otpCache.get(identifier);
 }
 
@@ -80,12 +120,23 @@ function verifyStoredOtp(identifier: string, code: string): boolean {
   const entry = otpCache.get(identifier);
   if (!entry) return false; // No OTP was ever issued for this identifier — reject
   if (Date.now() > entry.expiresAt) {
-    otpCache.delete(identifier);
+    deleteOtpWithAliases(identifier, entry);
+    return false;
+  }
+  if (entry.attempts >= MAX_OTP_ATTEMPTS) {
+    deleteOtpWithAliases(identifier, entry);
     return false;
   }
   const isValid = entry.code === code;
-  if (isValid) otpCache.delete(identifier);
-  return isValid;
+  if (isValid) {
+    deleteOtpWithAliases(identifier, entry);
+    return true;
+  }
+  entry.attempts += 1;
+  if (entry.attempts >= MAX_OTP_ATTEMPTS) {
+    deleteOtpWithAliases(identifier, entry);
+  }
+  return false;
 }
 
 // WelliRecord ID Generator (Format: WR-XXXX-XXXX)
@@ -125,14 +176,17 @@ app.post('/api/v1/auth/otp/send', async (req: Request, res: Response) => {
   }
 
   const formattedPhone = targetPhone.replace(/[^0-9]/g, '');
-  const generatedCode = generateOtp(targetPhone, mode);
+  const normalizedE164 = normalizeNigerianPhone(targetPhone);
+  const localPhone = toLocalNigerianPhone(targetPhone);
+  const aliases = [formattedPhone, normalizedE164, localPhone].filter(Boolean);
+
+  const generatedCode = generateOtp(targetPhone, mode, aliases);
   const otpRec = otpCache.get(targetPhone);
   if (otpRec) {
-    if (formattedPhone) otpCache.set(formattedPhone, otpRec);
-    const normalizedE164 = normalizeNigerianPhone(targetPhone);
-    if (normalizedE164) otpCache.set(normalizedE164, otpRec);
-    const localPhone = toLocalNigerianPhone(targetPhone);
-    if (localPhone) otpCache.set(localPhone, otpRec);
+    for (const a of aliases) {
+      if (!otpRec.aliases.includes(a)) otpRec.aliases.push(a);
+      otpCache.set(a, otpRec);
+    }
   }
 
   try {
@@ -511,30 +565,26 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
   const normalizedE164 = phoneNumber ? normalizeNigerianPhone(phoneNumber) : '';
   const normalizedLocal = phoneNumber ? toLocalNigerianPhone(phoneNumber) : '';
 
-  const otpEntry =
-    getOtpEntry(targetIdentifier) ||
-    (cleanPhone ? getOtpEntry(cleanPhone) : undefined) ||
-    (normalizedE164 ? getOtpEntry(normalizedE164) : undefined) ||
-    (normalizedLocal ? getOtpEntry(normalizedLocal) : undefined) ||
-    (cleanEmail ? getOtpEntry(cleanEmail) : undefined);
+  const candidateKeys = [
+    targetIdentifier,
+    cleanPhone,
+    normalizedE164,
+    normalizedLocal,
+    cleanEmail,
+  ].filter((k): k is string => Boolean(k));
+
+  const matchedKey = candidateKeys.find((k) => otpCache.has(k));
+  const otpEntry = matchedKey ? getOtpEntry(matchedKey) : undefined;
   const requestedMode = otpEntry?.mode || (req.body.mode === 'login' ? 'login' : 'signup');
 
-  if (
-    !verifyStoredOtp(targetIdentifier, code) &&
-    !(cleanPhone && verifyStoredOtp(cleanPhone, code)) &&
-    !(normalizedE164 && verifyStoredOtp(normalizedE164, code)) &&
-    !(normalizedLocal && verifyStoredOtp(normalizedLocal, code)) &&
-    !(cleanEmail && verifyStoredOtp(cleanEmail, code))
-  ) {
+  if (!matchedKey || !verifyStoredOtp(matchedKey, code)) {
     return res.status(400).json({ success: false, message: 'Invalid or expired authorization code' });
   }
 
   // Clean up any remaining aliases for this verified OTP
-  otpCache.delete(targetIdentifier);
-  if (cleanPhone) otpCache.delete(cleanPhone);
-  if (normalizedE164) otpCache.delete(normalizedE164);
-  if (normalizedLocal) otpCache.delete(normalizedLocal);
-  if (cleanEmail) otpCache.delete(cleanEmail);
+  for (const k of candidateKeys) {
+    otpCache.delete(k);
+  }
 
   try {
     let account = null;
@@ -689,7 +739,6 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
           isEmailVerified: Boolean(cleanEmail || user.isEmailVerified),
         });
         await profile.save();
-        console.log('[USERPROFILE CREATED ON SIGNUP]', JSON.stringify(profile));
       } else {
         // If profile exists, ensure wrId and persist any missing profile fields from signup
         let updated = false;
@@ -761,7 +810,6 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
       },
     };
 
-    console.log('[VERIFY RESPONSE]', JSON.stringify(userSessionData));
     return res.json(userSessionData);
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Authentication error', error: err });
@@ -832,7 +880,6 @@ app.post('/api/v1/auth/social/verify', async (req: Request, res: Response) => {
         genotype: 'AA',
       });
       await profile.save();
-      console.log('[USERPROFILE CREATED VIA SOCIAL AUTH]', JSON.stringify(profile));
     } else if (!profile.wrId) {
       profile.wrId = generateWelliRecordId();
       await profile.save();
@@ -973,7 +1020,6 @@ app.all('/api/v1/profile/update', async (req: Request, res: Response) => {
       await profile.save();
     }
 
-    console.log('[USERPROFILE UPDATE RESPONSE]', JSON.stringify(profile));
     return res.json({ success: true, message: 'Profile updated successfully', profile });
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Failed to update profile', error: err });
@@ -1054,7 +1100,6 @@ app.get(['/api/v1/profile/me', '/api/v1/profile'], async (req: Request, res: Res
       }
     }
 
-    console.log('[GET USERPROFILE RESPONSE]', JSON.stringify(profile));
     return res.json({
       success: true,
       profile: profile || null,
@@ -1211,7 +1256,6 @@ app.post(['/api/v1/family/add', '/api/v1/family'], async (req: Request, res: Res
       };
     }
 
-    console.log('[FAMILY ADD]', JSON.stringify(savedMember));
     return res.status(201).json({
       success: true,
       message: 'Family member added successfully',
