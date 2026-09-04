@@ -36,6 +36,14 @@ const TERMII_API_KEY = process.env.TERMII_API_KEY || 'TL_TEST_KEY';
 app.use(cors());
 app.use(express.json());
 
+// Diagnostic logging — temporary, remove once the real cause is found.
+// Logs memory usage on every request and around each Places API batch,
+// so we can see exactly where allocation spikes instead of guessing.
+function logMemory(label: string) {
+  const mem = process.memoryUsage();
+  console.log(`[MEM] ${label} — heapUsed: ${Math.round(mem.heapUsed / 1024 / 1024)}MB, rss: ${Math.round(mem.rss / 1024 / 1024)}MB`);
+}
+
 const SENSITIVE_PATHS = [
   '/api/v1/auth',
   '/api/v1/profile',
@@ -46,6 +54,7 @@ const SENSITIVE_PATHS = [
 ];
 
 app.use((req, res, next) => {
+  logMemory(`${req.method} ${req.path}`);
   const isSensitive = SENSITIVE_PATHS.some((p) => req.path.startsWith(p));
   console.log(`[REQUEST] ${req.method} ${req.path}`, isSensitive ? '[body redacted]' : JSON.stringify(req.body));
   next();
@@ -2249,6 +2258,7 @@ app.get('/api/v1/care/pharmacies', async (req: Request, res: Response) => {
 
   pharmacyFetchInFlight = (async () => {
     try {
+      logMemory('before Places batch (pharmacies)');
       const allResults: any[] = [];
 
       for (const district of ABUJA_PHARMACY_DISTRICTS) {
@@ -2280,6 +2290,8 @@ app.get('/api/v1/care/pharmacies', async (req: Request, res: Response) => {
           // continue to next district rather than failing the whole batch
         }
       }
+
+      logMemory('after Places batch (pharmacies)');
 
       // Deduplicate — a pharmacy near a district border can appear in
       // multiple districts' search results. Keep the first occurrence.
@@ -2421,6 +2433,7 @@ app.get('/api/v1/care/labs', async (req: Request, res: Response) => {
 
   labFetchInFlight = (async () => {
     try {
+      logMemory('before Places batch (labs)');
       const allResults: any[] = [];
       for (const district of ABUJA_LAB_DISTRICTS) {
         const query = encodeURIComponent(`diagnostic laboratory in ${district}, Abuja, Nigeria`);
@@ -2450,6 +2463,8 @@ app.get('/api/v1/care/labs', async (req: Request, res: Response) => {
           // continue to next district rather than failing the whole batch
         }
       }
+
+      logMemory('after Places batch (labs)');
 
       const seenPlaceIds = new Set<string>();
       const dedupedResults = allResults.filter((p) => {
