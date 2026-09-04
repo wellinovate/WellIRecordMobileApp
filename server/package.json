@@ -2,9 +2,10 @@
   "name": "wellirecord-backend",
   "version": "1.0.0",
   "description": "WelliRecord Production MongoDB Backend API with Termii SMS Gateway",
-  "main": "server.ts",
+  "main": "dist/server.js",
   "scripts": {
-    "start": "ts-node server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
     "dev": "nodemon server.ts",
     "seed": "ts-node seed.ts"
   },
