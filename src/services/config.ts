@@ -29,5 +29,5 @@ export const CONFIG: AppConfig = {
 
   defaultHmoProvider: 'Hygeia HMO',
 
-  requestTimeoutMs: 5000,
+  requestTimeoutMs: 20000,
 };
