@@ -14,6 +14,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { FormSelect } from '../components/FormSelect';
+import { LogoMark } from '../components/Logo';
 import { SocialAuthButtons } from '../components/SocialAuthButtons';
 import { useUser, useSSO, useClerk } from '@clerk/expo';
 import { BLOOD_TYPES, GENOTYPES } from '../data/mockData';
@@ -366,11 +367,7 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
         {/* Top Header with Dark Ink Background */}
         <View style={styles.darkHeader}>
           <View style={styles.brandRow}>
-            <Svg width={26} height={26} viewBox="0 0 40 40" fill="none">
-              <Path d="M20 3L34 9V19C34 27.5 28.5 33.8 20 37C11.5 33.8 6 27.5 6 19V9L20 3Z" fill="#3E7CBF" />
-              <Path d="M20 3L34 9V19C34 27.5 28.5 33.8 20 37V3Z" fill="#173863" />
-              <Path d="M20 15L23.5 21.5H16.5L20 15Z" fill="#F5F2EA" />
-            </Svg>
+            <LogoMark size={28} shieldColor="#021F50" markColor="#ffffff" strokeColor="rgba(255,255,255,0.25)" />
             <Text style={styles.brandText}>
               Welli<Text style={styles.brandTextAccent}>Record</Text>
             </Text>
