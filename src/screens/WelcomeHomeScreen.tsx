@@ -13,10 +13,9 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path, Circle } from 'react-native-svg';
-import { Logo } from '../components/Logo';
 import { FormSelect } from '../components/FormSelect';
 import { SocialAuthButtons } from '../components/SocialAuthButtons';
-import { useUser } from '@clerk/expo';
+import { useUser, useSSO, useClerk } from '@clerk/expo';
 import { BLOOD_TYPES, GENOTYPES } from '../data/mockData';
 import { authenticateWithBiometrics } from '../utils/biometrics';
 import { hapticFeedback } from '../utils/haptics';
@@ -70,7 +69,54 @@ const FAQ_ITEMS: FAQItem[] = [
 export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
   const { state, actions } = app;
   const { user: clerkUser } = useUser();
+  const { startSSOFlow } = useSSO();
+  const clerk = useClerk();
+  const [socialLoading, setSocialLoading] = useState<'google' | 'apple' | null>(null);
   const activeTab: WelcomeTab = state.welcomeTab || 'about';
+
+  const handleSocialOAuth = async (strategy: 'oauth_google' | 'oauth_apple') => {
+    const provider = strategy === 'oauth_google' ? 'google' : 'apple';
+    hapticFeedback.selection();
+    setSocialLoading(provider);
+
+    try {
+      const { createdSessionId, setActive, signUp } = await startSSOFlow({
+        strategy,
+      });
+
+      if (createdSessionId && setActive) {
+        await setActive({ session: createdSessionId });
+        hapticFeedback.success();
+
+        const currentSession = clerk.client?.sessions?.find((s) => s.id === createdSessionId);
+        const user = currentSession?.user || clerk.user;
+        const email = user?.primaryEmailAddress?.emailAddress || signUp?.emailAddress;
+        const fullName = user?.fullName || (user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : undefined);
+        const avatar = user?.imageUrl;
+
+        actions.signInWithClerk({
+          provider,
+          fullName: fullName || undefined,
+          email: email || undefined,
+          avatar,
+        });
+      } else if (signUp?.status === 'missing_requirements') {
+        actions.signInWithClerk({
+          provider,
+          email: signUp?.emailAddress || undefined,
+          fullName: 'WelliRecord Patient',
+        });
+      }
+    } catch (err: any) {
+      const msg = err?.errors?.[0]?.message || err?.message || 'Authentication was interrupted';
+      if (!msg.toLowerCase().includes('cancel')) {
+        console.error(`[Clerk SSO Error (${provider})]`, err);
+        setSignInError(msg);
+      }
+    } finally {
+      setSocialLoading(null);
+    }
+  };
 
   // Authentication Flow Navigation & Mode State
   const [authStep, setAuthStep] = useState<'form' | 'otp_verify'>('form');
@@ -313,82 +359,75 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
   return (
     <View style={styles.rootWrapper}>
       <ScrollView
-        style={styles.container}
+        style={[styles.container, (activeTab === 'signin' || activeTab === 'signup') && { backgroundColor: '#F5F2EA' }]}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Top App Header with Safe-Area Clearance */}
-        <View style={styles.topHeader}>
-          <View style={styles.logoRow}>
-            <Logo height={28} color="#041E42" />
-            <View style={styles.countryBadge}>
-              <Text style={styles.countryBadgeText}>🇳🇬 Nigeria</Text>
+        {/* Top Header with Dark Ink Background */}
+        <View style={styles.darkHeader}>
+          <View style={styles.brandRow}>
+            <Svg width={26} height={26} viewBox="0 0 40 40" fill="none">
+              <Path d="M20 3L34 9V19C34 27.5 28.5 33.8 20 37C11.5 33.8 6 27.5 6 19V9L20 3Z" fill="#3E7CBF" />
+              <Path d="M20 3L34 9V19C34 27.5 28.5 33.8 20 37V3Z" fill="#173863" />
+              <Path d="M20 15L23.5 21.5H16.5L20 15Z" fill="#F5F2EA" />
+            </Svg>
+            <Text style={styles.brandText}>
+              Welli<Text style={styles.brandTextAccent}>Record</Text>
+            </Text>
+          </View>
+
+          <View style={styles.flagChip}>
+            <View style={styles.flagBars}>
+              <View style={[styles.flagBar, { backgroundColor: '#3CA26B' }]} />
+              <View style={[styles.flagBar, { backgroundColor: '#F2F0E8' }]} />
+              <View style={[styles.flagBar, { backgroundColor: '#3CA26B' }]} />
             </View>
+            <Text style={styles.flagText}>Nigeria</Text>
           </View>
         </View>
 
-        {/* Navigation Switcher Bar */}
-        <View style={styles.navBar}>
+        {/* Flat Navigation Tabs Bar */}
+        <View style={styles.flatTabsBar}>
           <TouchableOpacity
             activeOpacity={0.7}
             onPress={() => handleTabChange('about')}
-            style={[styles.navTab, activeTab === 'about' && styles.navTabActive]}
+            style={[styles.flatTab, activeTab === 'about' && styles.flatTabActive]}
           >
-            <Text
-              style={[
-                styles.navTabText,
-              activeTab === 'about' && styles.navTabTextActive,
-            ]}
-          >
-            About
-          </Text>
-        </TouchableOpacity>
+            <Text style={[styles.flatTabText, activeTab === 'about' && styles.flatTabTextActive]}>
+              About
+            </Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          activeOpacity={0.7}
-          onPress={() => handleTabChange('signin')}
-          style={[styles.navTab, activeTab === 'signin' && styles.navTabActive]}
-        >
-          <Text
-            style={[
-              styles.navTabText,
-              activeTab === 'signin' && styles.navTabTextActive,
-            ]}
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => handleTabChange('signin')}
+            style={[styles.flatTab, activeTab === 'signin' && styles.flatTabActive]}
           >
-            Sign In
-          </Text>
-        </TouchableOpacity>
+            <Text style={[styles.flatTabText, activeTab === 'signin' && styles.flatTabTextActive]}>
+              Sign in
+            </Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          activeOpacity={0.7}
-          onPress={() => handleTabChange('signup')}
-          style={[styles.navTab, activeTab === 'signup' && styles.navTabActive]}
-        >
-          <Text
-            style={[
-              styles.navTabText,
-              activeTab === 'signup' && styles.navTabTextActive,
-            ]}
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => handleTabChange('signup')}
+            style={[styles.flatTab, activeTab === 'signup' && styles.flatTabActive]}
           >
-            Create Vault
-          </Text>
-        </TouchableOpacity>
+            <Text style={[styles.flatTabText, activeTab === 'signup' && styles.flatTabTextActive]}>
+              Create vault
+            </Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          activeOpacity={0.7}
-          onPress={() => handleTabChange('faq')}
-          style={[styles.navTab, activeTab === 'faq' && styles.navTabActive]}
-        >
-          <Text
-            style={[
-              styles.navTabText,
-              activeTab === 'faq' && styles.navTabTextActive,
-            ]}
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => handleTabChange('faq')}
+            style={[styles.flatTab, activeTab === 'faq' && styles.flatTabActive]}
           >
-            FAQ
-          </Text>
-        </TouchableOpacity>
-      </View>
+            <Text style={[styles.flatTabText, activeTab === 'faq' && styles.flatTabTextActive]}>
+              FAQ
+            </Text>
+          </TouchableOpacity>
+        </View>
 
       {/* ========================================================================= */}
       {/* 1. ABOUT & HOW IT WORKS TAB */}
@@ -593,284 +632,323 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
       
       {/* A) DEDICATED 6-DIGIT OTP VERIFICATION CARD */}
       {authStep === 'otp_verify' && pendingAuth && (
-        <View style={styles.tabContent}>
-          <View style={styles.formCard}>
-            <View style={styles.otpHeaderBadge}>
-              <Text style={styles.otpHeaderBadgeText}>
-                {pendingAuth.channel === 'phone' ? '📱 SMS AUTHORIZATION' : '✉️ EMAIL AUTHORIZATION'}
-              </Text>
-            </View>
-            <Text style={styles.formTitle}>Enter 6-Digit Code</Text>
-            <Text style={styles.formSubtitle}>
-              We dispatched a secure authorization code to{' '}
-              <Text style={{ fontWeight: '800', color: '#0f172a' }}>{pendingAuth.identifier}</Text>.
+        <View style={styles.redesignBody}>
+          <View style={styles.otpHeaderBadge}>
+            <Text style={styles.otpHeaderBadgeText}>
+              {pendingAuth.channel === 'phone' ? '📱 SMS AUTHORIZATION' : '✉️ EMAIL AUTHORIZATION'}
             </Text>
+          </View>
+          <Text style={styles.welcomeTitle}>Enter 6-Digit Code</Text>
+          <Text style={styles.welcomeSub}>
+            We dispatched a secure authorization code to{' '}
+            <Text style={{ fontWeight: '800', color: '#0B2545' }}>{pendingAuth.identifier}</Text>.
+          </Text>
 
-            {(signInError || signUpError) && (
-              <View style={styles.errorAlert}>
-                <Text style={styles.errorAlertText}>⚠️ {signInError || signUpError}</Text>
-              </View>
+          <View style={[styles.dividerLine, { marginVertical: 18 }]} />
+
+          {(signInError || signUpError) && (
+            <View style={styles.errorAlert}>
+              <Text style={styles.errorAlertText}>⚠️ {signInError || signUpError}</Text>
+            </View>
+          )}
+
+          {/* 6 Box Inputs */}
+          <View style={styles.otpBoxesRow}>
+            {otpDigits.map((digit, idx) => (
+              <TextInput
+                key={idx}
+                ref={(el) => {
+                  otpInputsRef.current[idx] = el;
+                }}
+                value={digit}
+                onChangeText={(v) => handleOtpBoxChange(v, idx)}
+                onKeyPress={(e) => handleOtpKeyPress(e, idx)}
+                keyboardType="number-pad"
+                maxLength={1}
+                selectTextOnFocus
+                style={[
+                  styles.otpBox,
+                  digit ? styles.otpBoxFilled : null,
+                ]}
+              />
+            ))}
+          </View>
+
+          {/* Main Verify Submit Button */}
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => triggerVerifyOtp()}
+            disabled={isSubmitting}
+            style={[styles.btnPrimary, isSubmitting && { opacity: 0.8 }]}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <Text style={styles.btnPrimaryText}>Verify & Unlock Health Vault</Text>
             )}
+          </TouchableOpacity>
 
-            {/* 6 Box Inputs */}
-            <View style={styles.otpBoxesRow}>
-              {otpDigits.map((digit, idx) => (
-                <TextInput
-                  key={idx}
-                  ref={(el) => {
-                    otpInputsRef.current[idx] = el;
-                  }}
-                  value={digit}
-                  onChangeText={(v) => handleOtpBoxChange(v, idx)}
-                  onKeyPress={(e) => handleOtpKeyPress(e, idx)}
-                  keyboardType="number-pad"
-                  maxLength={1}
-                  selectTextOnFocus
-                  style={[
-                    styles.otpBox,
-                    digit ? styles.otpBoxFilled : null,
-                  ]}
-                />
-              ))}
-            </View>
+          {/* Resend Code Section */}
+          <View style={styles.resendRow}>
+            <Text style={styles.resendText}>Didn't receive the SMS/Email code?</Text>
+            {resendCooldown > 0 ? (
+              <Text style={styles.resendTimerText}>Resend in {resendCooldown}s</Text>
+            ) : (
+              <TouchableOpacity activeOpacity={0.7} onPress={handleResendOtp}>
+                <Text style={styles.resendActionText}>🔄 Resend Code Now</Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
-            {/* Main Verify Submit Button */}
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => triggerVerifyOtp()}
-              disabled={isSubmitting}
-              style={[styles.submitBtn, isSubmitting && { opacity: 0.8 }]}
-            >
-              {isSubmitting ? (
-                <ActivityIndicator color="#ffffff" size="small" />
-              ) : (
-                <Text style={styles.submitBtnText}>Verify & Unlock Health Vault</Text>
-              )}
-            </TouchableOpacity>
+          {/* Back to Form link */}
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => {
+              hapticFeedback.light();
+              setAuthStep('form');
+              setSignInError(null);
+              setSignUpError(null);
+            }}
+            style={styles.backLinkBtn}
+          >
+            <Text style={styles.backLinkText}>
+              ← Change {pendingAuth.channel === 'phone' ? 'Phone Number' : 'Email Address'}
+            </Text>
+          </TouchableOpacity>
 
-            {/* Resend Code Section */}
-            <View style={styles.resendRow}>
-              <Text style={styles.resendText}>Didn't receive the SMS/Email code?</Text>
-              {resendCooldown > 0 ? (
-                <Text style={styles.resendTimerText}>Resend in {resendCooldown}s</Text>
-              ) : (
-                <TouchableOpacity activeOpacity={0.7} onPress={handleResendOtp}>
-                  <Text style={styles.resendActionText}>🔄 Resend Code Now</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* Back to Form link */}
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => {
-                hapticFeedback.light();
-                setAuthStep('form');
-                setSignInError(null);
-                setSignUpError(null);
-              }}
-              style={styles.backLinkBtn}
-            >
-              <Text style={styles.backLinkText}>
-                ← Change {pendingAuth.channel === 'phone' ? 'Phone Number' : 'Email Address'}
+          {/* Footer */}
+          <View style={styles.footerWrap}>
+            <View style={styles.footerRow}>
+              <View style={styles.statusDot} />
+              <Text style={styles.footerText}>
+                All systems running · records encrypted end-to-end
               </Text>
-            </TouchableOpacity>
+            </View>
+            <Text style={styles.footerCopyright}>
+              © 2026 WelliRecord Technologies Nigeria Ltd.
+            </Text>
           </View>
         </View>
       )}
 
-      {/* B) SIGN IN FORM (WHEN NOT IN OTP VERIFICATION) */}
+      {/* B) SIGN IN FORM (REDESIGNED) */}
       {activeTab === 'signin' && authStep === 'form' && (
-        <View style={styles.tabContent}>
-          <View style={styles.formCard}>
-            <Text style={styles.formTitle}>Welcome Back</Text>
-            <Text style={styles.formSubtitle}>
-              Sign in to manage your health records, shares, and family vault.
-            </Text>
+        <View style={styles.redesignBody}>
+          {/* Welcome Row with Seal */}
+          <View style={styles.welcomeRow}>
+            <View style={styles.welcomeTextWrap}>
+              <Text style={styles.welcomeTitle}>Welcome back</Text>
+              <Text style={styles.welcomeSub}>
+                Sign in to reach your records, shares, and family vault.
+              </Text>
+            </View>
+            <View style={styles.sealWrap}>
+              <Svg width={64} height={64} viewBox="0 0 64 64" fill="none">
+                <Circle cx={32} cy={32} r={31} fill="#E7F0EA" stroke="#2F6D4F" strokeWidth={1.5} />
+                <Circle cx={32} cy={32} r={24} fill="none" stroke="#2F6D4F" strokeWidth={1} strokeDasharray="2 3" />
+                <Path d="M23 32.5L28.5 38L41 24" stroke="#2F6D4F" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
+              </Svg>
+            </View>
+          </View>
 
-            {/* Method Toggle: OTP Code vs Password */}
-            <View style={styles.authModeSelector}>
+          <View style={styles.dividerLine} />
+
+          {signInError && (
+            <View style={styles.errorAlert}>
+              <Text style={styles.errorAlertText}>⚠️ {signInError}</Text>
+            </View>
+          )}
+
+          {/* Identifier Input */}
+          <View style={styles.inputWrap}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <Text style={styles.fieldLabel}>Phone number or email</Text>
               <TouchableOpacity
-                activeOpacity={0.8}
+                activeOpacity={0.7}
                 onPress={() => {
                   hapticFeedback.selection();
-                  setSignInMethod('otp');
+                  setSignInMethod(signInMethod === 'password' ? 'otp' : 'password');
                   setSignInError(null);
                 }}
-                style={[styles.authModeBtn, signInMethod === 'otp' && styles.authModeBtnActive]}
               >
-                <Text style={[styles.authModeBtnText, signInMethod === 'otp' && styles.authModeBtnTextActive]}>
-                  📱 SMS / Email Code
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => {
-                  hapticFeedback.selection();
-                  setSignInMethod('password');
-                  setSignInError(null);
-                }}
-                style={[styles.authModeBtn, signInMethod === 'password' && styles.authModeBtnActive]}
-              >
-                <Text style={[styles.authModeBtnText, signInMethod === 'password' && styles.authModeBtnTextActive]}>
-                  🔒 Password
+                <Text style={styles.methodToggleText}>
+                  {signInMethod === 'password' ? 'Use code instead' : 'Use password instead'}
                 </Text>
               </TouchableOpacity>
             </View>
-
-            {signInError && (
-              <View style={styles.errorAlert}>
-                <Text style={styles.errorAlertText}>⚠️ {signInError}</Text>
-              </View>
-            )}
-
-            {/* Email / Phone Input */}
-            <Text style={styles.inputLabel}>
-              {signInMethod === 'otp' ? 'Phone Number (+234) or Email' : 'Email or Phone Number'}
-            </Text>
             <TextInput
               value={loginIdentifier}
               onChangeText={setLoginIdentifier}
-              placeholder={signInMethod === 'otp' ? 'e.g. +234 805 335 5504 or email' : 'e.g. yourname@domain.com or +234...'}
-              placeholderTextColor="#94a3b8"
+              placeholder="+234 805 335 5504 or name@email.com"
+              placeholderTextColor="#A5AAB3"
               autoCapitalize="none"
-              keyboardType={signInMethod === 'otp' ? 'default' : 'email-address'}
-              style={styles.textInput}
+              keyboardType="email-address"
+              style={styles.textInputRedesign}
             />
+          </View>
 
-            {signInMethod === 'password' ? (
-              <>
-                {/* Password Input */}
-                <Text style={styles.inputLabel}>Password</Text>
-                <View style={styles.passwordWrapper}>
-                  <TextInput
-                    value={loginPassword}
-                    onChangeText={setLoginPassword}
-                    placeholder="Enter your vault password"
-                    placeholderTextColor="#94a3b8"
-                    secureTextEntry={!showPassword}
-                    style={styles.passwordInput}
-                  />
-                  <TouchableOpacity
-                    activeOpacity={0.7}
-                    onPress={() => setShowPassword(!showPassword)}
-                    style={styles.eyeBtn}
-                  >
-                    <Text style={{ fontSize: 13, color: '#0EA5E9', fontWeight: '600' }}>
-                      {showPassword ? 'Hide' : 'Show'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Remember Me & Forgot Password */}
-                <View style={styles.authMetaRow}>
-                  <TouchableOpacity
-                    activeOpacity={0.7}
-                    onPress={() => setRememberMe(!rememberMe)}
-                    style={styles.rememberMeGroup}
-                  >
-                    <View style={[styles.customCheck, rememberMe && styles.customCheckActive]}>
-                      {rememberMe && <Text style={styles.checkMark}>✓</Text>}
-                    </View>
-                    <Text style={styles.rememberMeText}>Remember me</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    activeOpacity={0.7}
-                    onPress={() => {
-                      hapticFeedback.selection();
-                      actions.showToast('Password reset link sent to your registered email');
-                    }}
-                  >
-                    <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Main Sign In Button */}
+          {signInMethod === 'password' && (
+            <View style={styles.inputWrap}>
+              <Text style={styles.fieldLabel}>Password</Text>
+              <View style={styles.passwordWrapperRedesign}>
+                <TextInput
+                  value={loginPassword}
+                  onChangeText={setLoginPassword}
+                  placeholder="Enter your vault password"
+                  placeholderTextColor="#A5AAB3"
+                  secureTextEntry={!showPassword}
+                  style={styles.passwordInputRedesign}
+                />
                 <TouchableOpacity
-                  activeOpacity={0.85}
-                  onPress={handlePasswordSignIn}
-                  disabled={isSubmitting}
-                  style={[styles.submitBtn, isSubmitting && { opacity: 0.8 }]}
+                  activeOpacity={0.7}
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.eyeBtn}
                 >
-                  {isSubmitting ? (
-                    <ActivityIndicator color="#ffffff" size="small" />
-                  ) : (
-                    <Text style={styles.submitBtnText}>Sign In to Vault</Text>
-                  )}
+                  <Text style={{ fontSize: 13, color: '#3E7CBF', fontWeight: '600' }}>
+                    {showPassword ? 'Hide' : 'Show'}
+                  </Text>
                 </TouchableOpacity>
-              </>
+              </View>
+
+              <View style={styles.authMetaRow}>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => setRememberMe(!rememberMe)}
+                  style={styles.rememberMeGroup}
+                >
+                  <View style={[styles.customCheck, rememberMe && styles.customCheckActive]}>
+                    {rememberMe && <Text style={styles.checkMark}>✓</Text>}
+                  </View>
+                  <Text style={styles.rememberMeText}>Remember me</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    hapticFeedback.selection();
+                    actions.showToast('Password reset link sent to your registered email');
+                  }}
+                >
+                  <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {/* Primary CTA: Send sign-in code or Sign in with Password */}
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={signInMethod === 'password' ? handlePasswordSignIn : handleSendOtpSignIn}
+            disabled={isSubmitting}
+            style={[styles.btnPrimary, isSubmitting && { opacity: 0.8 }]}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
             ) : (
               <>
-                {/* Send OTP Button */}
-                <TouchableOpacity
-                  activeOpacity={0.85}
-                  onPress={handleSendOtpSignIn}
-                  disabled={isSubmitting}
-                  style={[styles.submitBtn, isSubmitting && { opacity: 0.8 }]}
-                >
-                  {isSubmitting ? (
-                    <ActivityIndicator color="#ffffff" size="small" />
-                  ) : (
-                    <Text style={styles.submitBtnText}>Send 6-Digit Authorization Code ›</Text>
-                  )}
-                </TouchableOpacity>
+                <Text style={styles.btnPrimaryText}>
+                  {signInMethod === 'password' ? 'Sign In to Vault' : 'Send sign-in code'}
+                </Text>
+                <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+                  <Path d="M5 12H19M19 12L13 6M19 12L13 18" stroke="#FFFFFF" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+                </Svg>
               </>
             )}
+          </TouchableOpacity>
 
-            {/* Biometric Sign In Button */}
+          {/* Ghost Secondary Button: Use Face ID instead */}
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={handleBiometricSignIn}
+            disabled={authenticatingBio}
+            style={styles.btnGhost}
+          >
+            {authenticatingBio ? (
+              <ActivityIndicator color="#173863" size="small" />
+            ) : (
+              <>
+                <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+                  <Path d="M7 3H17C18.1046 3 19 3.89543 19 5V19C19 20.1046 18.1046 21 17 21H7C5.89543 21 5 20.1046 5 19V5C5 3.89543 5.89543 3 7 3Z" stroke="#173863" strokeWidth={1.6} />
+                  <Circle cx={12} cy={17.5} r={0.9} fill="#173863" />
+                </Svg>
+                <Text style={styles.btnGhostText}>Use Face ID instead</Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          {/* Or continue with divider */}
+          <View style={styles.orRow}>
+            <View style={styles.orLine} />
+            <Text style={styles.orText}>Or continue with</Text>
+            <View style={styles.orLine} />
+          </View>
+
+          {/* Social Row (Google & Apple) */}
+          <View style={styles.socialRow}>
             <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={handleBiometricSignIn}
-              style={styles.biometricBtn}
+              activeOpacity={0.85}
+              onPress={() => handleSocialOAuth('oauth_google')}
+              disabled={socialLoading !== null}
+              style={styles.btnSocial}
             >
-              {authenticatingBio ? (
-                <ActivityIndicator color="#0EA5E9" size="small" />
+              {socialLoading === 'google' ? (
+                <ActivityIndicator size="small" color="#0B2545" />
               ) : (
                 <>
-                  <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-                    <Path
-                      d="M6 4.5H5a1.5 1.5 0 00-1.5 1.5v1M18 4.5h1A1.5 1.5 0 0120.5 6v1M6 19.5H5A1.5 1.5 0 013.5 18v-1M18 19.5h1a1.5 1.5 0 001.5-1.5v-1"
-                      stroke="#0EA5E9"
-                      strokeWidth={2}
-                      strokeLinecap="round"
-                    />
-                    <Circle cx="9" cy="10.5" r="1" fill="#0EA5E9" />
-                    <Circle cx="15" cy="10.5" r="1" fill="#0EA5E9" />
-                    <Path d="M9 15c1 1 5 1 6 0" stroke="#0EA5E9" strokeWidth={2} strokeLinecap="round" />
+                  <Svg width={16} height={16} viewBox="0 0 24 24">
+                    <Path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
+                    <Path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.99.66-2.25 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/>
+                    <Path fill="#FBBC05" d="M5.84 14.09A6.6 6.6 0 0 1 5.5 12c0-.73.13-1.43.34-2.09V7.07H2.18A11 11 0 0 0 1 12c0 1.77.42 3.45 1.18 4.93l3.66-2.84z"/>
+                    <Path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15A11 11 0 0 0 2.18 7.07l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z"/>
                   </Svg>
-                  <Text style={styles.biometricBtnText}>Sign In with Face ID / Biometrics</Text>
+                  <Text style={styles.btnSocialText}>Google</Text>
                 </>
               )}
             </TouchableOpacity>
 
-            {/* Clerk Google & Apple Social Authentication */}
-            <SocialAuthButtons
-              labelPrefix="Sign in with"
-              showDivider={true}
-              dividerText="or sign in with"
-              onSuccess={(details) => {
-                actions.signInWithClerk({
-                  provider: details.provider,
-                  fullName: details.fullName || clerkUser?.fullName || undefined,
-                  email: details.email || clerkUser?.primaryEmailAddress?.emailAddress || undefined,
-                  avatar: details.avatar || clerkUser?.imageUrl || undefined,
-                });
-              }}
-              onError={(err) => setSignInError(err)}
-            />
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => handleSocialOAuth('oauth_apple')}
+              disabled={socialLoading !== null}
+              style={styles.btnSocial}
+            >
+              {socialLoading === 'apple' ? (
+                <ActivityIndicator size="small" color="#0B2545" />
+              ) : (
+                <>
+                  <Svg width={16} height={16} viewBox="0 0 24 24" fill="#1B1F27">
+                    <Path d="M16.36 1.7c.1 1.07-.32 2.1-.99 2.87-.7.8-1.85 1.42-2.94 1.34-.13-1.03.36-2.1 1.02-2.83.72-.8 1.94-1.4 2.91-1.38zM20.4 17.1c-.34.8-.75 1.55-1.24 2.24-.68.95-1.24 1.6-1.67 1.96-.66.6-1.37.9-2.12.92-.55.01-1.21-.15-1.98-.48-.77-.33-1.48-.49-2.13-.49-.68 0-1.4.16-2.17.49-.77.33-1.4.5-1.88.52-.72.03-1.44-.28-2.16-.94-.46-.4-1.05-1.08-1.77-2.04-.77-1.04-1.4-2.24-1.9-3.62-.53-1.5-.8-2.94-.8-4.34 0-1.6.35-2.98 1.04-4.13a6.1 6.1 0 0 1 2.19-2.23 5.9 5.9 0 0 1 2.96-.84c.6 0 1.38.19 2.36.55.97.36 1.6.55 1.86.55.2 0 .89-.21 2.06-.63 1.11-.39 2.05-.55 2.82-.49 2.08.17 3.65 1 4.68 2.47-1.86 1.13-2.78 2.71-2.76 4.75.02 1.59.6 2.92 1.72 3.97.51.49 1.08.86 1.71 1.13-.14.4-.28.78-.44 1.15z"/>
+                  </Svg>
+                  <Text style={styles.btnSocialText}>Apple</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
 
-            {/* Switch to Sign Up */}
-            <View style={styles.switchAuthRow}>
-              <Text style={styles.switchAuthPrompt}>Don't have an account yet?</Text>
-              <TouchableOpacity
-                activeOpacity={0.7}
+          {/* Create Account Link */}
+          <View style={styles.createRow}>
+            <Text style={styles.createText}>
+              Don't have an account yet?{' '}
+              <Text
+                style={styles.createLink}
                 onPress={() => handleTabChange('signup')}
               >
-                <Text style={styles.switchAuthLink}> Create an account</Text>
-              </TouchableOpacity>
+                Create one
+              </Text>
+            </Text>
+          </View>
+
+          {/* Redesigned Footer */}
+          <View style={styles.footerWrap}>
+            <View style={styles.footerRow}>
+              <View style={styles.statusDot} />
+              <Text style={styles.footerText}>
+                All systems running · records encrypted end-to-end
+              </Text>
             </View>
+            <Text style={styles.footerCopyright}>
+              © 2026 WelliRecord Technologies Nigeria Ltd.
+            </Text>
           </View>
         </View>
       )}
@@ -1121,72 +1199,279 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 40,
   },
-  topHeader: {
+  darkHeader: {
+    backgroundColor: '#0B2545',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 18,
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 6 : 10,
-    paddingBottom: 12,
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
+    paddingHorizontal: 24,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 6 : 14,
+    paddingBottom: 16,
   },
-  logoRow: {
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  brandText: {
+    fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
+    fontSize: 19,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    letterSpacing: 0.2,
+  },
+  brandTextAccent: {
+    color: '#8FB8E0',
+  },
+  flagChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 20,
+  },
+  flagBars: {
+    flexDirection: 'row',
+    gap: 2,
+    alignItems: 'center',
+  },
+  flagBar: {
+    width: 4,
+    height: 11,
+    borderRadius: 1,
+  },
+  flagText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#CBD9E8',
+  },
+  flatTabsBar: {
+    backgroundColor: '#0B2545',
+    flexDirection: 'row',
+    paddingHorizontal: 24,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.08)',
+  },
+  flatTab: {
+    paddingVertical: 14,
+    marginRight: 24,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  flatTabActive: {
+    borderBottomColor: '#3E7CBF',
+  },
+  flatTabText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#8598B3',
+  },
+  flatTabTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+
+  /* Redesigned Sign In Body */
+  redesignBody: {
+    flex: 1,
+    backgroundColor: '#F5F2EA',
+    paddingHorizontal: 24,
+    paddingTop: 28,
+    paddingBottom: 24,
+  },
+  welcomeRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 16,
+    marginBottom: 20,
+  },
+  welcomeTextWrap: {
+    flex: 1,
+    maxWidth: 240,
+  },
+  welcomeTitle: {
+    fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
+    fontWeight: '600',
+    fontSize: 26,
+    lineHeight: 32,
+    color: '#0B2545',
+    marginBottom: 6,
+  },
+  welcomeSub: {
+    fontSize: 13.5,
+    color: '#6B7280',
+    lineHeight: 20,
+  },
+  sealWrap: {
+    width: 64,
+    height: 64,
+    flexShrink: 0,
+  },
+  dividerLine: {
+    height: 1,
+    backgroundColor: '#E4DFD1',
+    marginBottom: 22,
+  },
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0B2545',
+    marginBottom: 8,
+  },
+  methodToggleText: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: '#3E7CBF',
+  },
+  inputWrap: {
+    marginBottom: 16,
+  },
+  textInputRedesign: {
+    width: '100%',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1.5,
+    borderColor: '#E4DFD1',
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    fontSize: 14.5,
+    color: '#1B1F27',
+  },
+  passwordWrapperRedesign: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#E4DFD1',
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+  },
+  passwordInputRedesign: {
+    flex: 1,
+    paddingVertical: 14,
+    fontSize: 14.5,
+    color: '#1B1F27',
+  },
+  btnPrimary: {
+    width: '100%',
+    paddingVertical: 15,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+    backgroundColor: '#0B2545',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  btnPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 14.5,
+    fontWeight: '600',
+  },
+  btnGhost: {
+    width: '100%',
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: '#E4DFD1',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 24,
+  },
+  btnGhostText: {
+    color: '#173863',
+    fontSize: 14.5,
+    fontWeight: '600',
+  },
+  orRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 18,
+  },
+  orLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E4DFD1',
+  },
+  orText: {
+    fontSize: 12.5,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  socialRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 22,
+  },
+  btnSocial: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#E4DFD1',
+    borderRadius: 10,
+    paddingVertical: 13,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  btnSocialText: {
+    color: '#1B1F27',
+    fontSize: 13.5,
+    fontWeight: '600',
+  },
+  createRow: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 6,
+    marginBottom: 18,
+  },
+  createText: {
+    fontSize: 13.5,
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  createLink: {
+    color: '#3E7CBF',
+    fontWeight: '600',
+  },
+  footerWrap: {
+    paddingTop: 18,
+    borderTopWidth: 1,
+    borderTopColor: '#E4DFD1',
+    marginTop: 12,
+  },
+  footerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    marginBottom: 4,
   },
-  countryBadge: {
-    backgroundColor: '#f1f5f9',
-    borderRadius: 999,
-    paddingVertical: 2,
-    paddingHorizontal: 8,
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#2F6D4F',
   },
-  countryBadgeText: {
+  footerText: {
+    fontSize: 11.5,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  footerCopyright: {
     fontSize: 11,
-    fontWeight: '600',
-    color: '#334155',
-  },
-  quickDemoBtn: {
-    backgroundColor: '#e0f2fe',
-    borderRadius: 999,
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderWidth: 1,
-    borderColor: '#bae6fd',
-  },
-  quickDemoText: {
-    color: '#0284c7',
-    fontSize: 12.5,
-    fontWeight: '800',
-  },
-  navBar: {
-    flexDirection: 'row',
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-    gap: 6,
-  },
-  navTab: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  navTabActive: {
-    backgroundColor: '#041E42',
-  },
-  navTabText: {
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: '#64748b',
-  },
-  navTabTextActive: {
-    color: '#ffffff',
+    color: '#9AA0A8',
+    marginTop: 2,
   },
   tabContent: {
     paddingHorizontal: 20,
@@ -1606,22 +1891,7 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     fontWeight: '700',
   },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 18,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#e2e8f0',
-  },
-  dividerText: {
-    fontSize: 11.5,
-    color: '#94a3b8',
-    fontWeight: '600',
-  },
+
   inputLabel: {
     fontSize: 12.5,
     fontWeight: '700',

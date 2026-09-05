@@ -222,7 +222,7 @@ function MainWelliApp() {
     return (
       <ThemeContext.Provider value={theme}>
         <PhoneShell>
-          <SafeAreaView style={[styles.safeArea, { backgroundColor: '#ffffff' }]}>
+          <SafeAreaView style={[styles.safeArea, { backgroundColor: '#0B2545' }]}>
             <WelcomeHomeScreen app={app} />
             {Boolean(state.showOnboarding) && <OnboardingModal app={app} />}
             <Toast message={state.toast} />
