@@ -187,34 +187,60 @@ export function formatEmergencyContact(profile: any): string {
 
 const DEFAULT_PRIMARY_USER: FamilyMember = {
   id: 'me',
-  name: 'You',
-  initials: 'U',
+  name: 'Chibuike Joshua Nwogha',
+  initials: 'CJ',
   role: 'owner',
-  dob: '',
-  gender: '',
-  bloodType: '',
-  genotype: '',
-  height: '',
-  weight: '',
-  allergies: '',
-  conditions: '',
-  contact: '',
+  dob: 'March 14, 1991',
+  gender: 'Male',
+  bloodType: 'O+',
+  genotype: 'AA',
+  height: '182 cm',
+  weight: '78 kg',
+  allergies: 'Penicillin, Shellfish',
+  conditions: 'None',
+  contact: 'Dr. Amina Bello (+234 803 123 4567)',
+  emergencyContacts: [
+    { name: 'Nneoma Nwogha', relationship: 'Spouse', phone: '+234 803 555 0192' }
+  ],
+  email: 'c.nwogha@wellirecord.com',
+  phone: '+234 802 345 6789',
+  address: 'Maitama, Abuja, Nigeria',
+  insuranceProvider: 'Hygeia HMO',
+  insuranceId: 'HYG-90218-A',
+  wrId: 'WR-ABJ-88204',
+  memberId: 'WR-ABJ-88204',
+};
+
+const DEFAULT_DEPENDENT_USER: FamilyMember = {
+  id: 'fam-nneoma',
+  name: 'Nneoma Nwogha',
+  initials: 'NN',
+  role: 'dependent',
+  dob: 'August 22, 1994',
+  gender: 'Female',
+  bloodType: 'A+',
+  genotype: 'AA',
+  height: '168 cm',
+  weight: '62 kg',
+  allergies: 'Sulfa Drugs',
+  conditions: 'None',
+  contact: 'Chibuike Joshua Nwogha (Spouse)',
   emergencyContacts: [],
-  email: '',
-  phone: '',
-  address: '',
-  insuranceProvider: '',
-  insuranceId: '',
-  wrId: '',
-  memberId: '',
+  email: 'nneoma@wellirecord.com',
+  phone: '+234 803 555 0192',
+  address: 'Maitama, Abuja, Nigeria',
+  insuranceProvider: 'Hygeia HMO',
+  insuranceId: 'HYG-90218-B',
+  wrId: 'WR-ABJ-88205',
+  memberId: 'WR-ABJ-88205',
 };
 
 const initialState: AppState = {
   tab: 'home',
   tabHistory: [],
   activeFamilyId: 'me',
-  familyMembers: [DEFAULT_PRIMARY_USER],
-  isAuthenticated: false,
+  familyMembers: [DEFAULT_PRIMARY_USER, DEFAULT_DEPENDENT_USER],
+  isAuthenticated: true,
   user: null,
   loggedOut: false,
   showWelcomeHome: false,
@@ -484,16 +510,23 @@ export function useWelliApp() {
             // Keep local primary user
           }
         } else {
-          // No valid session: ensure logged out state and show sign-in screen
+          // Default prototype session active
           patch({
-            isAuthenticated: false,
-            user: null,
+            isAuthenticated: true,
+            user: {
+              id: 'usr-chibuike',
+              fullName: 'Chibuike Joshua Nwogha',
+              email: 'c.nwogha@wellirecord.com',
+              phoneNumber: '+234 802 345 6789',
+              bloodType: 'O+',
+              genotype: 'AA',
+              hmoProvider: 'Hygeia HMO',
+              hmoPolicyNumber: 'HYG-90218-A',
+              wrId: 'WR-ABJ-88204',
+            } as any,
             loggedOut: false,
-            showWelcomeHome: true,
-            welcomeTab: 'signin',
-            familyMembers: [DEFAULT_PRIMARY_USER],
-            recordsList: [],
-            vitalsLogs: [],
+            showWelcomeHome: false,
+            familyMembers: [DEFAULT_PRIMARY_USER, DEFAULT_DEPENDENT_USER],
           });
         }
 

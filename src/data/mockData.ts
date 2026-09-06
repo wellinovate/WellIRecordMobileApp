@@ -687,7 +687,15 @@ export const ACTIVITY_LOG: LogEntry[] = [
 
 export const LANGUAGES = ['English', 'Hausa', 'Igbo', 'Yorùbá', 'Nigerian Pidgin'];
 
-export const LIGHT_THEME: Theme = { bg: '#f8fafc', surface: '#ffffff', surface2: '#f1f5f9', border: '#e2e8f0', text: '#0f172a', muted: '#64748b', mutedLight: '#94a3b8' };
+export const LIGHT_THEME: Theme = {
+  bg: '#F5F2EA',
+  surface: '#FFFFFF',
+  surface2: '#EAF1F9',
+  border: '#E4DFD1',
+  text: '#1B1F27',
+  muted: '#6B7280',
+  mutedLight: '#9AA3AF',
+};
 export const DARK_THEME: Theme = { bg: '#0b1220', surface: '#141d2e', surface2: '#1b2740', border: 'rgba(255,255,255,.08)', text: '#e6edf3', muted: '#9fb3c8', mutedLight: '#7488a6' };
 
 export const INITIAL_ACTIVE_SHARES: ActiveShare[] = [
