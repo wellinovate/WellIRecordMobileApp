@@ -18,6 +18,7 @@ export interface IUser extends Document {
   isPhoneVerified: boolean;
   twoFactorEnabled: boolean;
   biometricKeyHash?: string;
+  pushTokens?: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -35,6 +36,7 @@ const UserSchema = new Schema<IUser>(
     isPhoneVerified: { type: Boolean, default: false },
     twoFactorEnabled: { type: Boolean, default: true },
     biometricKeyHash: { type: String },
+    pushTokens: { type: [String], default: [] },
   },
   { timestamps: true }
 );
@@ -339,6 +341,7 @@ export interface IAccount extends Document {
   hmoProvider?: string;
   hmoPolicyNumber?: string;
   isPhoneVerified?: boolean;
+  pushTokens?: string[];
 }
 
 const AccountSchema = new Schema<IAccount>(
@@ -353,6 +356,7 @@ const AccountSchema = new Schema<IAccount>(
     hmoProvider: { type: String },
     hmoPolicyNumber: { type: String },
     isPhoneVerified: { type: Boolean, default: false },
+    pushTokens: { type: [String], default: [] },
   },
   { timestamps: true, strict: false }
 );

@@ -2577,6 +2577,48 @@ app.post('/api/v1/auth/2fa/toggle', async (req: Request, res: Response) => {
   }
 });
 
+// Register a device push token (Expo push token) for the authenticated user.
+// Stored on both User and Account models since either may represent the
+// logged-in patient depending on which flow created the record.
+app.post('/api/v1/auth/push-token', async (req: Request, res: Response) => {
+  const { pushToken } = req.body;
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!pushToken || typeof pushToken !== 'string') {
+    return res.status(400).json({ success: false, message: 'pushToken is required' });
+  }
+  try {
+    let decoded: any = null;
+    if (token) {
+      try {
+        decoded = jwt.verify(token, JWT_SECRET);
+      } catch {}
+    }
+    const userId = decoded?.userId || decoded?.id;
+    const email = decoded?.email;
+    const phoneNumber = decoded?.phoneNumber;
+    if (!userId && !email && !phoneNumber) {
+      return res.status(401).json({ success: false, message: 'Not authenticated' });
+    }
+    if (mongoose.connection.readyState === 1) {
+      const update = { $addToSet: { pushTokens: pushToken } };
+      if (userId) {
+        await User.findByIdAndUpdate(userId, update);
+        await Account.findOneAndUpdate({ userId }, update);
+      } else if (email) {
+        await User.findOneAndUpdate({ email }, update);
+        await Account.findOneAndUpdate({ email }, update);
+      } else if (phoneNumber) {
+        const normalized = normalizeNigerianPhone(phoneNumber);
+        await User.findOneAndUpdate({ phoneNumber: normalized }, update);
+        await Account.findOneAndUpdate({ phone: normalized }, update);
+      }
+    }
+    return res.json({ success: true, message: 'Push token registered' });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message || 'Failed to register push token' });
+  }
+});
+
 // Account Deletion Endpoint (NDPR Right to Erasure)
 app.delete('/api/v1/auth/account', async (req: Request, res: Response) => {
   const token = req.headers.authorization?.replace('Bearer ', '');
