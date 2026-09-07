@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { View, StyleSheet, SafeAreaView, BackHandler, Platform } from 'react-native';
+import { View, StyleSheet, BackHandler, Platform } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { useWelliApp } from './state/useWelliApp';
 import { themeFor, ThemeContext } from './theme/ThemeContext';
 import { PhoneShell } from './components/PhoneShell';
@@ -283,11 +284,13 @@ function MainWelliApp() {
 
 export default function App() {
   return (
-    <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
-      <ClerkLoaded>
-        <MainWelliApp />
-      </ClerkLoaded>
-    </ClerkProvider>
+    <SafeAreaProvider>
+      <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+        <ClerkLoaded>
+          <MainWelliApp />
+        </ClerkLoaded>
+      </ClerkProvider>
+    </SafeAreaProvider>
   );
 }
 
