@@ -10,6 +10,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { LogoMark } from '../components/Logo';
+import { ChatEntryButton } from '../components/ChatEntryButton';
 import { RECORD_META } from '../data/mockData';
 import { hapticFeedback } from '../utils/haptics';
 import type { WelliApp } from '../state/useWelliApp';
@@ -73,6 +74,7 @@ export function HomeScreen({ app }: { app: WelliApp }) {
             <Text style={styles.brandText}>WelliRecord</Text>
           </View>
           <View style={styles.rightCluster}>
+            <ChatEntryButton />
             <TouchableOpacity
               activeOpacity={0.7}
               onPress={actions.toggleNotifications}
