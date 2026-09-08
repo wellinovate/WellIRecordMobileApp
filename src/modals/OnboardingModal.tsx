@@ -5,9 +5,9 @@ import {
   TouchableOpacity,
   StyleSheet,
   Modal,
-  SafeAreaView,
   ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Logo } from '../components/Logo';
 import { SocialAuthButtons } from '../components/SocialAuthButtons';
 import { useUser } from '@clerk/expo';

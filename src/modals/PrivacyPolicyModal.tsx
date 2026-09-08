@@ -5,8 +5,8 @@ import {
   ScrollView,
   StyleSheet,
   Modal,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ModalHeader } from '../components/ModalHeader';
 import type { WelliApp } from '../state/useWelliApp';
 

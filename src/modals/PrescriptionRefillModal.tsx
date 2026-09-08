@@ -7,9 +7,9 @@ import {
   ScrollView,
   StyleSheet,
   Modal,
-  SafeAreaView,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ModalHeader } from '../components/ModalHeader';
 import { formatNaira } from '../utils/currency';
 import { hapticFeedback } from '../utils/haptics';

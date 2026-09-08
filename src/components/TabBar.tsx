@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TabIcon } from './TabIcons';
 import { hapticFeedback } from '../utils/haptics';
 import type { Tab } from '../data/types';
@@ -18,6 +19,8 @@ interface TabBarProps {
 }
 
 export function TabBar({ active, onSelect }: TabBarProps) {
+  const insets = useSafeAreaInsets();
+  const bottomPadding = Math.max(insets.bottom, Platform.OS === 'ios' ? 14 : 10);
 
   return (
     <View
@@ -26,6 +29,7 @@ export function TabBar({ active, onSelect }: TabBarProps) {
         {
           backgroundColor: '#FFFFFF',
           borderTopColor: '#E4DFD1',
+          paddingBottom: bottomPadding,
         },
       ]}
     >
@@ -73,7 +77,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-around',
     paddingTop: 10,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 10,
     borderTopWidth: 1,
     zIndex: 30,
   },

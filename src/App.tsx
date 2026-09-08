@@ -237,7 +237,10 @@ function MainWelliApp() {
   return (
     <ThemeContext.Provider value={theme}>
       <PhoneShell>
-        <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}>
+        <SafeAreaView
+          style={[styles.safeArea, { backgroundColor: theme.bg }]}
+          edges={['top', 'left', 'right']}
+        >
           <View style={styles.screenContainer}>
             {renderScreen()}
           </View>

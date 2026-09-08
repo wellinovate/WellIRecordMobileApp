@@ -1,5 +1,9 @@
 import React from 'react';
-import { Modal, SafeAreaView, StyleSheet } from 'react-native';
+import {
+  Modal,
+  StyleSheet,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { WelcomeHomeScreen } from '../screens/WelcomeHomeScreen';
 import type { WelliApp } from '../state/useWelliApp';
 
