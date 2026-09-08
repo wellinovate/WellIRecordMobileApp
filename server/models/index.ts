@@ -487,6 +487,38 @@ const UserProfileSchema = new Schema<IUserProfile>(
   { timestamps: true, strict: false }
 );
 
+// 12. Chat Intent Model (Dynamic Healthcare Assistant Intent Trees)
+export interface IChatOption {
+  label: string;
+  nextIntentKey: string;
+}
+
+export interface IChatIntent extends Document {
+  intentKey: string;
+  audience: 'patient' | 'provider';
+  message: string;
+  options: IChatOption[];
+  isRoot?: boolean;
+}
+
+const ChatIntentSchema = new Schema<IChatIntent>(
+  {
+    intentKey: { type: String, required: true, unique: true },
+    audience: { type: String, enum: ['patient', 'provider'], required: true, default: 'patient' },
+    message: { type: String, required: true },
+    options: [
+      {
+        label: { type: String, required: true },
+        nextIntentKey: { type: String, required: true },
+      },
+    ],
+    isRoot: { type: Boolean, default: false },
+  },
+  { timestamps: true }
+);
+
+ChatIntentSchema.index({ audience: 1, isRoot: 1 });
+
 // Export Mongoose Models
 export const User: Model<IUser> = mongoose.models.User || mongoose.model<IUser>('User', UserSchema);
 export const Account: Model<IAccount> = mongoose.models.Account || mongoose.model<IAccount>('Account', AccountSchema, 'accounts');
@@ -499,3 +531,5 @@ export const Facility: Model<IFacility> = mongoose.models.Facility || mongoose.m
 export const ShareGrant: Model<IShareGrant> = mongoose.models.ShareGrant || mongoose.model<IShareGrant>('ShareGrant', ShareGrantSchema);
 export const AccessAuditLog: Model<IAccessAuditLog> = mongoose.models.AccessAuditLog || mongoose.model<IAccessAuditLog>('AccessAuditLog', AccessAuditLogSchema);
 export const VitalLog: Model<IVitalLog> = mongoose.models.VitalLog || mongoose.model<IVitalLog>('VitalLog', VitalLogSchema);
+export const ChatIntent: Model<IChatIntent> = mongoose.models.ChatIntent || mongoose.model<IChatIntent>('ChatIntent', ChatIntentSchema);
+
