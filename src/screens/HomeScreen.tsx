@@ -70,9 +70,7 @@ export function HomeScreen({ app }: { app: WelliApp }) {
         <View style={styles.brandRow}>
           <View style={styles.brand}>
             <LogoMark size={24} shieldColor="#021F50" markColor="#ffffff" />
-            <Text style={styles.brandText}>
-              Welli<Text style={styles.brandSky}>Record</Text>
-            </Text>
+            <Text style={styles.brandText}>WelliRecord</Text>
           </View>
           <View style={styles.rightCluster}>
             <TouchableOpacity
@@ -540,7 +538,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   brandSky: {
-    color: PALETTE.sky,
+    color: PALETTE.ink,
   },
   rightCluster: {
     flexDirection: 'row',
