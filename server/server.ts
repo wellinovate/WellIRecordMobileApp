@@ -2668,10 +2668,35 @@ app.delete('/api/v1/auth/account', async (req: Request, res: Response) => {
 });
 
 // 7b. Chatbot Assistant Endpoints
-app.post(['/api/v1/chatbot/open', '/chatbot/open'], async (_req: Request, res: Response) => {
+
+// Maps this backend's actual role values to a chatbot audience.
+// Adjust the role list to match whatever roles exist on the User/Account model —
+// server.ts already signs tokens with role: 'patient' for patient accounts;
+// fill in the real provider/staff role name(s) once confirmed.
+function resolveAudience(decodedToken: any): 'patient' | 'provider' {
+  const role = decodedToken?.role;
+  if (role && role !== 'patient') return 'provider';
+  return 'patient';
+}
+
+function getAuthAudience(req: Request): 'patient' | 'provider' {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return 'patient';
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    return resolveAudience(decoded);
+  } catch {
+    return 'patient';
+  }
+}
+
+app.post(['/api/v1/chatbot/open', '/chatbot/open'], async (req: Request, res: Response) => {
+  const audience = getAuthAudience(req);
+  const rootKey = audience === 'provider' ? 'provider_start_over' : 'start_over';
+
   try {
     if (mongoose.connection.readyState === 1) {
-      const root = await ChatIntent.findOne({ intentKey: 'start_over', audience: 'patient' });
+      const root = await ChatIntent.findOne({ intentKey: rootKey, audience });
       if (root) {
         return res.json({ message: root.message, options: root.options, audience: root.audience });
       }
@@ -2680,25 +2705,29 @@ app.post(['/api/v1/chatbot/open', '/chatbot/open'], async (_req: Request, res: R
     console.error('[Chatbot Open Error]', err);
   }
 
-  // Fallback if DB is unreachable or not yet migrated — same content as before, kept short.
+  // Fallback — patient menu only, same as before. Provider fallback isn't
+  // hardcoded here; if the DB is unreachable, provider users see the patient
+  // fallback menu rather than nothing. Acceptable for now, revisit if it matters.
   return res.json({
     message: 'Hello! I am your WelliRecord Health Assistant. How can I help you manage your records today?',
     options: [
       { label: 'Share my medical records', nextIntentKey: 'share_records' },
       { label: 'Find a hospital or doctor', nextIntentKey: 'find_care' },
       { label: 'Prescription & pharmacy refill', nextIntentKey: 'refill_rx' },
-      { label: 'Emergency ID & WelliBridge', nextIntentKey: 'emergency_id' },
+      { label: 'Emergency ID & WelliBridge', nextIntentKey: 'emergency_id' }
     ],
-    audience: 'patient',
+    audience: 'patient'
   });
 });
 
 app.post(['/api/v1/chatbot/respond', '/chatbot/respond'], async (req: Request, res: Response) => {
   const { intentKey } = req.body || {};
+  const audience = getAuthAudience(req);
+  const rootKey = audience === 'provider' ? 'provider_start_over' : 'start_over';
 
   try {
     if (mongoose.connection.readyState === 1) {
-      const flow = await ChatIntent.findOne({ intentKey: intentKey || 'start_over' });
+      const flow = await ChatIntent.findOne({ intentKey: intentKey || rootKey });
       if (flow) {
         return res.json({ message: flow.message, options: flow.options, audience: flow.audience });
       }
@@ -2707,16 +2736,15 @@ app.post(['/api/v1/chatbot/respond', '/chatbot/respond'], async (req: Request, r
     console.error('[Chatbot Respond Error]', err);
   }
 
-  // Fallback — DB unreachable, or intentKey not found. Same default as before.
   return res.json({
     message: 'Hello! I am your WelliRecord Health Assistant. How can I help you manage your records today?',
     options: [
       { label: 'Share my medical records', nextIntentKey: 'share_records' },
       { label: 'Find a hospital or doctor', nextIntentKey: 'find_care' },
       { label: 'Prescription & pharmacy refill', nextIntentKey: 'refill_rx' },
-      { label: 'Emergency ID & WelliBridge', nextIntentKey: 'emergency_id' },
+      { label: 'Emergency ID & WelliBridge', nextIntentKey: 'emergency_id' }
     ],
-    audience: 'patient',
+    audience: 'patient'
   });
 });
 

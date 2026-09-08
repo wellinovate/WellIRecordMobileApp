@@ -12,7 +12,9 @@
     "ios:tunnel": "expo start --go --ios --tunnel",
     "dev": "expo start --go",
     "build": "tsc -b",
-    "lint": "oxlint"
+    "lint": "oxlint",
+    "migrate:chatbot": "npm --prefix server run migrate:chatbot",
+    "migrate:chatbot:provider": "npm --prefix server run migrate:chatbot:provider"
   },
   "dependencies": {
     "@clerk/expo": "^4.6.2",
