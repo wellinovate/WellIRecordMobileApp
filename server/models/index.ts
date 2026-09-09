@@ -329,6 +329,56 @@ const VitalLogSchema = new Schema<IVitalLog>(
   { timestamps: true }
 );
 
+// Lab Results (provider-submitted) — reads from the same collection the
+// web backend writes to. patientId here is the UserProfile._id, not the
+// Account id from the JWT — see the accountId lookup in the route below.
+export interface ILabResult extends Document {
+  patientId: mongoose.Types.ObjectId;
+  recordedBy?: mongoose.Types.ObjectId;
+  providerId?: mongoose.Types.ObjectId;
+  organizationId?: mongoose.Types.ObjectId;
+  testName: string;
+  category?: string;
+  specimen?: string;
+  resultValue?: string;
+  unit?: string;
+  referenceRange?: { text?: string; min?: number; max?: number };
+  interpretation?: string;
+  collectedAt?: Date;
+  resultedAt?: Date;
+  verificationStatus?: string;
+  recordStatus: string;
+  patientVisible: boolean;
+  attachments?: any[];
+  notes?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+const LabResultSchema = new Schema<ILabResult>(
+  {
+    patientId: { type: Schema.Types.ObjectId, required: true, index: true },
+    recordedBy: { type: Schema.Types.ObjectId },
+    providerId: { type: Schema.Types.ObjectId },
+    organizationId: { type: Schema.Types.ObjectId },
+    testName: { type: String, required: true },
+    category: { type: String },
+    specimen: { type: String },
+    resultValue: { type: String },
+    unit: { type: String },
+    referenceRange: { text: String, min: Number, max: Number },
+    interpretation: { type: String },
+    collectedAt: { type: Date },
+    resultedAt: { type: Date },
+    verificationStatus: { type: String },
+    recordStatus: { type: String, default: 'active' },
+    patientVisible: { type: Boolean, default: true },
+    attachments: { type: [Schema.Types.Mixed] as any, default: [] },
+    notes: { type: String },
+  },
+  { timestamps: true, strict: false } // strict: false — don't drop fields this schema hasn't declared yet
+);
+export const LabResult: Model<ILabResult> = mongoose.models.LabResult || mongoose.model<ILabResult>('LabResult', LabResultSchema, 'labresults');
+
 // 9. Account Model (Matching 'accounts' collection with phone e.g. 07030144923)
 export interface IAccount extends Document {
   phone?: string;
