@@ -38,6 +38,7 @@ export interface HealthRecord {
     statusBadge?: string;
   };
   labReportDetails?: LabReportDetail;
+  attachments?: Array<{ url: string; name: string; fileType: string }>;
 }
 
 export interface PrescriptionItem {

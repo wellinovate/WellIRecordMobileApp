@@ -494,6 +494,7 @@ export function useWelliApp() {
                 lab.resultValue && lab.unit
                   ? `${lab.testName}: ${lab.resultValue} ${lab.unit} (${lab.interpretation || 'result'})`
                   : lab.interpretation || '',
+              attachments: lab.attachments || [],
             }));
 
             const merged = [
