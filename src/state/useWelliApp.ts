@@ -464,11 +464,45 @@ export function useWelliApp() {
             // Keep local cached session
           }
 
-          // Fetch genuine health records for active user
+          // Fetch genuine health records and provider lab results in parallel
           try {
-            const remoteRecords = await recordsService.fetchRecords('me');
-            if (Array.isArray(remoteRecords) && remoteRecords.length > 0) {
-              patch({ recordsList: remoteRecords });
+            const [remoteRecords, labResults] = await Promise.all([
+              recordsService.fetchRecords('me'),
+              recordsService.fetchLabResults(),
+            ]);
+
+            const mappedLabRecords: HealthRecord[] = (labResults || []).map((lab: any) => ({
+              id: String(lab._id || lab.id),
+              ownerId: 'me',
+              type: 'Lab Result' as const,
+              title: lab.testName || 'Lab Result',
+              provider: lab.providerName || lab.organizationName || 'Laboratory Services',
+              date: lab.resultedAt
+                ? new Date(lab.resultedAt).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: '2-digit',
+                    year: 'numeric',
+                  })
+                : lab.createdAt
+                ? new Date(lab.createdAt).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: '2-digit',
+                    year: 'numeric',
+                  })
+                : '',
+              summary:
+                lab.resultValue && lab.unit
+                  ? `${lab.testName}: ${lab.resultValue} ${lab.unit} (${lab.interpretation || 'result'})`
+                  : lab.interpretation || '',
+            }));
+
+            const merged = [
+              ...(Array.isArray(remoteRecords) ? remoteRecords : []),
+              ...mappedLabRecords,
+            ];
+
+            if (merged.length > 0) {
+              patch({ recordsList: merged });
             }
           } catch {
             // Keep clean empty state
