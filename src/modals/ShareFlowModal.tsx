@@ -7,9 +7,9 @@ import {
   ScrollView,
   StyleSheet,
   Modal,
-  SafeAreaView,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
 import { ModalHeader } from '../components/ModalHeader';
 import { BridgeCodeCard } from '../components/BridgeCodeCard';

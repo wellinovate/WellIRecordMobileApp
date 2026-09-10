@@ -6,11 +6,11 @@ import {
   ScrollView,
   StyleSheet,
   Modal,
-  SafeAreaView,
   ActivityIndicator,
   Linking,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import { ModalHeader } from '../components/ModalHeader';
 import { useTheme } from '../theme/ThemeContext';

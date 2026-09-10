@@ -7,9 +7,9 @@ import {
   ScrollView,
   StyleSheet,
   Modal,
-  SafeAreaView,
   Share,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ModalHeader } from '../components/ModalHeader';
 import { hapticFeedback } from '../utils/haptics';
 import type { WelliApp } from '../state/useWelliApp';

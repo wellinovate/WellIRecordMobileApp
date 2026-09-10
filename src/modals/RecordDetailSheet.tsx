@@ -11,10 +11,12 @@ import Svg, { Path, Circle } from 'react-native-svg';
 import { RECORD_META } from '../data/mockData';
 import { hapticFeedback } from '../utils/haptics';
 import type { WelliApp } from '../state/useWelliApp';
+import { PdfViewerModal } from './PdfViewerModal';
 
 export function RecordDetailSheet({ app }: { app: WelliApp }) {
   const { state, actions, records, family } = app;
   const [activeTab, setActiveTab] = useState<'overview' | 'biomarkers'>('overview');
+  const [pdfViewer, setPdfViewer] = useState<{ url: string; title: string } | null>(null);
 
   const record = records.find((r) => r.id === state.recordDetailId);
   if (!record) return null;
@@ -179,6 +181,22 @@ export function RecordDetailSheet({ app }: { app: WelliApp }) {
                     <Text style={styles.verifValGreen}>✓ NDPR Encrypted & Verified</Text>
                   </View>
                 </View>
+
+                {record.attachments && record.attachments.length > 0 && (
+                  <TouchableOpacity
+                    style={styles.summaryBox}
+                    onPress={() => {
+                      hapticFeedback.light();
+                      setPdfViewer({
+                        url: record.attachments![0].url,
+                        title: record.attachments![0].name,
+                      });
+                    }}
+                  >
+                    <Text style={styles.summarySectionLabel}>ATTACHED REPORT</Text>
+                    <Text style={styles.summaryText}>{record.attachments[0].name} — Tap to view</Text>
+                  </TouchableOpacity>
+                )}
               </>
             ) : (
               /* Detailed Biomarkers Table */
@@ -314,6 +332,12 @@ export function RecordDetailSheet({ app }: { app: WelliApp }) {
           </View>
         </TouchableOpacity>
       </TouchableOpacity>
+      <PdfViewerModal
+        visible={!!pdfViewer}
+        url={pdfViewer?.url || null}
+        title={pdfViewer?.title}
+        onClose={() => setPdfViewer(null)}
+      />
     </Modal>
   );
 }

@@ -18,6 +18,7 @@ export interface IUser extends Document {
   isPhoneVerified: boolean;
   twoFactorEnabled: boolean;
   biometricKeyHash?: string;
+  pushTokens?: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -35,6 +36,7 @@ const UserSchema = new Schema<IUser>(
     isPhoneVerified: { type: Boolean, default: false },
     twoFactorEnabled: { type: Boolean, default: true },
     biometricKeyHash: { type: String },
+    pushTokens: { type: [String], default: [] },
   },
   { timestamps: true }
 );
@@ -327,6 +329,56 @@ const VitalLogSchema = new Schema<IVitalLog>(
   { timestamps: true }
 );
 
+// Lab Results (provider-submitted) — reads from the same collection the
+// web backend writes to. patientId here is the UserProfile._id, not the
+// Account id from the JWT — see the accountId lookup in the route below.
+export interface ILabResult extends Document {
+  patientId: mongoose.Types.ObjectId;
+  recordedBy?: mongoose.Types.ObjectId;
+  providerId?: mongoose.Types.ObjectId;
+  organizationId?: mongoose.Types.ObjectId;
+  testName: string;
+  category?: string;
+  specimen?: string;
+  resultValue?: string;
+  unit?: string;
+  referenceRange?: { text?: string; min?: number; max?: number };
+  interpretation?: string;
+  collectedAt?: Date;
+  resultedAt?: Date;
+  verificationStatus?: string;
+  recordStatus: string;
+  patientVisible: boolean;
+  attachments?: any[];
+  notes?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+const LabResultSchema = new Schema<ILabResult>(
+  {
+    patientId: { type: Schema.Types.ObjectId, required: true, index: true },
+    recordedBy: { type: Schema.Types.ObjectId },
+    providerId: { type: Schema.Types.ObjectId },
+    organizationId: { type: Schema.Types.ObjectId },
+    testName: { type: String, required: true },
+    category: { type: String },
+    specimen: { type: String },
+    resultValue: { type: String },
+    unit: { type: String },
+    referenceRange: { text: String, min: Number, max: Number },
+    interpretation: { type: String },
+    collectedAt: { type: Date },
+    resultedAt: { type: Date },
+    verificationStatus: { type: String },
+    recordStatus: { type: String, default: 'active' },
+    patientVisible: { type: Boolean, default: true },
+    attachments: { type: [Schema.Types.Mixed] as any, default: [] },
+    notes: { type: String },
+  },
+  { timestamps: true, strict: false } // strict: false — don't drop fields this schema hasn't declared yet
+);
+export const LabResult: Model<ILabResult> = mongoose.models.LabResult || mongoose.model<ILabResult>('LabResult', LabResultSchema, 'labresults');
+
 // 9. Account Model (Matching 'accounts' collection with phone e.g. 07030144923)
 export interface IAccount extends Document {
   phone?: string;
@@ -339,6 +391,7 @@ export interface IAccount extends Document {
   hmoProvider?: string;
   hmoPolicyNumber?: string;
   isPhoneVerified?: boolean;
+  pushTokens?: string[];
 }
 
 const AccountSchema = new Schema<IAccount>(
@@ -353,6 +406,7 @@ const AccountSchema = new Schema<IAccount>(
     hmoProvider: { type: String },
     hmoPolicyNumber: { type: String },
     isPhoneVerified: { type: Boolean, default: false },
+    pushTokens: { type: [String], default: [] },
   },
   { timestamps: true, strict: false }
 );
@@ -483,6 +537,38 @@ const UserProfileSchema = new Schema<IUserProfile>(
   { timestamps: true, strict: false }
 );
 
+// 12. Chat Intent Model (Dynamic Healthcare Assistant Intent Trees)
+export interface IChatOption {
+  label: string;
+  nextIntentKey: string;
+}
+
+export interface IChatIntent extends Document {
+  intentKey: string;
+  audience: 'patient' | 'provider';
+  message: string;
+  options: IChatOption[];
+  isRoot?: boolean;
+}
+
+const ChatIntentSchema = new Schema<IChatIntent>(
+  {
+    intentKey: { type: String, required: true, unique: true },
+    audience: { type: String, enum: ['patient', 'provider'], required: true, default: 'patient' },
+    message: { type: String, required: true },
+    options: [
+      {
+        label: { type: String, required: true },
+        nextIntentKey: { type: String, required: true },
+      },
+    ],
+    isRoot: { type: Boolean, default: false },
+  },
+  { timestamps: true }
+);
+
+ChatIntentSchema.index({ audience: 1, isRoot: 1 });
+
 // Export Mongoose Models
 export const User: Model<IUser> = mongoose.models.User || mongoose.model<IUser>('User', UserSchema);
 export const Account: Model<IAccount> = mongoose.models.Account || mongoose.model<IAccount>('Account', AccountSchema, 'accounts');
@@ -495,3 +581,5 @@ export const Facility: Model<IFacility> = mongoose.models.Facility || mongoose.m
 export const ShareGrant: Model<IShareGrant> = mongoose.models.ShareGrant || mongoose.model<IShareGrant>('ShareGrant', ShareGrantSchema);
 export const AccessAuditLog: Model<IAccessAuditLog> = mongoose.models.AccessAuditLog || mongoose.model<IAccessAuditLog>('AccessAuditLog', AccessAuditLogSchema);
 export const VitalLog: Model<IVitalLog> = mongoose.models.VitalLog || mongoose.model<IVitalLog>('VitalLog', VitalLogSchema);
+export const ChatIntent: Model<IChatIntent> = mongoose.models.ChatIntent || mongoose.model<IChatIntent>('ChatIntent', ChatIntentSchema);
+

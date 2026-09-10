@@ -7,10 +7,10 @@ import {
   ScrollView,
   StyleSheet,
   Modal,
-  SafeAreaView,
   ActivityIndicator,
   FlatList,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { ModalHeader } from '../components/ModalHeader';
 import { FormSelect } from '../components/FormSelect';

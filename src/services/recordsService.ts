@@ -30,6 +30,17 @@ export const recordsService = {
   },
 
   /**
+   * Fetches provider-submitted lab results from shared labresults collection
+   */
+  async fetchLabResults(): Promise<any[]> {
+    if (CONFIG.demoMode) {
+      return [];
+    }
+    const res = await apiClient.get<{ success: boolean; items: any[] }>('/records/labs');
+    return res?.items || [];
+  },
+
+  /**
    * Generates a pre-signed S3/GCS URL for client-side encrypted medical document upload
    */
   async getPresignedUploadUrl(

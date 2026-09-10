@@ -56,6 +56,13 @@
       "expo-image-picker",
       "expo-local-authentication",
       [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#041E42"
+        }
+      ],
+      [
         "expo-build-properties",
         {
           "ios": {

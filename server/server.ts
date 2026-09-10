@@ -22,6 +22,8 @@ import {
   Facility,
   ShareGrant,
   AccessAuditLog,
+  ChatIntent,
+  LabResult,
 } from './models';
 
 const app = express();
@@ -1543,6 +1545,34 @@ app.get('/api/v1/records', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/v1/records/labs — provider-submitted lab results, read from the
+// shared `labresults` collection the web backend writes to. authUserId from
+// the JWT is the Account id, not the UserProfile id these records are keyed
+// on, so resolve that first.
+app.get('/api/v1/records/labs', async (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.json({ success: true, items: [] });
+    }
+    const profile = await UserProfile.findOne({ accountId: new mongoose.Types.ObjectId(authUserId) });
+    if (!profile) {
+      return res.json({ success: true, items: [] });
+    }
+    const items = await LabResult.find({
+      patientId: profile._id,
+      recordStatus: 'active',
+      patientVisible: true,
+    }).sort({ resultedAt: -1, createdAt: -1 });
+    return res.json({ success: true, items });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err });
+  }
+});
+
 // 4b. Fetch Prescriptions (MongoDB)
 app.get('/api/v1/pharmacy/prescriptions', async (req: Request, res: Response) => {
   const { ownerId } = req.query;
@@ -2577,6 +2607,48 @@ app.post('/api/v1/auth/2fa/toggle', async (req: Request, res: Response) => {
   }
 });
 
+// Register a device push token (Expo push token) for the authenticated user.
+// Stored on both User and Account models since either may represent the
+// logged-in patient depending on which flow created the record.
+app.post('/api/v1/auth/push-token', async (req: Request, res: Response) => {
+  const { pushToken } = req.body;
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!pushToken || typeof pushToken !== 'string') {
+    return res.status(400).json({ success: false, message: 'pushToken is required' });
+  }
+  try {
+    let decoded: any = null;
+    if (token) {
+      try {
+        decoded = jwt.verify(token, JWT_SECRET);
+      } catch {}
+    }
+    const userId = decoded?.userId || decoded?.id;
+    const email = decoded?.email;
+    const phoneNumber = decoded?.phoneNumber;
+    if (!userId && !email && !phoneNumber) {
+      return res.status(401).json({ success: false, message: 'Not authenticated' });
+    }
+    if (mongoose.connection.readyState === 1) {
+      const update = { $addToSet: { pushTokens: pushToken } };
+      if (userId) {
+        await User.findByIdAndUpdate(userId, update);
+        await Account.findOneAndUpdate({ userId }, update);
+      } else if (email) {
+        await User.findOneAndUpdate({ email }, update);
+        await Account.findOneAndUpdate({ email }, update);
+      } else if (phoneNumber) {
+        const normalized = normalizeNigerianPhone(phoneNumber);
+        await User.findOneAndUpdate({ phoneNumber: normalized }, update);
+        await Account.findOneAndUpdate({ phone: normalized }, update);
+      }
+    }
+    return res.json({ success: true, message: 'Push token registered' });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message || 'Failed to register push token' });
+  }
+});
+
 // Account Deletion Endpoint (NDPR Right to Erasure)
 app.delete('/api/v1/auth/account', async (req: Request, res: Response) => {
   const token = req.headers.authorization?.replace('Bearer ', '');
@@ -2622,6 +2694,87 @@ app.delete('/api/v1/auth/account', async (req: Request, res: Response) => {
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message || 'Failed to delete account' });
   }
+});
+
+// 7b. Chatbot Assistant Endpoints
+
+// Maps this backend's actual role values to a chatbot audience.
+// Adjust the role list to match whatever roles exist on the User/Account model —
+// server.ts already signs tokens with role: 'patient' for patient accounts;
+// fill in the real provider/staff role name(s) once confirmed.
+function resolveAudience(decodedToken: any): 'patient' | 'provider' {
+  const role = decodedToken?.role;
+  if (role && role !== 'patient') return 'provider';
+  return 'patient';
+}
+
+function getAuthAudience(req: Request): 'patient' | 'provider' {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return 'patient';
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    return resolveAudience(decoded);
+  } catch {
+    return 'patient';
+  }
+}
+
+app.post(['/api/v1/chatbot/open', '/chatbot/open'], async (req: Request, res: Response) => {
+  const audience = getAuthAudience(req);
+  const rootKey = audience === 'provider' ? 'provider_start_over' : 'start_over';
+
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const root = await ChatIntent.findOne({ intentKey: rootKey, audience });
+      if (root) {
+        return res.json({ message: root.message, options: root.options, audience: root.audience });
+      }
+    }
+  } catch (err) {
+    console.error('[Chatbot Open Error]', err);
+  }
+
+  // Fallback — patient menu only, same as before. Provider fallback isn't
+  // hardcoded here; if the DB is unreachable, provider users see the patient
+  // fallback menu rather than nothing. Acceptable for now, revisit if it matters.
+  return res.json({
+    message: 'Hello! I am your WelliRecord Health Assistant. How can I help you manage your records today?',
+    options: [
+      { label: 'Share my medical records', nextIntentKey: 'share_records' },
+      { label: 'Find a hospital or doctor', nextIntentKey: 'find_care' },
+      { label: 'Prescription & pharmacy refill', nextIntentKey: 'refill_rx' },
+      { label: 'Emergency ID & WelliBridge', nextIntentKey: 'emergency_id' }
+    ],
+    audience: 'patient'
+  });
+});
+
+app.post(['/api/v1/chatbot/respond', '/chatbot/respond'], async (req: Request, res: Response) => {
+  const { intentKey } = req.body || {};
+  const audience = getAuthAudience(req);
+  const rootKey = audience === 'provider' ? 'provider_start_over' : 'start_over';
+
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const flow = await ChatIntent.findOne({ intentKey: intentKey || rootKey });
+      if (flow) {
+        return res.json({ message: flow.message, options: flow.options, audience: flow.audience });
+      }
+    }
+  } catch (err) {
+    console.error('[Chatbot Respond Error]', err);
+  }
+
+  return res.json({
+    message: 'Hello! I am your WelliRecord Health Assistant. How can I help you manage your records today?',
+    options: [
+      { label: 'Share my medical records', nextIntentKey: 'share_records' },
+      { label: 'Find a hospital or doctor', nextIntentKey: 'find_care' },
+      { label: 'Prescription & pharmacy refill', nextIntentKey: 'refill_rx' },
+      { label: 'Emergency ID & WelliBridge', nextIntentKey: 'emergency_id' }
+    ],
+    audience: 'patient'
+  });
 });
 
 // 8. Start Server

@@ -5,6 +5,7 @@
 
 import { CONFIG } from './config';
 import { apiClient, setAuthToken } from './apiClient';
+import { registerForPushNotificationsAsync } from './pushNotifications';
 import { storage } from '../utils/storage';
 import { normalizeNigerianPhone } from '../utils/phone';
 
@@ -376,6 +377,9 @@ export const authService = {
     try {
       await storage.setItem('welli_auth_session', JSON.stringify(session));
     } catch {}
+    // Fire-and-forget: register this device's push token now that we have
+    // a valid session. Never blocks or fails the login flow.
+    registerForPushNotificationsAsync().catch(() => {});
   },
 
   /**
