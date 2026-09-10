@@ -19,7 +19,10 @@ export function PdfViewerModal({
   // Google Docs viewer wraps the PDF for reliable rendering across
   // Android/iOS WebView engines, rather than relying on native PDF
   // support that varies by platform.
-  const viewerUrl = `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(url)}`;
+  const inlineUrl = url.includes("/upload/")
+    ? url.replace("/upload/", "/upload/fl_attachment:false/")
+    : url;
+  const viewerUrl = `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(inlineUrl)}`;
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
