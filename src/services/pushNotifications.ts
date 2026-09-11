@@ -1,18 +1,33 @@
-import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { apiClient } from './apiClient';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+const isExpoGo = Constants.appOwnership === 'expo';
+
+// expo-notifications registers a push token listener as a side effect of
+// being imported — that side effect crashes immediately in Expo Go (SDK
+// 53+), before any of our own guard checks below ever run. A static
+// `import * as Notifications from 'expo-notifications'` at the top of this
+// file would trigger that crash unconditionally. Loading it dynamically,
+// only when NOT in Expo Go, avoids ever executing that side effect here.
+let Notifications: typeof import('expo-notifications') | null = null;
+
+async function loadNotifications() {
+  if (!isExpoGo && !Notifications) {
+    Notifications = await import('expo-notifications');
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
+  }
+  return Notifications;
+}
 
 /**
  * Requests notification permission, fetches this device's Expo push token,
@@ -24,16 +39,22 @@ Notifications.setNotificationHandler({
  */
 export async function registerForPushNotificationsAsync(): Promise<string | null> {
   try {
-    if (!Device.isDevice) {
-      // Push tokens require a physical device; simulators/emulators can't
-      // receive real push notifications, so skip silently.
+    if (isExpoGo) {
+      console.log('[Push] Skipping push registration — not supported in Expo Go.');
       return null;
     }
 
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    const N = await loadNotifications();
+    if (!N) return null;
+
+    if (!Device.isDevice) {
+      return null;
+    }
+
+    const { status: existingStatus } = await N.getPermissionsAsync();
     let finalStatus = existingStatus;
     if (existingStatus !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
+      const { status } = await N.requestPermissionsAsync();
       finalStatus = status;
     }
     if (finalStatus !== 'granted') {
@@ -41,9 +62,9 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
     }
 
     if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('default', {
+      await N.setNotificationChannelAsync('default', {
         name: 'default',
-        importance: Notifications.AndroidImportance.MAX,
+        importance: N.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#041E42',
       });
@@ -57,7 +78,7 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
       return null;
     }
 
-    const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
+    const tokenResponse = await N.getExpoPushTokenAsync({ projectId });
     const pushToken = tokenResponse.data;
 
     try {
