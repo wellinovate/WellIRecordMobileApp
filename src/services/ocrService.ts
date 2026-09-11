@@ -1,5 +1,5 @@
 import { apiClient } from './apiClient';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 export interface OcrResult {
   success: boolean;
