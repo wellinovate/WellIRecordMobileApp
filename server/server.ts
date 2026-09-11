@@ -1532,7 +1532,15 @@ app.post('/api/v1/auth/register', async (req: Request, res: Response) => {
 
 // 4. Fetch Health Records (MongoDB)
 app.get('/api/v1/records', async (req: Request, res: Response) => {
-  const { ownerId } = req.query;
+  const authUserId = getAuthUserId(req);
+  const rawOwnerId = req.query.ownerId as string | undefined;
+  // 'me' isn't a real ObjectId — it's shorthand the frontend uses for
+  // "the logged-in user's own records." Records for the primary account
+  // holder are stored with familyMemberId === their own account id (see
+  // POST /records creation below), so resolve 'me' to that id before
+  // querying, instead of passing the literal string into a Mongo query
+  // and crashing with a CastError.
+  const ownerId = rawOwnerId === 'me' ? authUserId : rawOwnerId;
 
   try {
     if (mongoose.connection.readyState === 1) {
@@ -1618,7 +1626,9 @@ app.get('/api/v1/lab-documents/proxy', async (req: Request, res: Response) => {
 
 // 4b. Fetch Prescriptions (MongoDB)
 app.get('/api/v1/pharmacy/prescriptions', async (req: Request, res: Response) => {
-  const { ownerId } = req.query;
+  const authUserId = getAuthUserId(req);
+  const rawOwnerId = req.query.ownerId as string | undefined;
+  const ownerId = rawOwnerId === 'me' ? authUserId : rawOwnerId;
 
   try {
     if (mongoose.connection.readyState === 1) {
@@ -1627,6 +1637,7 @@ app.get('/api/v1/pharmacy/prescriptions', async (req: Request, res: Response) =>
     }
     return res.json([]);
   } catch (err) {
+    console.error('[GET /pharmacy/prescriptions] ERROR:', err);
     return res.status(500).json({ success: false, error: err });
   }
 });
