@@ -2640,7 +2640,7 @@ app.post('/api/v1/auth/2fa/toggle', async (req: Request, res: Response) => {
     if (mongoose.connection.readyState === 1) {
       if (userId) {
         await User.findByIdAndUpdate(userId, { twoFactorEnabled: Boolean(twoFactorEnabled) });
-        await Account.findOneAndUpdate({ userId }, { twoFactorEnabled: Boolean(twoFactorEnabled) });
+        await Account.findByIdAndUpdate(userId, { twoFactorEnabled: Boolean(twoFactorEnabled) });
       } else if (targetEmail) {
         await User.findOneAndUpdate({ email: targetEmail }, { twoFactorEnabled: Boolean(twoFactorEnabled) });
         await Account.findOneAndUpdate({ email: targetEmail }, { twoFactorEnabled: Boolean(twoFactorEnabled) });
@@ -2687,7 +2687,7 @@ app.post('/api/v1/auth/push-token', async (req: Request, res: Response) => {
       const update = { $addToSet: { pushTokens: pushToken } };
       if (userId) {
         await User.findByIdAndUpdate(userId, update);
-        await Account.findOneAndUpdate({ userId }, update);
+        await Account.findByIdAndUpdate(userId, update);
       } else if (email) {
         await User.findOneAndUpdate({ email }, update);
         await Account.findOneAndUpdate({ email }, update);
@@ -2717,28 +2717,94 @@ app.delete('/api/v1/auth/account', async (req: Request, res: Response) => {
 
     const userId = decoded?.userId || decoded?.id;
     const email = decoded?.email || req.body?.email;
+    const phoneNumber = decoded?.phoneNumber || req.body?.phoneNumber || req.body?.phone;
+
+    let deletedSomething = false;
 
     if (mongoose.connection.readyState === 1) {
-      if (userId) {
-        await User.findByIdAndDelete(userId);
-        await Account.findOneAndDelete({ userId });
-        await Profile.deleteMany({ userId });
-        await UserProfile.deleteMany({ userId });
-        await FamilyMember.deleteMany({ userId });
-        await HealthRecord.deleteMany({ userId });
-        await Prescription.deleteMany({ userId });
-      } else if (email) {
-        const user = await User.findOne({ email });
-        if (user) {
-          await User.findByIdAndDelete(user._id);
-          await Account.findOneAndDelete({ userId: user._id });
-          await Profile.deleteMany({ userId: user._id });
-          await UserProfile.deleteMany({ userId: user._id });
-          await FamilyMember.deleteMany({ userId: user._id });
-          await HealthRecord.deleteMany({ userId: user._id });
-          await Prescription.deleteMany({ userId: user._id });
+      let targetUser: any = null;
+      let targetAccount: any = null;
+
+      // 1. Resolve by userId / accountId (supports both User model and Account model where _id === userId)
+      if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+        targetUser = await User.findById(userId);
+        targetAccount = await Account.findById(userId);
+      }
+
+      // 2. Fallback lookup by email
+      if (!targetUser && !targetAccount && email) {
+        const cleanEmail = email.toLowerCase().trim();
+        targetUser = await User.findOne({ email: cleanEmail });
+        targetAccount = await Account.findOne({ email: cleanEmail });
+      }
+
+      // 3. Fallback lookup by phone number
+      if (!targetUser && !targetAccount && phoneNumber) {
+        const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
+        const normalizedE164 = normalizeNigerianPhone(phoneNumber);
+        const normalizedLocal = toLocalNigerianPhone(phoneNumber);
+        targetAccount = await Account.findOne({
+          $or: [
+            ...(normalizedLocal ? [{ phone: normalizedLocal }, { phoneNumber: normalizedLocal }] : []),
+            ...(normalizedE164 ? [{ phone: normalizedE164 }, { phoneNumber: normalizedE164 }] : []),
+            ...(phoneNumber ? [{ phone: phoneNumber }, { phoneNumber: phoneNumber }] : []),
+            ...(cleanPhone ? [{ phone: cleanPhone }, { phoneNumber: cleanPhone }] : []),
+          ],
+        });
+        if (!targetAccount) {
+          targetUser = await User.findOne({
+            $or: [
+              ...(normalizedE164 ? [{ phoneNumber: normalizedE164 }] : []),
+              ...(normalizedLocal ? [{ phoneNumber: normalizedLocal }] : []),
+              ...(cleanPhone ? [{ phoneNumber: cleanPhone }] : []),
+            ],
+          });
         }
       }
+
+      // Collect all candidate ObjectIds associated with this identity
+      const candidateIds: any[] = [];
+      if (userId && mongoose.Types.ObjectId.isValid(userId)) candidateIds.push(new mongoose.Types.ObjectId(userId));
+      if (targetUser?._id) candidateIds.push(targetUser._id);
+      if (targetAccount?._id) candidateIds.push(targetAccount._id);
+
+      if (targetUser || targetAccount || candidateIds.length > 0) {
+        let deletedUser = null;
+        let deletedAccount = null;
+
+        if (targetUser?._id) {
+          deletedUser = await User.findByIdAndDelete(targetUser._id);
+        } else if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+          deletedUser = await User.findByIdAndDelete(userId);
+        }
+
+        if (targetAccount?._id) {
+          deletedAccount = await Account.findByIdAndDelete(targetAccount._id);
+        } else if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+          deletedAccount = await Account.findByIdAndDelete(userId);
+        }
+
+        deletedSomething = Boolean(deletedUser || deletedAccount);
+
+        // Delete all associated patient vault records across both models (UserProfile uses accountId, HealthRecord uses userId/familyMemberId)
+        if (candidateIds.length > 0) {
+          await Profile.deleteMany({ $or: [{ userId: { $in: candidateIds } }, { accountId: { $in: candidateIds } }] });
+          await UserProfile.deleteMany({ $or: [{ accountId: { $in: candidateIds } }, { userId: { $in: candidateIds } }] });
+          await FamilyMember.deleteMany({ $or: [{ accountId: { $in: candidateIds } }, { userId: { $in: candidateIds } }] });
+          await HealthRecord.deleteMany({ $or: [{ userId: { $in: candidateIds } }, { familyMemberId: { $in: candidateIds } }] });
+          await Prescription.deleteMany({ $or: [{ accountId: { $in: candidateIds } }, { userId: { $in: candidateIds } }, { familyMemberId: { $in: candidateIds } }] });
+          await ShareGrant.deleteMany({ $or: [{ accountId: { $in: candidateIds } }, { userId: { $in: candidateIds } }] });
+          await AccessAuditLog.deleteMany({ $or: [{ accountId: { $in: candidateIds } }, { userId: { $in: candidateIds } }] });
+        }
+      }
+    }
+
+    if (!deletedSomething) {
+      console.error('[DELETE /auth/account] No account found to delete. userId:', userId, 'email:', email, 'phoneNumber:', phoneNumber);
+      return res.status(404).json({
+        success: false,
+        message: 'No account found to delete.',
+      });
     }
 
     return res.json({
@@ -2746,6 +2812,7 @@ app.delete('/api/v1/auth/account', async (req: Request, res: Response) => {
       message: 'Account and associated patient vault records successfully erased in compliance with NDPR.',
     });
   } catch (err: any) {
+    console.error('[DELETE /auth/account] Error during account erasure:', err);
     return res.status(500).json({ success: false, message: err.message || 'Failed to delete account' });
   }
 });
