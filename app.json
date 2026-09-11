@@ -27,7 +27,8 @@
         "NSFaceIDUsageDescription": "WelliRecord uses Face ID to securely unlock your health records.",
         "NSCameraUsageDescription": "WelliRecord uses the camera to scan documents and prescription slips.",
         "NSPhotoLibraryUsageDescription": "WelliRecord accesses your photo library so you can upload medical records from your camera roll."
-      }
+      },
+      "buildNumber": "1"
     },
     "android": {
       "package": "com.wellirecord.app",
@@ -39,7 +40,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#041E42"
-      }
+      },
+      "versionCode": 1
     },
     "web": {
       "favicon": "./assets/favicon.png",
