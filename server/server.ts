@@ -1588,6 +1588,17 @@ app.get('/api/v1/lab-documents/proxy', async (req: Request, res: Response) => {
       return res.status(upstream.status).json({ success: false, message: 'Failed to fetch document' });
     }
 
+    // The server's global helmet CSP sets frame-ancestors 'self', which
+    // blocks this exact route — the frontend embedding this PDF
+    // (wellirecord.com) is a different origin than this backend
+    // (wellirecord.onrender.com). Override it here so the patient-facing
+    // app can actually iframe what this route serves.
+    res.setHeader(
+      'Content-Security-Policy',
+      "frame-ancestors 'self' https://wellirecord.com https://www.wellirecord.com https://staging.wellirecord.com https://wellirecords.vercel.app http://localhost:5173 http://localhost:3000"
+    );
+    res.removeHeader('X-Frame-Options');
+
     let contentType = upstream.headers.get('content-type') || 'application/pdf';
     if (contentType === 'application/octet-stream' || !contentType) {
       contentType = 'application/pdf';
