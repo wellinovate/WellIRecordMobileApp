@@ -20,7 +20,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.wellirecord.app",
       "config": {
-        "googleMapsApiKey": "AIzaSyA_GFcmZopYZmT8Q9urVqoKz-LYvr4aVS8"
+        "googleMapsApiKey": "AIzaSyCE9x1cTlCqdr675wPmvonFoQclx4rqGag"
       },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -34,7 +34,7 @@
       "package": "com.wellirecord.app",
       "config": {
         "googleMaps": {
-          "apiKey": "AIzaSyA_GFcmZopYZmT8Q9urVqoKz-LYvr4aVS8"
+          "apiKey": "AIzaSyDzusF6aOxUXg3hR2Bf1HxjSAJrUh0fjk4"
         }
       },
       "adaptiveIcon": {
