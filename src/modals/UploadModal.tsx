@@ -106,7 +106,8 @@ export function UploadModal({ app }: { app: WelliApp }) {
         setOcrError(extracted.message || 'Could not read this document.');
         actions.openUpload(); // back to step 0 with error shown
       }
-    } catch {
+    } catch (err) {
+      console.log('[OCR] extractFromImage FAILED:', err);
       setOcrError('Document scanning failed. You can still add this record manually.');
       actions.openUpload();
     }
@@ -134,7 +135,8 @@ export function UploadModal({ app }: { app: WelliApp }) {
         setOcrError(extracted.message || 'Could not read this document.');
         actions.openUpload();
       }
-    } catch {
+    } catch (err) {
+      console.log('[OCR] extractFromImage FAILED:', err);
       setOcrError('Document scanning failed. You can still add this record manually.');
       actions.openUpload();
     }
