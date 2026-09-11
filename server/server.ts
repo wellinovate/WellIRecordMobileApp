@@ -1541,6 +1541,7 @@ app.get('/api/v1/records', async (req: Request, res: Response) => {
     }
     return res.json([]);
   } catch (err) {
+    console.error('[GET /records] ERROR:', err);
     return res.status(500).json({ success: false, error: err });
   }
 });
@@ -1569,6 +1570,7 @@ app.get('/api/v1/records/labs', async (req: Request, res: Response) => {
     }).sort({ resultedAt: -1, createdAt: -1 });
     return res.json({ success: true, items });
   } catch (err) {
+    console.error('[GET /records/labs] ERROR:', err);
     return res.status(500).json({ success: false, error: err });
   }
 });

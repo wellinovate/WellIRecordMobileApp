@@ -466,10 +466,16 @@ export function useWelliApp() {
 
           // Fetch genuine health records and provider lab results in parallel
           try {
-            const [remoteRecords, labResults] = await Promise.all([
+            console.log('[Records] Starting fetch...');
+            const [remoteRecordsResult, labResultsResult] = await Promise.allSettled([
               recordsService.fetchRecords('me'),
               recordsService.fetchLabResults(),
             ]);
+            console.log('[Records] remoteRecords status:', remoteRecordsResult.status, remoteRecordsResult.status === 'rejected' ? remoteRecordsResult.reason : remoteRecordsResult.value?.length);
+            console.log('[Records] labResults status:', labResultsResult.status, labResultsResult.status === 'rejected' ? labResultsResult.reason : labResultsResult.value?.length);
+
+            const remoteRecords = remoteRecordsResult.status === 'fulfilled' ? remoteRecordsResult.value : [];
+            const labResults = labResultsResult.status === 'fulfilled' ? labResultsResult.value : [];
 
             const mappedLabRecords: HealthRecord[] = (labResults || []).map((lab: any) => ({
               id: String(lab._id || lab.id),
@@ -505,8 +511,8 @@ export function useWelliApp() {
             if (merged.length > 0) {
               patch({ recordsList: merged });
             }
-          } catch {
-            // Keep clean empty state
+          } catch (err) {
+            console.log('[Records] FETCH FAILED:', err);
           }
 
           // Fetch genuine dependents & family members from cloud
