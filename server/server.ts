@@ -1575,6 +1575,36 @@ app.get('/api/v1/records/labs', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/v1/lab-documents/proxy — streams Cloudinary attachment with inline disposition
+app.get('/api/v1/lab-documents/proxy', async (req: Request, res: Response) => {
+  try {
+    const { url } = req.query;
+    if (!url || typeof url !== 'string' || !url.startsWith('https://res.cloudinary.com/')) {
+      return res.status(400).json({ success: false, message: 'Invalid document URL' });
+    }
+
+    const upstream = await fetch(url);
+    if (!upstream.ok) {
+      return res.status(upstream.status).json({ success: false, message: 'Failed to fetch document' });
+    }
+
+    let contentType = upstream.headers.get('content-type') || 'application/pdf';
+    if (contentType === 'application/octet-stream' || !contentType) {
+      contentType = 'application/pdf';
+    }
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+
+    const buffer = Buffer.from(await upstream.arrayBuffer());
+    return res.send(buffer);
+  } catch (error) {
+    console.error('[GET /lab-documents/proxy] ERROR:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
 // 4b. Fetch Prescriptions (MongoDB)
 app.get('/api/v1/pharmacy/prescriptions', async (req: Request, res: Response) => {
   const { ownerId } = req.query;

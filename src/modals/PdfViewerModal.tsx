@@ -1,3 +1,4 @@
+import { CONFIG } from '../services/config';
 import React from 'react';
 import { View, Text, TouchableOpacity, Modal, StyleSheet, SafeAreaView } from 'react-native';
 import { WebView } from 'react-native-webview';
@@ -16,13 +17,9 @@ export function PdfViewerModal({
 }) {
   if (!url) return null;
 
-  // Google Docs viewer wraps the PDF for reliable rendering across
-  // Android/iOS WebView engines, rather than relying on native PDF
-  // support that varies by platform.
-  const inlineUrl = url.includes("/upload/")
-    ? url.replace("/upload/", "/upload/fl_attachment:false/")
-    : url;
-  const viewerUrl = `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(inlineUrl)}`;
+  const API_BASE_URL = CONFIG.apiBaseUrl || 'https://wellirecordmobileapp.onrender.com/api/v1';
+  const proxiedUrl = `${API_BASE_URL}/lab-documents/proxy?url=${encodeURIComponent(url)}`;
+  const viewerUrl = `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(proxiedUrl)}`;
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
