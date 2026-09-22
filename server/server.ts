@@ -571,9 +571,12 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
   }
 
   const targetIdentifier = (email ? email.toLowerCase().trim() : phoneNumber?.trim()) || '';
-  const REVIEWER_EMAIL = 'appstore.review@wellirecord.com';
-  const REVIEWER_CODE = '849201';
-  const isReviewerBypass = targetIdentifier.toLowerCase() === REVIEWER_EMAIL && code === REVIEWER_CODE;
+  const REVIEWER_ACCOUNTS: Record<string, string> = {
+    'appstore.review@wellirecord.com': '849201',
+    'googleplay.reviewer@wellirecord.com': '849201',
+    '09062002094': '849201',
+  };
+  const isReviewerBypass = REVIEWER_ACCOUNTS[targetIdentifier.toLowerCase()] === code;
   const cleanPhone = phoneNumber ? phoneNumber.replace(/[^0-9]/g, '') : '';
   const cleanEmail = email ? email.toLowerCase().trim() : (req.body.email ? req.body.email.toLowerCase().trim() : undefined);
   const normalizedE164 = phoneNumber ? normalizeNigerianPhone(phoneNumber) : '';
