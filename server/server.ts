@@ -571,12 +571,6 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
   }
 
   const targetIdentifier = (email ? email.toLowerCase().trim() : phoneNumber?.trim()) || '';
-  const REVIEWER_ACCOUNTS: Record<string, string> = {
-    'appstore.review@wellirecord.com': '849201',
-    'googleplay.reviewer@wellirecord.com': '849201',
-    '09062002094': '849201',
-  };
-  const isReviewerBypass = REVIEWER_ACCOUNTS[targetIdentifier.toLowerCase()] === code;
   const cleanPhone = phoneNumber ? phoneNumber.replace(/[^0-9]/g, '') : '';
   const cleanEmail = email ? email.toLowerCase().trim() : (req.body.email ? req.body.email.toLowerCase().trim() : undefined);
   const normalizedE164 = phoneNumber ? normalizeNigerianPhone(phoneNumber) : '';
@@ -589,6 +583,15 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
     normalizedLocal,
     cleanEmail,
   ].filter((k): k is string => Boolean(k));
+
+  const REVIEWER_ACCOUNTS: Record<string, string> = {
+    'appstore.review@wellirecord.com': '849201',
+    'googleplay.reviewer@wellirecord.com': '849201',
+    '09062002094': '849201',
+    '+2349062002094': '849201',
+    '2349062002094': '849201',
+  };
+  const isReviewerBypass = candidateKeys.some((k) => REVIEWER_ACCOUNTS[k.toLowerCase()] === code);
 
   const matchedKey = candidateKeys.find((k) => otpCache.has(k));
   const otpEntry = matchedKey ? getOtpEntry(matchedKey) : undefined;
