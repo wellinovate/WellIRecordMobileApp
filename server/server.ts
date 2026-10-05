@@ -6,6 +6,7 @@
 import crypto from 'crypto';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
@@ -35,8 +36,104 @@ if (!JWT_SECRET) {
 }
 const TERMII_API_KEY = process.env.TERMII_API_KEY || 'TL_TEST_KEY';
 
-app.use(cors());
+// CORS: allow explicit production, staging, and local preview/dev origins, or custom via ALLOWED_ORIGINS env var
+const defaultAllowedOrigins = [
+  'https://wellirecord.com',
+  'https://www.wellirecord.com',
+  'https://wellirecordmobileapp.onrender.com',
+  'http://localhost:5173',
+  'http://localhost:8443',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:8443',
+  'http://127.0.0.1:3000',
+];
+const customAllowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
+  : [];
+const allowedOrigins = [...defaultAllowedOrigins, ...customAllowedOrigins];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile native apps, curl, or server-to-server)
+      if (!origin) return callback(null, true);
+      if (
+        allowedOrigins.includes(origin) ||
+        origin.endsWith('.wellirecord.com') ||
+        /^https:\/\/([a-z0-9-]+\.)?onrender\.com$/.test(origin)
+      ) {
+        return callback(null, true);
+      }
+      return callback(new Error(`CORS policy does not allow access from origin: ${origin}`));
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
+
+// Rate limiters for auth OTP endpoints and OCR document processing
+const otpLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  max: 5, // 5 requests per 10 minutes per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many verification code requests from this IP. Please try again after 10 minutes.' },
+});
+
+const ocrLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 20, // 20 requests per hour per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'OCR scan limit reached (20 scans per hour). Please try again later.' },
+});
+
+// Helper to extract authenticated user ID from Authorization header
+function getAuthUserId(req: Request): string | null {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    try {
+      const decoded: any = jwt.verify(authHeader.substring(7), JWT_SECRET);
+      return decoded.userId || decoded.id || null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+// Verify that the authenticated caller owns the target account or dependent
+async function callerCanAccessOwner(authUserId: string, targetOwnerId: string): Promise<boolean> {
+  if (!authUserId || !targetOwnerId) return false;
+  if (targetOwnerId === authUserId || targetOwnerId === 'me') return true;
+  if (mongoose.connection.readyState !== 1) return false;
+
+  // Check if target is a dependent owned by the caller's account
+  const conditions: any[] = [
+    { _id: targetOwnerId, accountId: authUserId },
+    { _id: targetOwnerId, userId: authUserId },
+  ];
+  if (mongoose.isValidObjectId(targetOwnerId)) {
+    const targetObjId = new mongoose.Types.ObjectId(targetOwnerId);
+    conditions.push(
+      { _id: targetObjId, accountId: authUserId },
+      { _id: targetObjId, userId: authUserId }
+    );
+    if (mongoose.isValidObjectId(authUserId)) {
+      const authObjId = new mongoose.Types.ObjectId(authUserId);
+      conditions.push(
+        { _id: targetObjId, accountId: authObjId },
+        { _id: targetObjId, userId: authObjId },
+        { _id: targetOwnerId, accountId: authObjId },
+        { _id: targetOwnerId, userId: authObjId }
+      );
+    }
+  }
+
+  const isDependent = await FamilyMember.exists({ $or: conditions });
+  return Boolean(isDependent);
+}
 
 // Diagnostic logging — temporary, remove once the real cause is found.
 // Logs memory usage on every request and around each Places API batch,
@@ -108,7 +205,7 @@ function deleteOtpWithAliases(identifier: string, entry?: OtpEntry) {
 }
 
 function generateOtp(identifier: string, mode: 'login' | 'signup' = 'signup', additionalAliases: string[] = []): string {
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const code = crypto.randomInt(100000, 1000000).toString();
   const allAliases = Array.from(new Set([identifier, ...additionalAliases].filter(Boolean)));
   const entry: OtpEntry = {
     code,
@@ -178,7 +275,7 @@ function toLocalNigerianPhone(phone?: string): string {
 }
 
 // 2. Termii Nigerian SMS OTP Dispatch
-app.post('/api/v1/auth/otp/send', async (req: Request, res: Response) => {
+app.post('/api/v1/auth/otp/send', otpLimiter, async (req: Request, res: Response) => {
   const targetPhone = req.body.phoneNumber || req.body.phone || req.body.to;
   const mode = req.body.mode === 'login' ? 'login' : 'signup';
 
@@ -508,7 +605,7 @@ function renderSignInNotificationEmailHtml({ fullName, signedInAt, method, devic
 }
 
 // 2c. Email OTP Dispatch
-app.post('/api/v1/auth/email/send', async (req: Request, res: Response) => {
+app.post('/api/v1/auth/email/send', otpLimiter, async (req: Request, res: Response) => {
   const { email, fullName, name, mode } = req.body;
 
   if (!email) {
@@ -584,14 +681,19 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
     cleanEmail,
   ].filter((k): k is string => Boolean(k));
 
-  const REVIEWER_ACCOUNTS: Record<string, string> = {
-    'appstore.review@wellirecord.com': '849201',
-    'googleplay.reviewer@wellirecord.com': '849201',
-    '09062002094': '849201',
-    '+2349062002094': '849201',
-    '2349062002094': '849201',
-  };
-  const isReviewerBypass = candidateKeys.some((k) => REVIEWER_ACCOUNTS[k.toLowerCase()] === code);
+  const reviewerOtp = process.env.REVIEWER_OTP;
+  const REVIEWER_ACCOUNTS = new Set([
+    'appstore.review@wellirecord.com',
+    'googleplay.reviewer@wellirecord.com',
+    '09062002094',
+    '+2349062002094',
+    '2349062002094',
+  ]);
+  const isReviewerBypass = Boolean(
+    reviewerOtp &&
+      code === reviewerOtp &&
+      candidateKeys.some((k) => REVIEWER_ACCOUNTS.has(k.toLowerCase()))
+  );
 
   const matchedKey = candidateKeys.find((k) => otpCache.has(k));
   const otpEntry = matchedKey ? getOtpEntry(matchedKey) : undefined;
@@ -948,13 +1050,15 @@ app.post('/api/v1/auth/social/verify', async (req: Request, res: Response) => {
 });
 
 // 3d. Update Patient Profile (writes directly to shared 'userprofiles' collection)
-app.all('/api/v1/profile/update', async (req: Request, res: Response) => {
+app.post(['/api/v1/profile/update', '/profile/update'], async (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const {
     accountId,
     userId,
-    email,
-    phone,
-    phoneNumber,
     fullName,
     name,
     dateOfBirth,
@@ -975,17 +1079,20 @@ app.all('/api/v1/profile/update', async (req: Request, res: Response) => {
     contact,
   } = req.body;
 
+  // Bound to caller's own account or a dependent owned by caller
+  const targetId = (accountId || userId || authUserId) as string;
+  const canAccess = await callerCanAccessOwner(authUserId, targetId);
+  if (!canAccess) {
+    return res.status(403).json({ success: false, message: 'Access denied: cannot update another user\'s profile' });
+  }
+
   try {
     const searchConditions: any[] = [];
-    if (accountId) searchConditions.push({ accountId }, { _id: accountId });
-    if (userId) searchConditions.push({ accountId: userId }, { _id: userId });
-    if (email) searchConditions.push({ email: email.toLowerCase().trim() });
-    const rawPhone = phone || phoneNumber;
-    if (rawPhone) {
-      const clean = rawPhone.replace(/[^0-9]/g, '');
-      const local = rawPhone.replace('+234', '0');
-      searchConditions.push({ phone: rawPhone }, { phone: local }, { phone: clean });
+    if (mongoose.isValidObjectId(targetId)) {
+      const objId = new mongoose.Types.ObjectId(targetId);
+      searchConditions.push({ accountId: objId }, { _id: objId });
     }
+    searchConditions.push({ accountId: targetId }, { _id: targetId });
 
     let profile: any = null;
     if (mongoose.connection.readyState === 1 && searchConditions.length > 0) {
@@ -994,9 +1101,7 @@ app.all('/api/v1/profile/update', async (req: Request, res: Response) => {
 
     if (!profile && mongoose.connection.readyState === 1) {
       profile = new UserProfile({
-        accountId: accountId || userId,
-        email,
-        phone: rawPhone,
+        accountId: mongoose.isValidObjectId(targetId) ? new mongoose.Types.ObjectId(targetId) : targetId,
         wrId: wrId || memberId || generateWelliRecordId(),
       });
     }
@@ -1049,43 +1154,25 @@ app.all('/api/v1/profile/update', async (req: Request, res: Response) => {
 // 3e. Fetch Current Patient Profile (reads from shared 'userprofiles' collection)
 app.get(['/api/v1/profile/me', '/api/v1/profile'], async (req: Request, res: Response) => {
   try {
-    const authHeader = req.headers.authorization;
-    let tokenData: any = null;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.substring(7);
-      try {
-        tokenData = jwt.verify(token, JWT_SECRET);
-      } catch {
-        // invalid token
-      }
+    const authUserId = getAuthUserId(req);
+    if (!authUserId) {
+      return res.status(401).json({ success: false, message: 'Authentication required' });
     }
 
-    const { userId, email, phone, phoneNumber, accountId } = req.query;
+    const { userId, accountId } = req.query;
+    const targetAccountId = (accountId || userId || authUserId) as string;
+
+    const canAccess = await callerCanAccessOwner(authUserId, targetAccountId);
+    if (!canAccess) {
+      return res.status(403).json({ success: false, message: 'Access denied to requested profile' });
+    }
 
     const searchConditions: any[] = [];
-    if (tokenData?.userId) {
-      searchConditions.push({ accountId: tokenData.userId }, { _id: tokenData.userId });
+    if (mongoose.isValidObjectId(targetAccountId)) {
+      const objId = new mongoose.Types.ObjectId(targetAccountId);
+      searchConditions.push({ accountId: objId }, { _id: objId });
     }
-    if (tokenData?.email) {
-      searchConditions.push({ email: String(tokenData.email).toLowerCase().trim() });
-    }
-    if (tokenData?.phoneNumber) {
-      const p = String(tokenData.phoneNumber);
-      const clean = p.replace(/[^0-9]/g, '');
-      const local = p.replace('+234', '0');
-      searchConditions.push({ phone: p }, { phone: local }, { phone: clean });
-    }
-
-    if (userId) searchConditions.push({ accountId: userId }, { _id: userId });
-    if (accountId) searchConditions.push({ accountId: accountId }, { _id: accountId });
-    if (email) searchConditions.push({ email: String(email).toLowerCase().trim() });
-    const rawPhone = phone || phoneNumber;
-    if (rawPhone) {
-      const p = String(rawPhone);
-      const clean = p.replace(/[^0-9]/g, '');
-      const local = p.replace('+234', '0');
-      searchConditions.push({ phone: p }, { phone: local }, { phone: clean });
-    }
+    searchConditions.push({ accountId: targetAccountId }, { _id: targetAccountId });
 
     let profile: any = null;
     if (mongoose.connection.readyState === 1 && searchConditions.length > 0) {
@@ -1095,9 +1182,9 @@ app.get(['/api/v1/profile/me', '/api/v1/profile'], async (req: Request, res: Res
       if (!profile) {
         const legacyProfile = await Profile.findOne({ $or: searchConditions });
         if (legacyProfile) {
-          console.log('[MIGRATION GET] Migrating legacy profile to userprofiles for account:', tokenData?.userId || accountId);
+          console.log('[MIGRATION GET] Migrating legacy profile to userprofiles for account:', targetAccountId);
           profile = new UserProfile({
-            accountId: legacyProfile.accountId || legacyProfile.userId || (tokenData?.userId ? new mongoose.Types.ObjectId(tokenData.userId) : undefined),
+            accountId: legacyProfile.accountId || legacyProfile.userId || (mongoose.isValidObjectId(targetAccountId) ? new mongoose.Types.ObjectId(targetAccountId) : undefined),
             fullName: legacyProfile.fullName || legacyProfile.name,
             email: legacyProfile.email,
             phone: legacyProfile.phone,
@@ -1132,20 +1219,6 @@ app.get(['/api/v1/profile/me', '/api/v1/profile'], async (req: Request, res: Res
 // -------------------------------------------------------------
 // 3f. FAMILY & DEPENDENTS MANAGEMENT ENDPOINTS
 // -------------------------------------------------------------
-
-// Helper to extract authenticated user ID from Authorization header
-function getAuthUserId(req: Request): string | null {
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    try {
-      const decoded: any = jwt.verify(authHeader.substring(7), JWT_SECRET);
-      return decoded.userId || decoded.id || null;
-    } catch {
-      return null;
-    }
-  }
-  return null;
-}
 
 // GET /api/v1/family/list — returns all family members for authenticated user
 app.get(['/api/v1/family/list', '/api/v1/family'], async (req: Request, res: Response) => {
@@ -1542,18 +1615,22 @@ app.post('/api/v1/auth/register', async (req: Request, res: Response) => {
 // 4. Fetch Health Records (MongoDB)
 app.get('/api/v1/records', async (req: Request, res: Response) => {
   const authUserId = getAuthUserId(req);
-  const rawOwnerId = req.query.ownerId as string | undefined;
-  // 'me' isn't a real ObjectId — it's shorthand the frontend uses for
-  // "the logged-in user's own records." Records for the primary account
-  // holder are stored with familyMemberId === their own account id (see
-  // POST /records creation below), so resolve 'me' to that id before
-  // querying, instead of passing the literal string into a Mongo query
-  // and crashing with a CastError.
+  if (!authUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
+  const rawOwnerId = (req.query.ownerId as string | undefined) || authUserId;
+  // 'me' shorthand resolves to the logged-in user's own account id
   const ownerId = rawOwnerId === 'me' ? authUserId : rawOwnerId;
 
   try {
+    const canAccess = await callerCanAccessOwner(authUserId, ownerId);
+    if (!canAccess) {
+      return res.status(403).json({ success: false, message: 'Access denied to requested records' });
+    }
+
     if (mongoose.connection.readyState === 1) {
-      const records = await HealthRecord.find(ownerId ? { familyMemberId: ownerId } : {}).sort({ createdAt: -1 });
+      const records = await HealthRecord.find({ familyMemberId: ownerId }).sort({ createdAt: -1 });
       return res.json(records);
     }
     return res.json([]);
@@ -1636,12 +1713,21 @@ app.get('/api/v1/lab-documents/proxy', async (req: Request, res: Response) => {
 // 4b. Fetch Prescriptions (MongoDB)
 app.get('/api/v1/pharmacy/prescriptions', async (req: Request, res: Response) => {
   const authUserId = getAuthUserId(req);
-  const rawOwnerId = req.query.ownerId as string | undefined;
+  if (!authUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
+  const rawOwnerId = (req.query.ownerId as string | undefined) || authUserId;
   const ownerId = rawOwnerId === 'me' ? authUserId : rawOwnerId;
 
   try {
+    const canAccess = await callerCanAccessOwner(authUserId, ownerId);
+    if (!canAccess) {
+      return res.status(403).json({ success: false, message: 'Access denied to requested prescriptions' });
+    }
+
     if (mongoose.connection.readyState === 1) {
-      const rxs = await Prescription.find(ownerId ? { familyMemberId: ownerId } : {}).sort({ createdAt: -1 });
+      const rxs = await Prescription.find({ familyMemberId: ownerId }).sort({ createdAt: -1 });
       return res.json(rxs);
     }
     return res.json([]);
@@ -2107,7 +2193,12 @@ ${rawText}`,
   };
 }
 
-app.post('/api/v1/records/ocr-extract', async (req: Request, res: Response) => {
+app.post('/api/v1/records/ocr-extract', ocrLimiter, async (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const { imageBase64, recordType } = req.body;
 
   if (!imageBase64) {

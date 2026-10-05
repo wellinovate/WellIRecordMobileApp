@@ -5,6 +5,17 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#041E42" />
+    <!-- No CSP/referrer-policy was set anywhere (the backend's "global helmet
+    CSP" referenced in server.ts doesn't actually exist — helmet isn't even a
+    dependency there), so an XSS in any dependency had an unrestricted
+    script-src to work with. This is a reasonable default for the current
+    asset list; add a domain here if a new external script/image/connect
+    target is introduced rather than loosening default-src. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://wellirecordmobileapp.onrender.com https://res.cloudinary.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self';"
+    />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

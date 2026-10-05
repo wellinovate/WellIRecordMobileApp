@@ -6,7 +6,7 @@
 import { CONFIG } from './config';
 import { apiClient, setAuthToken } from './apiClient';
 import { registerForPushNotificationsAsync } from './pushNotifications';
-import { storage } from '../utils/storage';
+import { storage } from '../utils/secureStorage';
 import { normalizeNigerianPhone } from '../utils/phone';
 
 export interface AuthSession {
