@@ -6,6 +6,7 @@
 import { CONFIG } from './config';
 import { apiClient } from './apiClient';
 import { RECORDS } from '../data/mockData';
+import { offlineSyncService } from './offlineSyncService';
 import type { HealthRecord, RecordType } from '../data/types';
 
 export interface PresignedUploadUrlResponse {
@@ -16,17 +17,45 @@ export interface PresignedUploadUrlResponse {
 
 export const recordsService = {
   /**
-   * Fetches all health records for a specific family member vault
+   * Fetches all health records for a specific family member vault.
+   * Offline-First: Checks local secure cache first, revalidates with cloud when online.
    */
   async fetchRecords(ownerId: string = 'me'): Promise<HealthRecord[]> {
-    if (CONFIG.demoMode) {
-      await new Promise((res) => setTimeout(res, 300));
+    // Check if device is offline or in simulated offline mode
+    if (!offlineSyncService.isOnline()) {
+      const cached = await offlineSyncService.getCachedRecords(ownerId);
+      if (cached && cached.length > 0) {
+        console.log(`[recordsService] Serving ${cached.length} records from offline cache for ${ownerId}`);
+        return cached;
+      }
       return RECORDS.filter((r) => r.ownerId === ownerId);
     }
 
-    return apiClient.get<HealthRecord[]>('/records', {
-      params: { ownerId },
-    });
+    if (CONFIG.demoMode) {
+      await new Promise((res) => setTimeout(res, 300));
+      const demoRecords = RECORDS.filter((r) => r.ownerId === ownerId);
+      await offlineSyncService.cacheRecords(ownerId, demoRecords);
+      return demoRecords;
+    }
+
+    try {
+      const records = await apiClient.get<HealthRecord[]>('/records', {
+        params: { ownerId },
+      });
+      if (Array.isArray(records)) {
+        // Asynchronously update local offline cache for instant access next time
+        offlineSyncService.cacheRecords(ownerId, records);
+        return records;
+      }
+      return [];
+    } catch (error) {
+      console.warn('[recordsService] Cloud fetch failed, attempting offline cache fallback:', error);
+      const cached = await offlineSyncService.getCachedRecords(ownerId);
+      if (cached && cached.length > 0) {
+        return cached;
+      }
+      return RECORDS.filter((r) => r.ownerId === ownerId);
+    }
   },
 
   /**
@@ -62,18 +91,46 @@ export const recordsService = {
   },
 
   /**
-   * Saves a newly parsed or uploaded health record to the patient's vault
+   * Saves a newly parsed or uploaded health record to the patient's vault.
+   * If offline, enqueues the mutation and stores it in the local cache with optimistic status.
    */
   async createRecord(record: Omit<HealthRecord, 'id'>): Promise<HealthRecord> {
-    if (CONFIG.demoMode) {
-      await new Promise((res) => setTimeout(res, 400));
-      return {
-        ...record,
-        id: `r_${Date.now()}`,
-      };
+    const localId = `r_${Date.now()}`;
+    const localRecord: HealthRecord = {
+      ...record,
+      id: localId,
+    };
+
+    if (!offlineSyncService.isOnline()) {
+      await offlineSyncService.enqueue('CREATE_RECORD', record);
+      const ownerId = record.ownerId || 'me';
+      const existing = (await offlineSyncService.getCachedRecords(ownerId)) || [];
+      await offlineSyncService.cacheRecords(ownerId, [localRecord, ...existing]);
+      return localRecord;
     }
 
-    return apiClient.post<HealthRecord>('/records', record);
+    if (CONFIG.demoMode) {
+      await new Promise((res) => setTimeout(res, 400));
+      const ownerId = record.ownerId || 'me';
+      const existing = (await offlineSyncService.getCachedRecords(ownerId)) || [];
+      await offlineSyncService.cacheRecords(ownerId, [localRecord, ...existing]);
+      return localRecord;
+    }
+
+    try {
+      const created = await apiClient.post<HealthRecord>('/records', record);
+      const ownerId = record.ownerId || 'me';
+      const existing = (await offlineSyncService.getCachedRecords(ownerId)) || [];
+      await offlineSyncService.cacheRecords(ownerId, [created, ...existing]);
+      return created;
+    } catch (err) {
+      console.warn('[recordsService] Cloud createRecord failed, queuing offline mutation:', err);
+      await offlineSyncService.enqueue('CREATE_RECORD', record);
+      const ownerId = record.ownerId || 'me';
+      const existing = (await offlineSyncService.getCachedRecords(ownerId)) || [];
+      await offlineSyncService.cacheRecords(ownerId, [localRecord, ...existing]);
+      return localRecord;
+    }
   },
 
   /**
@@ -100,14 +157,35 @@ export const recordsService = {
   },
 
   /**
-   * Deletes a health record from the vault
+   * Deletes a health record from the vault.
+   * If offline, enqueues the delete mutation and updates local cache.
    */
-  async deleteRecord(recordId: string): Promise<{ success: boolean }> {
-    if (CONFIG.demoMode) {
-      await new Promise((res) => setTimeout(res, 300));
+  async deleteRecord(recordId: string, ownerId: string = 'me'): Promise<{ success: boolean }> {
+    if (!offlineSyncService.isOnline()) {
+      await offlineSyncService.enqueue('DELETE_RECORD', { recordId });
+      const existing = (await offlineSyncService.getCachedRecords(ownerId)) || [];
+      await offlineSyncService.cacheRecords(ownerId, existing.filter((r) => r.id !== recordId));
       return { success: true };
     }
 
-    return apiClient.delete<{ success: boolean }>(`/records/${recordId}`);
+    if (CONFIG.demoMode) {
+      await new Promise((res) => setTimeout(res, 300));
+      const existing = (await offlineSyncService.getCachedRecords(ownerId)) || [];
+      await offlineSyncService.cacheRecords(ownerId, existing.filter((r) => r.id !== recordId));
+      return { success: true };
+    }
+
+    try {
+      const res = await apiClient.delete<{ success: boolean }>(`/records/${recordId}`);
+      const existing = (await offlineSyncService.getCachedRecords(ownerId)) || [];
+      await offlineSyncService.cacheRecords(ownerId, existing.filter((r) => r.id !== recordId));
+      return res;
+    } catch (err) {
+      console.warn('[recordsService] Cloud deleteRecord failed, queuing offline mutation:', err);
+      await offlineSyncService.enqueue('DELETE_RECORD', { recordId });
+      const existing = (await offlineSyncService.getCachedRecords(ownerId)) || [];
+      await offlineSyncService.cacheRecords(ownerId, existing.filter((r) => r.id !== recordId));
+      return { success: true };
+    }
   },
 };

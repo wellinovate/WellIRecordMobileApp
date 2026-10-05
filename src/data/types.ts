@@ -62,6 +62,32 @@ export interface PrescriptionItem {
   notes?: string;
 }
 
+export interface MedicationDoseSchedule {
+  id: string;
+  prescriptionId: string;
+  ownerId: string;
+  medicationName: string;
+  dosage: string;
+  instruction: string;
+  time: string; // "08:00" (24h)
+  period: 'morning' | 'afternoon' | 'evening' | 'bedtime';
+  notificationEnabled: boolean;
+  notificationId?: string;
+}
+
+export interface MedicationDoseLog {
+  id: string;
+  scheduleId: string;
+  prescriptionId: string;
+  ownerId: string;
+  date: string; // "YYYY-MM-DD"
+  scheduledTime: string; // "08:00"
+  status: 'taken' | 'snoozed' | 'skipped' | 'pending';
+  loggedAt?: number;
+  skipReason?: string;
+  snoozeUntil?: number;
+}
+
 export interface ImmunizationMilestone {
   id: string;
   vaccine: string;

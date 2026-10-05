@@ -13,6 +13,7 @@ import { LogoMark } from '../components/Logo';
 import { ChatEntryButton } from '../components/ChatEntryButton';
 import { RECORD_META } from '../data/mockData';
 import { hapticFeedback } from '../utils/haptics';
+import { OfflineSyncBanner } from '../components/OfflineSyncBanner';
 import type { WelliApp } from '../state/useWelliApp';
 
 const PALETTE = {
@@ -185,6 +186,8 @@ export function HomeScreen({ app }: { app: WelliApp }) {
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
       >
+        <OfflineSyncBanner />
+
         <Text style={styles.greeting}>Good day</Text>
         <Text style={styles.name}>{memberName}</Text>
 
@@ -413,6 +416,52 @@ export function HomeScreen({ app }: { app: WelliApp }) {
             ))}
           </ScrollView>
         )}
+
+        {/* ---------- Medication & Daily Dose Tracker ---------- */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Daily Pill Routine</Text>
+          <TouchableOpacity onPress={actions.openMedicationReminder}>
+            <Text style={styles.seeAllText}>Manage Alarms ›</Text>
+          </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={actions.openMedicationReminder}
+          style={styles.medCardOuter}
+        >
+          <View style={styles.medCardContent}>
+            <View style={styles.medIconBox}>
+              <Text style={{ fontSize: 20 }}>💊</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={styles.medCardTitle}>Medication Adherence</Text>
+                <View style={styles.miniStreakPill}>
+                  <Text style={styles.miniStreakPillText}>🔥 7-Day Streak</Text>
+                </View>
+              </View>
+              <Text style={styles.medCardSub}>
+                Amlodipine 5mg (Morning) · Metformin 500mg (Evening)
+              </Text>
+              <View style={styles.medProgressBarBox}>
+                <View style={styles.medProgressBarTrack}>
+                  <View style={[styles.medProgressBarFill, { width: '50%' }]} />
+                </View>
+                <Text style={styles.medProgressText}>1 of 2 doses taken today (50%)</Text>
+              </View>
+            </View>
+            <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+              <Path
+                d="M9 18l6-6-6-6"
+                stroke={PALETTE.muted}
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </Svg>
+          </View>
+        </TouchableOpacity>
 
         {/* ---------- Recent records ---------- */}
         <View style={styles.sectionHeaderRow}>
@@ -910,5 +959,74 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     color: PALETTE.muted,
     marginTop: 2,
+  },
+  medCardOuter: {
+    backgroundColor: PALETTE.white,
+    borderWidth: 1,
+    borderColor: PALETTE.paperLine,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 20,
+    shadowColor: '#000000',
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  medCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  medIconBox: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: '#dbeafe',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  medCardTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: PALETTE.text,
+  },
+  miniStreakPill: {
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  miniStreakPillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#b45309',
+  },
+  medCardSub: {
+    fontSize: 11.5,
+    color: PALETTE.muted,
+    marginTop: 2,
+  },
+  medProgressBarBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  medProgressBarTrack: {
+    flex: 1,
+    height: 5,
+    backgroundColor: '#e2e8f0',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  medProgressBarFill: {
+    height: '100%',
+    backgroundColor: '#10b981',
+    borderRadius: 3,
+  },
+  medProgressText: {
+    fontSize: 10.5,
+    color: '#64748b',
+    fontWeight: '600',
   },
 });

@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from "react"
+import { offlineSyncService } from "./services/offlineSyncService"
+import { medicationReminderService } from "./services/medicationReminderService"
 
 type Screen =
   | "home"
@@ -1615,102 +1617,191 @@ function Result({ go }: { go: (screen: Screen) => void }) {
 }
 
 function Medications() {
-  const [taken, setTaken] = useState(false)
+  const [doses, setDoses] = useState<
+    Array<{
+      schedule: import("./data/types").MedicationDoseSchedule
+      log?: import("./data/types").MedicationDoseLog
+    }>
+  >([])
+  const [stats, setStats] = useState<
+    import("./services/medicationReminderService").AdherenceStats | null
+  >(null)
+  const [tab, setTab] = useState<"current" | "past">("current")
+
+  const refresh = () => {
+    medicationReminderService.getTodayDoses("me").then(setDoses)
+    medicationReminderService.getAdherenceStats("me").then(setStats)
+  }
+
+  useEffect(() => {
+    refresh()
+  }, [])
+
+  const handleTake = async (scheduleId: string, currentStatus?: string) => {
+    triggerHaptic("success")
+    const nextAction = currentStatus === "taken" ? "skipped" : "taken"
+    await medicationReminderService.recordDoseAction(scheduleId, nextAction, {
+      ownerId: "me",
+    })
+    refresh()
+  }
+
+  const handleSnooze = async (scheduleId: string) => {
+    triggerHaptic("medium")
+    await medicationReminderService.recordDoseAction(scheduleId, "snoozed", {
+      snoozeMinutes: 15,
+      ownerId: "me",
+    })
+    refresh()
+  }
+
+  const handleSkip = async (scheduleId: string) => {
+    triggerHaptic("light")
+    await medicationReminderService.recordDoseAction(scheduleId, "skipped", {
+      skipReason: "Patient self-reported hold",
+      ownerId: "me",
+    })
+    refresh()
+  }
+
   return (
     <div className="stack">
       <div className="grid grid-cols-2 rounded-[14px] bg-[#edf2fa] p-1">
-        <button className="rounded-[11px] bg-white py-2.5 text-xs font-semibold text-[#031f50]">
-          Current · 2
+        <button
+          onClick={() => setTab("current")}
+          className={`rounded-[11px] py-2.5 text-xs font-semibold transition-all ${
+            tab === "current"
+              ? "bg-white text-[#031f50] shadow-sm"
+              : "text-[#53657c]"
+          }`}
+        >
+          Active Routine · {doses.length}
         </button>
-        <button className="py-2.5 text-xs text-[#53657c]">Past · 1</button>
+        <button
+          onClick={() => setTab("past")}
+          className={`rounded-[11px] py-2.5 text-xs font-semibold transition-all ${
+            tab === "past"
+              ? "bg-white text-[#031f50] shadow-sm"
+              : "text-[#53657c]"
+          }`}
+        >
+          Completed Courses · 1
+        </button>
       </div>
-      <Card className="bg-[#edf2fa]">
-        <div className="flex items-center justify-between">
-          <p className="text-[15px] font-semibold text-[#031f50]">
-            This week’s routine
-          </p>
-          <span className="text-[11px] font-semibold">6 of 7 taken</span>
-        </div>
-        <div className="mt-4 grid grid-cols-7 gap-2">
-          {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
-            <div className="text-center" key={`${d}-${i}`}>
-              <span
-                className={`mx-auto flex size-8 items-center justify-center rounded-full ${
-                  i === 4 ? "bg-white" : "bg-[#031f50]"
-                }`}
-              >
-                <Icon src={i === 4 ? icons.minus : icons.check} size={15} />
-              </span>
-              <span className="mt-1 block text-[10px] text-[#53657c]">{d}</span>
+
+      {/* Routine & Adherence Streak Card */}
+      {stats && (
+        <Card className="bg-[#edf2fa]">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[15px] font-bold text-[#031f50]">
+                This week’s adherence
+              </p>
+              <p className="text-[11px] font-semibold text-amber-700">
+                🔥 {stats.streakDays}-Day Adherence Streak
+              </p>
             </div>
-          ))}
-        </div>
-        <p className="mt-3 text-[11px] text-[#53657c]">
-          Amlodipine: 6 Taken, 1 Skipped. Self-reported dose logs, not proof of
-          use.
-        </p>
-      </Card>
-      <SectionTitle>Today · 3 October</SectionTitle>
-      <Card>
-        <div className="flex items-center justify-between">
-          <Icon src={icons.pill} />
-          <Badge tone="amber">8:00 PM reminder</Badge>
-        </div>
-        <h2 className="mt-4 text-lg font-bold text-[#031f50]">
-          Ferrous sulfate · 200 mg
-        </h2>
-        <p className="mt-3 text-sm leading-[1.45] text-[#173b71]">
-          1 tablet by mouth · Once daily
-          <br />
-          Take after food, as prescribed.
-        </p>
-        <p className="mt-4 text-xs text-[#53657c]">
-          Dr Amaka Bello · 28 Sep 2026
-          <br />
-          Dispensed: HealthPlus Ikeja · 30 Sep
-        </p>
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          <button
-            className={`h-12 rounded-xl text-sm font-semibold ${
-              taken ? "bg-[#edf2fa] text-[#031f50]" : "bg-[#031f50] text-white"
-            }`}
-            onClick={() => setTaken(!taken)}
-          >
-            {taken ? "Undo taken" : "✓  Taken"}
-          </button>
-          <button className="h-12 rounded-xl border border-[#dae2ee] text-sm font-semibold text-[#031f50]">
-            Snooze
-          </button>
-        </div>
-        <button className="mt-3 w-full text-xs font-semibold text-[#53657c]">
-          Mark skipped · Add a reason
-        </button>
-      </Card>
-      <Card>
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-[#031f50]">
-            Amlodipine · 5 mg
-          </h2>
-          <Badge>Taken</Badge>
-        </div>
-        <p className="mt-3 text-sm text-[#173b71]">
-          1 tablet by mouth · Once daily
-          <br />
-          Take at the same time each morning.
-        </p>
-        <p className="mt-4 text-xs text-[#53657c]">
-          Today’s dose logged at 8:06 AM
-        </p>
-        <div className="mt-3">
-          <Badge>Verified prescription</Badge>
-        </div>
-      </Card>
+            <span className="text-xs font-bold text-[#031f50]">
+              {stats.todayTaken} of {stats.todayTotal} taken today
+            </span>
+          </div>
+          <div className="mt-4 grid grid-cols-7 gap-2">
+            {stats.weeklyLogs.map((item, i) => {
+              const isDone = item.status === "complete"
+              return (
+                <div className="text-center" key={`${item.date}-${i}`}>
+                  <span
+                    className={`mx-auto flex size-8 items-center justify-center rounded-full transition-all ${
+                      isDone
+                        ? "bg-[#10b981] text-white"
+                        : item.status === "partial"
+                        ? "bg-[#f59e0b] text-white"
+                        : "bg-white text-[#53657c] border border-slate-300"
+                    }`}
+                  >
+                    <Icon src={isDone ? icons.check : icons.minus} size={15} />
+                  </span>
+                  <span className="mt-1 block text-[10px] font-medium text-[#53657c]">
+                    {item.dayLetter}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+          <p className="mt-3 text-[11px] text-[#53657c]">
+            {stats.monthlyCompliancePercent}% overall 30-day compliance. Self-reported dose logs for clinician review.
+          </p>
+        </Card>
+      )}
+
+      <SectionTitle>Today’s Dose Schedule</SectionTitle>
+
+      {/* Dose Cards */}
+      {doses.map(({ schedule, log }) => {
+        const isTaken = log?.status === "taken"
+        const isSnoozed = log?.status === "snoozed"
+        const isSkipped = log?.status === "skipped"
+
+        return (
+          <Card key={schedule.id}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Icon src={icons.pill} />
+                <span className="text-xs font-bold text-slate-700">
+                  ⏰ {schedule.time}
+                </span>
+              </div>
+              <Badge tone={isTaken ? undefined : isSnoozed ? "amber" : "blue"}>
+                {isTaken ? "✓ Taken" : isSnoozed ? "⏰ Snoozed (15m)" : isSkipped ? "Skipped" : "Due"}
+              </Badge>
+            </div>
+
+            <h2 className="mt-3 text-lg font-bold text-[#031f50]">
+              {schedule.medicationName}
+            </h2>
+            <p className="text-xs font-semibold text-blue-700 mt-0.5">
+              {schedule.dosage}
+            </p>
+            <p className="mt-2 text-xs leading-[1.45] text-[#53657c]">
+              💡 {schedule.instruction}
+            </p>
+
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <button
+                className={`h-11 rounded-xl text-sm font-semibold transition-all cursor-pointer ${
+                  isTaken
+                    ? "bg-[#edf2fa] text-[#031f50] border border-[#dae2ee]"
+                    : "bg-[#031f50] text-white hover:bg-[#02173d]"
+                }`}
+                onClick={() => handleTake(schedule.id, log?.status)}
+              >
+                {isTaken ? "Undo taken" : "✓  Take Dose"}
+              </button>
+              <button
+                className="h-11 rounded-xl border border-[#dae2ee] text-sm font-semibold text-[#031f50] hover:bg-slate-50 transition-all cursor-pointer"
+                onClick={() => handleSnooze(schedule.id)}
+              >
+                Snooze (15m)
+              </button>
+            </div>
+
+            {!isTaken && !isSkipped && (
+              <button
+                onClick={() => handleSkip(schedule.id)}
+                className="mt-3 w-full text-xs font-semibold text-[#53657c] hover:text-slate-800 transition-colors cursor-pointer"
+              >
+                Mark skipped · Add note
+              </button>
+            )}
+          </Card>
+        )
+      })}
+
       <Guidance title="Safety information, not prescribing advice" tone="amber">
-        Penicillin allergy is on your record. Ask your clinician or pharmacist
-        before changes.
+        Penicillin allergy is on your record. Ask your clinician or pharmacist before changes.
       </Guidance>
       <Row
-        detail="8:00 AM & 8:00 PM · Notifications enabled"
+        detail="Daily recurring phone notifications enabled"
         icon={icons.bell}
         title="Reminder preferences"
       />
@@ -2634,16 +2725,22 @@ function BookingReview({
 }
 
 function Offline({ go }: { go: (screen: Screen) => void }) {
+  const [queueCount, setQueueCount] = useState(0)
+
+  useEffect(() => {
+    offlineSyncService.getQueueCount().then(setQueueCount)
+    return offlineSyncService.subscribe((s) => setQueueCount(s.pendingCount))
+  }, [])
+
   return (
     <div className="stack">
       <ScreenIntro
-        copy="Some saved information is available on this device."
-        eyebrow="RELIABILITY · CACHED VIEW · 3 OCT 2026"
+        copy="Emergency medical profile and offline records vault are securely cached on this device."
+        eyebrow="RELIABILITY · SECURE CACHED VAULT · OFFLINE READY"
         title="You’re offline"
       />
-      <Guidance title="Last synced 3 Oct 2026, 08:42" tone="amber">
-        Africa/Lagos · Saved information may be out of date. This view cannot
-        confirm recent clinical changes or current access permissions.
+      <Guidance title="Offline Vault Active" tone="amber">
+        Saved medical records and Emergency QR remain accessible without internet. Any new records or edits are safely queued and will auto-sync once connection restores.
       </Guidance>
       <Card>
         <Badge>Cached emergency basics</Badge>
@@ -2655,7 +2752,7 @@ function Offline({ go }: { go: (screen: Screen) => void }) {
           <br />
           Penicillin allergy · Rash
           <br />
-          Provider-confirmed source at last sync
+          Hygeia HMO: HYG-90214-LAG
         </p>
         <p className="mt-3 text-sm text-[#53657c]">
           Emergency contact: Chidi Okafor · Husband
@@ -2663,35 +2760,33 @@ function Offline({ go }: { go: (screen: Screen) => void }) {
           +234 803 555 0142
         </p>
         <p className="mt-3 text-xs text-[#53657c]">
-          Confirm current details with the patient or clinician; do not assume
-          this is a live record.
+          Offline QR code is valid for paramedics and first responders at all times.
         </p>
       </Card>
-      <SectionTitle>Waiting for connection</SectionTitle>
+      <SectionTitle>Sync queue status</SectionTitle>
       <Card>
         <Row
-          detail="Full blood count.pdf · 284 KB"
+          detail={queueCount > 0 ? `${queueCount} pending change(s) in local queue` : "All records synchronized"}
           icon={icons.cloudUpload}
-          title="1 queued upload"
+          title={queueCount > 0 ? `${queueCount} queued mutations` : "Queue clear"}
         />
         <div className="mt-4">
-          <Badge tone="amber">Consented queue · Not uploaded</Badge>
+          <Badge tone={queueCount > 0 ? "amber" : undefined}>
+            {queueCount > 0 ? "Awaiting connection to sync" : "Everything saved locally"}
+          </Badge>
         </div>
-        <p className="mt-3 text-xs leading-[1.45] text-[#53657c]">
-          You chose to queue this file. It awaits connection; it is not added to
-          your record.
-        </p>
       </Card>
-      <Guidance title="Low-data mode · On">
-        Sync text first. Download PDFs on Wi-Fi. No sensitive health details
-        sent by SMS.
-      </Guidance>
-      <Guidance title="Consent changes need you online">
-        Granting or revoking access requires online confirmation.
-      </Guidance>
-      <PrimaryButton onClick={() => go("records")}>Check connection</PrimaryButton>
-      <SecondaryButton onClick={() => go("profile")}>
-        View saved emergency basics
+      <PrimaryButton
+        onClick={() => {
+          triggerHaptic("medium")
+          offlineSyncService.setSimulatedOffline(false)
+          go("records")
+        }}
+      >
+        Restore connection & Sync
+      </PrimaryButton>
+      <SecondaryButton onClick={() => go("records")}>
+        Browse cached records vault
       </SecondaryButton>
     </div>
   )
@@ -4300,6 +4395,19 @@ export default function App() {
     contentRef.current?.scrollTo({ top: 0, behavior: "auto" })
   }, [screen])
 
+  const [networkSync, setNetworkSync] = useState({
+    isOnline: offlineSyncService.isOnline(),
+    isSyncing: false,
+    pendingCount: 0,
+    lastSyncedAt: null as number | null,
+  })
+
+  useEffect(() => {
+    return offlineSyncService.subscribe((s) => {
+      setNetworkSync(s)
+    })
+  }, [])
+
   const mainScreen = nav.some(([id]) => id === screen)
   const entryScreens: Screen[] = [
     "welcome",
@@ -4324,7 +4432,7 @@ export default function App() {
   const goBack = () => {
     triggerHaptic("light")
     setScreenHistory((current) => {
-      const previous = current.at(-1)
+      const previous = current[current.length - 1]
       if (!previous) return current
       setScreen(previous)
       contentRef.current?.scrollTo({ top: 0, behavior: "auto" })
@@ -4576,6 +4684,35 @@ export default function App() {
             </button>
           </div>
 
+          {/* Offline / Online Network Simulator Toggle */}
+          <button
+            onClick={() => {
+              triggerHaptic("medium")
+              offlineSyncService.setSimulatedOffline(networkSync.isOnline)
+            }}
+            className={`text-xs px-2.5 py-1.5 rounded-xl transition-all font-semibold flex items-center gap-1.5 border cursor-pointer ${
+              networkSync.isOnline
+                ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25"
+                : "bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30 shadow-[0_0_12px_rgba(245,158,11,0.2)]"
+            }`}
+            title={networkSync.isOnline ? "Simulate Offline Mode" : "Restore Online Connection"}
+          >
+            <span
+              className={`size-2 rounded-full ${
+                networkSync.isOnline ? "bg-emerald-400 animate-pulse" : "bg-amber-400"
+              }`}
+            />
+            <span>{networkSync.isOnline ? "Online" : "Offline (Simulated)"}</span>
+            {networkSync.pendingCount > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500/30 text-amber-200">
+                {networkSync.pendingCount} queued
+              </span>
+            )}
+            {networkSync.isSyncing && (
+              <span className="text-[10px] text-sky-300 animate-spin">⟳</span>
+            )}
+          </button>
+
           {/* Reset / Sign Out */}
           <button
             onClick={() => {
@@ -4644,6 +4781,29 @@ export default function App() {
             )}
           </div>
         </header>
+
+        {/* Offline Vault & Sync Alert Banner */}
+        {!networkSync.isOnline && (
+          <div className="bg-gradient-to-r from-amber-600 to-amber-700 text-white text-xs px-3.5 py-2 flex items-center justify-between shadow-sm shrink-0 border-b border-amber-800/40">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-amber-200 font-bold shrink-0">⚡</span>
+              <span className="font-semibold text-[11.5px] truncate text-amber-50">
+                Offline Mode · Local Vault Cached
+              </span>
+              {networkSync.pendingCount > 0 && (
+                <span className="bg-black/30 text-amber-100 px-1.5 py-0.5 rounded-full text-[10px] font-bold shrink-0">
+                  {networkSync.pendingCount} queued
+                </span>
+              )}
+            </div>
+            <button
+              onClick={() => go("offline")}
+              className="text-[11px] underline font-bold text-amber-100 hover:text-white shrink-0 ml-2 cursor-pointer"
+            >
+              Details
+            </button>
+          </div>
+        )}
 
         {/* Scrollable Screen Content Container */}
         <main

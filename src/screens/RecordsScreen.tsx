@@ -12,6 +12,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { Chip } from '../components/Chip';
 import { RECORD_META, RECORD_TYPES } from '../data/mockData';
 import { hapticFeedback } from '../utils/haptics';
+import { OfflineSyncBanner } from '../components/OfflineSyncBanner';
 import type { WelliApp } from '../state/useWelliApp';
 
 export function RecordsScreen({ app }: { app: WelliApp }) {
@@ -89,6 +90,9 @@ export function RecordsScreen({ app }: { app: WelliApp }) {
           </Svg>
         </TouchableOpacity>
       </View>
+
+      {/* Offline Sync Banner */}
+      <OfflineSyncBanner />
 
       {/* Child Immunization Interactive Widget (if Child Dependent Active) */}
       {activeMember.isChild && (

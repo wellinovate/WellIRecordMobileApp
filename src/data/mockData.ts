@@ -15,6 +15,8 @@ import type {
   ImmunizationMilestone,
   VitalLogEntry,
   PrescriptionItem,
+  MedicationDoseSchedule,
+  MedicationDoseLog,
 } from './types';
 
 export const RECORD_META: Record<RecordType, { tint: string; emoji: string }> = {
@@ -222,6 +224,42 @@ export const INITIAL_PRESCRIPTIONS: PrescriptionItem[] = [
     eta: 'Completed',
     hmoProvider: 'Hygeia HMO (80% Coverage)',
     notes: 'Pediatric antibiotic course completed.',
+  },
+];
+
+export const INITIAL_DOSE_SCHEDULES: MedicationDoseSchedule[] = [
+  {
+    id: 'dose-amlodipine-morning',
+    prescriptionId: 'rx-1',
+    ownerId: 'me',
+    medicationName: 'Amlodipine Besylate 5mg',
+    dosage: '1 Tablet (5mg)',
+    instruction: 'Take with a glass of water before breakfast',
+    time: '08:00',
+    period: 'morning',
+    notificationEnabled: true,
+  },
+  {
+    id: 'dose-metformin-evening',
+    prescriptionId: 'rx-2',
+    ownerId: 'me',
+    medicationName: 'Metformin HCl 500mg ER',
+    dosage: '1 Tablet (500mg)',
+    instruction: 'Take after dinner with food to reduce GI upset',
+    time: '20:00',
+    period: 'evening',
+    notificationEnabled: true,
+  },
+  {
+    id: 'dose-lisinopril-morning',
+    prescriptionId: 'rx-3',
+    ownerId: 'nkechi',
+    medicationName: 'Lisinopril 10mg / HCTZ',
+    dosage: '1 Tablet',
+    instruction: 'Take in the morning with water',
+    time: '08:30',
+    period: 'morning',
+    notificationEnabled: true,
   },
 ];
 

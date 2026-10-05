@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
   ScrollView,
   StyleSheet,
   Modal,
+  TouchableOpacity,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -12,6 +14,8 @@ import QRCode from 'react-native-qrcode-svg';
 import Svg, { Path } from 'react-native-svg';
 import { ModalHeader } from '../components/ModalHeader';
 import { formatDob } from '../utils/formatDate';
+import { offlineSyncService } from '../services/offlineSyncService';
+import { hapticFeedback } from '../utils/haptics';
 import type { WelliApp } from '../state/useWelliApp';
 
 export function EmergencyModal({ app }: { app: WelliApp }) {
@@ -22,6 +26,34 @@ export function EmergencyModal({ app }: { app: WelliApp }) {
     family.find((f) => f.id === state.activeFamilyId) ?? family[0];
   const isDependent = emergencyMember.role === 'dependent';
   const guardianLine = isDependent ? `Guardian: ${family[0].name}` : null;
+
+  useEffect(() => {
+    if (emergencyMember) {
+      offlineSyncService.cacheEmergencyProfile({
+        id: emergencyMember.id,
+        name: emergencyMember.name,
+        wrId: emergencyMember.wrId,
+        dob: emergencyMember.dob,
+        bloodType: emergencyMember.bloodType,
+        genotype: emergencyMember.genotype,
+        allergies: emergencyMember.allergies,
+        conditions: emergencyMember.conditions,
+        contact: emergencyMember.contact,
+        emergencyContacts: emergencyMember.emergencyContacts,
+        hmoProvider: (emergencyMember as any).hmoProvider,
+        hmoPolicyNumber: (emergencyMember as any).hmoPolicyNumber,
+        qrPayload: `https://wellirecord.com/emergency/${emergencyMember.wrId || emergencyMember.id}`,
+      });
+    }
+  }, [emergencyMember]);
+
+  const handleCallContact = () => {
+    const phoneDigits = emergencyMember.contact.replace(/[^0-9+]/g, '');
+    if (phoneDigits) {
+      hapticFeedback.medium();
+      Linking.openURL(`tel:${phoneDigits}`).catch(() => {});
+    }
+  };
 
   return (
     <Modal
@@ -50,15 +82,30 @@ export function EmergencyModal({ app }: { app: WelliApp }) {
             style={styles.idCard}
           >
             <View style={styles.badgeRow}>
-              <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-                <Path
-                  d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6l7-3z"
-                  stroke="#fbbf24"
-                  strokeWidth={1.8}
-                  strokeLinejoin="round"
-                />
-              </Svg>
-              <Text style={styles.idCardBadgeText}>Emergency Medical ID</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+                  <Path
+                    d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6l7-3z"
+                    stroke="#fbbf24"
+                    strokeWidth={1.8}
+                    strokeLinejoin="round"
+                  />
+                </Svg>
+                <Text style={styles.idCardBadgeText}>Emergency Medical ID</Text>
+              </View>
+
+              <View style={styles.offlineReadyPill}>
+                <Svg width={11} height={11} viewBox="0 0 24 24" fill="none">
+                  <Path
+                    d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"
+                    stroke="#10b981"
+                    strokeWidth={2.5}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </Svg>
+                <Text style={styles.offlineReadyText}>Offline Cached</Text>
+              </View>
             </View>
 
             <Text style={styles.memberName}>{emergencyMember.name}</Text>
@@ -98,19 +145,35 @@ export function EmergencyModal({ app }: { app: WelliApp }) {
             <View style={styles.fieldBlock}>
               <Text style={styles.fieldLabel}>Emergency Contact</Text>
               <Text style={styles.contactValue}>{emergencyMember.contact}</Text>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={handleCallContact}
+                style={styles.callContactBtn}
+              >
+                <Svg width={13} height={13} viewBox="0 0 24 24" fill="none">
+                  <Path
+                    d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"
+                    stroke="#ffffff"
+                    strokeWidth={2.2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </Svg>
+                <Text style={styles.callContactBtnText}>Call Emergency Contact</Text>
+              </TouchableOpacity>
             </View>
           </LinearGradient>
 
           {/* First Responders QR Box */}
           <View style={styles.qrCard}>
             <QRCode
-              value={`https://welli.link/emergency/${emergencyMember.id}`}
+              value={`https://wellirecord.com/emergency/${emergencyMember.wrId || emergencyMember.id}`}
               size={140}
               color="#0f172a"
               backgroundColor="#ffffff"
             />
             <Text style={styles.qrCaption}>
-              First responders can scan for full profile
+              First responders can scan for offline medical profile
             </Text>
           </View>
         </ScrollView>
@@ -231,5 +294,38 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#64748b',
     textAlign: 'center',
+  },
+  offlineReadyPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(16, 185, 129, 0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.4)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
+  offlineReadyText: {
+    color: '#6ee7b7',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  callContactBtn: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#2563eb',
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+  },
+  callContactBtnText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '700',
   },
 });

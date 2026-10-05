@@ -41,6 +41,7 @@ import { PrintLabResultModal } from './modals/PrintLabResultModal';
 import { EmailReportModal } from './modals/EmailReportModal';
 import { PrescriptionRefillModal } from './modals/PrescriptionRefillModal';
 import { OrderMedicationModal } from './modals/OrderMedicationModal';
+import { MedicationReminderModal } from './modals/MedicationReminderModal';
 import { PharmacyDirectoryModal } from './modals/PharmacyDirectoryModal';
 import { LabDirectoryModal } from './modals/LabDirectoryModal';
 import { VaultExportModal } from './modals/VaultExportModal';
@@ -274,6 +275,7 @@ function MainWelliApp() {
           {Boolean(state.showEmailLabResult) && <EmailReportModal app={app} />}
           {Boolean(state.showRefillModal) && <PrescriptionRefillModal app={app} />}
           {Boolean(state.showOrderMedication) && <OrderMedicationModal app={app} />}
+          {Boolean(state.showMedicationReminder) && <MedicationReminderModal app={app} />}
           {Boolean(state.showPharmacyDirectory) && <PharmacyDirectoryModal app={app} />}
           {Boolean(state.showLabDirectory) && <LabDirectoryModal app={app} />}
           {Boolean(state.showVaultExport) && <VaultExportModal app={app} />}

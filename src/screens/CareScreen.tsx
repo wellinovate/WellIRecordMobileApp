@@ -373,6 +373,13 @@ export function CareScreen({ app }: { app: WelliApp }) {
             <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', marginLeft: 'auto' }}>
               <TouchableOpacity
                 activeOpacity={0.8}
+                onPress={actions.openMedicationReminder}
+                style={[styles.rxLocatorBtn, { backgroundColor: theme.surface2, borderColor: theme.border }]}
+              >
+                <Text style={[styles.rxLocatorBtnText, { color: '#0284c7' }]}>⏰ Alarms</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                activeOpacity={0.8}
                 onPress={actions.openPharmacyDirectory}
                 style={[styles.rxLocatorBtn, { backgroundColor: theme.surface2, borderColor: theme.border }]}
               >
@@ -383,7 +390,7 @@ export function CareScreen({ app }: { app: WelliApp }) {
                 onPress={actions.openOrderMedication}
                 style={styles.orderNewBtn}
               >
-                <Text style={styles.orderNewBtnText}>+ Order New</Text>
+                <Text style={styles.orderNewBtnText}>+ Order</Text>
               </TouchableOpacity>
             </View>
           </View>

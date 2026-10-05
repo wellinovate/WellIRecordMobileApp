@@ -5,3 +5,5 @@ export * from './recordsService';
 export * from './sharingService';
 export * from './pharmacyService';
 export * from './careService';
+export * from './offlineSyncService';
+export * from './medicationReminderService';
