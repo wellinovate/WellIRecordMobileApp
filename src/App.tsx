@@ -159,9 +159,12 @@ function Card({
   const borderClass = className.includes("border-[")
     ? ""
     : "border-[#dae2ee]"
+  const interactiveClass = onClick
+    ? "mobile-card-press cursor-pointer hover:border-[#b9ccf0] active:scale-[0.985] transition-all duration-150 select-none shadow-xs"
+    : ""
   return (
     <div
-      className={`w-full rounded-[20px] border p-[18px] text-left ${backgroundClass} ${borderClass} ${className}`}
+      className={`w-full rounded-[20px] border p-[18px] text-left ${backgroundClass} ${borderClass} ${interactiveClass} ${className}`}
       onClick={onClick}
       onKeyDown={
         onClick
@@ -184,15 +187,20 @@ function Card({
 function SectionTitle({
   children,
   action,
+  onAction,
 }: {
   children: React.ReactNode
   action?: string
+  onAction?: () => void
 }) {
   return (
     <div className="flex items-center justify-between">
       <h2 className="text-[17px] font-bold text-[#031f50]">{children}</h2>
       {action && (
-        <button className="text-xs font-semibold text-[#24518c]">
+        <button
+          onClick={onAction}
+          className="mobile-tap text-xs font-semibold text-[#24518c] active:opacity-75 transition-opacity"
+        >
           {action}
         </button>
       )}
@@ -214,10 +222,12 @@ function Row({
   const Tag = onClick ? "button" : "div"
   return (
     <Tag
-      className="flex w-full items-center gap-3 text-left"
+      className={`flex w-full items-center gap-3 text-left ${
+        onClick ? "mobile-tap cursor-pointer active:scale-[0.99] select-none" : ""
+      }`}
       onClick={onClick}
     >
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#edf2fa]">
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#edf2fa] transition-transform">
         <Icon size={20} src={icon} />
       </span>
       <span className="min-w-0 flex-1">
@@ -270,8 +280,8 @@ function PrimaryButton({
 }) {
   return (
     <button
-      className={`min-h-[50px] w-full rounded-[14px] px-4 text-sm font-semibold text-white ${
-        danger ? "bg-[#af4540]" : "bg-[#031f50]"
+      className={`mobile-tap min-h-[50px] w-full rounded-[14px] px-4 text-sm font-semibold text-white shadow-xs active:shadow-none active:scale-[0.97] transition-all duration-150 ${
+        danger ? "bg-[#af4540] active:bg-[#8f3833]" : "bg-[#031f50] active:bg-[#021538]"
       }`}
       onClick={onClick}
     >
@@ -289,7 +299,7 @@ function SecondaryButton({
 }) {
   return (
     <button
-      className="min-h-[50px] w-full rounded-[14px] border border-[#dae2ee] bg-white px-4 text-sm font-semibold text-[#031f50]"
+      className="mobile-tap min-h-[50px] w-full rounded-[14px] border border-[#dae2ee] bg-white px-4 text-sm font-semibold text-[#031f50] active:scale-[0.97] active:bg-[#f1f5f9] transition-all duration-150"
       onClick={onClick}
     >
       {children}
@@ -297,16 +307,540 @@ function SecondaryButton({
   )
 }
 
+function triggerHaptic(type: "light" | "medium" | "heavy" | "success" = "light") {
+  if (typeof window !== "undefined" && "vibrate" in navigator) {
+    try {
+      if (type === "light") navigator.vibrate(8)
+      else if (type === "medium") navigator.vibrate(16)
+      else if (type === "heavy") navigator.vibrate(28)
+      else if (type === "success") navigator.vibrate([10, 30, 15])
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function ToastNotification({
+  message,
+  onDismiss,
+}: {
+  message: string | null
+  onDismiss: () => void
+}) {
+  if (!message) return null
+  return (
+    <div className="absolute top-16 inset-x-4 z-50 flex justify-center pointer-events-none">
+      <div className="animate-toast-pop flex items-center gap-2.5 rounded-full bg-[#031f50] px-4 py-2.5 text-xs font-semibold text-white shadow-xl border border-white/20 pointer-events-auto select-none">
+        <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white text-[11px] font-bold">
+          ✓
+        </span>
+        <span className="truncate max-w-[280px]">{message}</span>
+        <button
+          onClick={() => {
+            triggerHaptic("light")
+            onDismiss()
+          }}
+          className="ml-1 text-slate-300 hover:text-white text-xs font-bold"
+        >
+          ✕
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function BottomSheet({
+  isOpen,
+  onClose,
+  title,
+  subtitle,
+  children,
+}: {
+  isOpen: boolean
+  onClose: () => void
+  title: string
+  subtitle?: string
+  children: React.ReactNode
+}) {
+  const [dragY, setDragY] = useState(0)
+  const touchStartY = useRef(0)
+  const isDragging = useRef(false)
+
+  if (!isOpen) return null
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartY.current = e.touches[0].clientY
+    isDragging.current = true
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging.current) return
+    const deltaY = e.touches[0].clientY - touchStartY.current
+    if (deltaY > 0) {
+      setDragY(deltaY)
+    }
+  }
+
+  const handleTouchEnd = () => {
+    isDragging.current = false
+    if (dragY > 70) {
+      triggerHaptic("light")
+      onClose()
+    }
+    setDragY(0)
+  }
+
+  return (
+    <div className="absolute inset-0 z-40 flex flex-col justify-end bg-black/60 backdrop-blur-xs transition-opacity duration-300 select-none">
+      {/* Backdrop tap to dismiss */}
+      <div
+        className="flex-1 w-full"
+        onClick={() => {
+          triggerHaptic("light")
+          onClose()
+        }}
+      />
+
+      {/* Slide-up Sheet */}
+      <div
+        style={{
+          transform: dragY > 0 ? `translateY(${dragY}px)` : undefined,
+          transition: dragY === 0 ? "transform 0.25s cubic-bezier(0.32, 0.72, 0, 1)" : "none",
+        }}
+        className="animate-sheet-up w-full bg-white rounded-t-[28px] border-t border-slate-200/90 shadow-2xl p-5 pb-8 max-h-[88%] flex flex-col"
+      >
+        {/* Grab Handle */}
+        <div
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          className="cursor-grab active:cursor-grabbing py-2 -mt-2 mb-2 flex justify-center touch-none select-none"
+        >
+          <div className="h-1.5 w-12 rounded-full bg-slate-300 transition-colors hover:bg-slate-400" />
+        </div>
+
+        {/* Header */}
+        <div
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          className="flex items-start justify-between mb-4 touch-none select-none"
+        >
+          <div>
+            <h3 className="text-lg font-bold text-[#031f50] leading-tight">{title}</h3>
+            {subtitle && <p className="text-xs text-[#53657c] mt-0.5">{subtitle}</p>}
+          </div>
+          <button
+            onClick={() => {
+              triggerHaptic("light")
+              onClose()
+            }}
+            aria-label="Close sheet"
+            className="mobile-tap size-8 rounded-full bg-[#edf2fa] flex items-center justify-center text-slate-500 hover:text-[#031f50] active:scale-90 text-sm font-bold transition-transform"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Scrollable Sheet Content */}
+        <div className="flex-1 overflow-y-auto overscroll-contain pr-1">
+          {children}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function FilterBottomSheet({
+  isOpen,
+  onClose,
+  onApply,
+}: {
+  isOpen: boolean
+  onClose: () => void
+  onApply: (filter: string) => void
+}) {
+  const [selectedType, setSelectedType] = useState("All")
+  const [selectedPeriod, setSelectedPeriod] = useState("All time")
+  const [selectedSource, setSelectedSource] = useState("All")
+
+  const types = ["All", "Laboratory", "Prescriptions", "Imaging", "Vaccines", "Procedures"]
+  const periods = ["All time", "Past 30 days", "Past 6 months", "Past year"]
+  const sources = ["All", "Verified Clinic", "Patient Added"]
+
+  return (
+    <BottomSheet
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Filter health records"
+      subtitle="Refine by clinical category, date or source"
+    >
+      <div className="space-y-4 text-left">
+        <div>
+          <label className="block text-xs font-bold text-[#031f50] mb-2 uppercase tracking-wider">
+            Record Type
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {types.map((type) => (
+              <button
+                key={type}
+                onClick={() => setSelectedType(type)}
+                className={`mobile-tap px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  selectedType === type
+                    ? "bg-[#031f50] text-white shadow-xs"
+                    : "bg-[#edf2fa] text-[#031f50] hover:bg-[#e2eaf5]"
+                }`}
+              >
+                {type}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold text-[#031f50] mb-2 uppercase tracking-wider">
+            Time Period
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {periods.map((period) => (
+              <button
+                key={period}
+                onClick={() => setSelectedPeriod(period)}
+                className={`mobile-tap px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  selectedPeriod === period
+                    ? "bg-[#031f50] text-white shadow-xs"
+                    : "bg-[#edf2fa] text-[#031f50] hover:bg-[#e2eaf5]"
+                }`}
+              >
+                {period}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold text-[#031f50] mb-2 uppercase tracking-wider">
+            Verification Source
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {sources.map((source) => (
+              <button
+                key={source}
+                onClick={() => setSelectedSource(source)}
+                className={`mobile-tap px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  selectedSource === source
+                    ? "bg-[#031f50] text-white shadow-xs"
+                    : "bg-[#edf2fa] text-[#031f50] hover:bg-[#e2eaf5]"
+                }`}
+              >
+                {source}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="pt-2 flex gap-2.5">
+          <button
+            onClick={() => {
+              setSelectedType("All")
+              setSelectedPeriod("All time")
+              setSelectedSource("All")
+            }}
+            className="mobile-tap flex-1 py-3 rounded-xl border border-[#dae2ee] bg-white text-xs font-bold text-[#031f50]"
+          >
+            Reset
+          </button>
+          <button
+            onClick={() => {
+              onApply(selectedType)
+              onClose()
+            }}
+            className="mobile-tap flex-2 py-3 rounded-xl bg-[#031f50] text-xs font-bold text-white shadow-sm"
+          >
+            Apply Filters
+          </button>
+        </div>
+      </div>
+    </BottomSheet>
+  )
+}
+
+function ShareConsentBottomSheet({
+  isOpen,
+  onClose,
+  onShare,
+}: {
+  isOpen: boolean
+  onClose: () => void
+  onShare: (doctor: string) => void
+}) {
+  const [selectedDoctor, setSelectedDoctor] = useState("Dr Amaka Bello (Cardiologist)")
+  const [selectedScope, setSelectedScope] = useState("Full Health Records")
+  const [selectedDuration, setSelectedDuration] = useState("24 Hours")
+
+  const doctors = [
+    "Dr Amaka Bello (Cardiologist)",
+    "Lagoon Hospital (Ikeja Facility)",
+    "SYNLAB Diagnostics (Victoria Island)",
+  ]
+  const scopes = ["Full Health Records", "Emergency Summary Only", "Recent Labs (30d)"]
+  const durations = ["24 Hours", "7 Days", "30 Days", "Revocable Anytime"]
+
+  return (
+    <BottomSheet
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Share clinical consent"
+      subtitle="Grant temporary, encrypted access to healthcare providers"
+    >
+      <div className="space-y-4 text-left">
+        <div>
+          <label className="block text-xs font-bold text-[#031f50] mb-2 uppercase tracking-wider">
+            Recipient Care Provider
+          </label>
+          <div className="space-y-1.5">
+            {doctors.map((doc) => (
+              <button
+                key={doc}
+                onClick={() => setSelectedDoctor(doc)}
+                className={`mobile-tap w-full p-3 rounded-xl border text-left flex items-center justify-between text-xs font-semibold transition-all ${
+                  selectedDoctor === doc
+                    ? "border-[#24518c] bg-[#eef4ff] text-[#031f50]"
+                    : "border-[#dae2ee] bg-white text-[#53657c]"
+                }`}
+              >
+                <span>{doc}</span>
+                {selectedDoctor === doc && (
+                  <span className="size-4 rounded-full bg-[#031f50] text-white flex items-center justify-center text-[10px]">
+                    ✓
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold text-[#031f50] mb-2 uppercase tracking-wider">
+            Access Scope
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {scopes.map((s) => (
+              <button
+                key={s}
+                onClick={() => setSelectedScope(s)}
+                className={`mobile-tap px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  selectedScope === s
+                    ? "bg-[#031f50] text-white"
+                    : "bg-[#edf2fa] text-[#031f50]"
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold text-[#031f50] mb-2 uppercase tracking-wider">
+            Duration
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            {durations.map((d) => (
+              <button
+                key={d}
+                onClick={() => setSelectedDuration(d)}
+                className={`mobile-tap p-2.5 rounded-xl text-center text-xs font-semibold transition-all ${
+                  selectedDuration === d
+                    ? "bg-[#031f50] text-white shadow-xs"
+                    : "border border-[#dae2ee] bg-white text-[#031f50]"
+                }`}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="pt-2">
+          <button
+            onClick={() => {
+              onShare(selectedDoctor)
+              onClose()
+            }}
+            className="mobile-tap w-full py-3.5 rounded-xl bg-gradient-to-r from-[#24518c] to-[#031f50] text-xs font-bold text-white shadow-md flex items-center justify-center gap-2"
+          >
+            <span>🔐</span>
+            <span>Authorize & Generate Access Pass</span>
+          </button>
+        </div>
+      </div>
+    </BottomSheet>
+  )
+}
+
+function EmergencyQrBottomSheet({
+  isOpen,
+  onClose,
+  onCopy,
+}: {
+  isOpen: boolean
+  onClose: () => void
+  onCopy: () => void
+}) {
+  return (
+    <BottomSheet
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Emergency Medical Pass"
+      subtitle="Critical health data accessible without device unlock"
+    >
+      <div className="space-y-4 text-center">
+        {/* Scannable Emergency QR Box */}
+        <div className="mx-auto w-48 h-48 rounded-2xl bg-white p-3 border-2 border-[#031f50] shadow-md flex flex-col items-center justify-center relative">
+          <img
+            src={icons.emergencyQr}
+            alt="Emergency QR"
+            className="size-36 object-contain"
+          />
+          <div className="absolute top-2 right-2 flex size-2.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full size-2.5 bg-emerald-500"></span>
+          </div>
+        </div>
+
+        {/* Patient Vitals Quick Row */}
+        <div className="grid grid-cols-3 gap-2 text-left">
+          <div className="p-2.5 rounded-xl bg-[#edf2fa]">
+            <p className="text-[10px] uppercase font-bold text-[#53657c]">Blood</p>
+            <p className="text-base font-bold text-[#031f50]">O+</p>
+          </div>
+          <div className="p-2.5 rounded-xl bg-[#edf2fa]">
+            <p className="text-[10px] uppercase font-bold text-[#53657c]">Genotype</p>
+            <p className="text-base font-bold text-[#031f50]">AA</p>
+          </div>
+          <div className="p-2.5 rounded-xl bg-[#fbeae8]">
+            <p className="text-[10px] uppercase font-bold text-[#af4540]">Allergy</p>
+            <p className="text-xs font-bold text-[#af4540] truncate">Penicillin</p>
+          </div>
+        </div>
+
+        {/* Emergency Contact */}
+        <div className="p-3 rounded-xl border border-[#dae2ee] bg-white flex items-center justify-between text-left">
+          <div>
+            <p className="text-[11px] text-[#53657c] font-medium">Next of Kin Contact</p>
+            <p className="text-xs font-bold text-[#031f50]">Chidi Okafor (Spouse)</p>
+          </div>
+          <a
+            href="tel:+2348031234567"
+            className="mobile-tap px-3 py-1.5 rounded-full bg-[#10b981] text-white text-xs font-bold flex items-center gap-1 shadow-xs"
+          >
+            <span>📞</span> Call
+          </a>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="grid grid-cols-2 gap-2 pt-1">
+          <button
+            onClick={onCopy}
+            className="mobile-tap py-3 rounded-xl border border-[#dae2ee] bg-white text-xs font-bold text-[#031f50] flex items-center justify-center gap-1.5"
+          >
+            <span>📋</span> Copy Link
+          </button>
+          <button
+            onClick={() => {
+              onCopy()
+              onClose()
+            }}
+            className="mobile-tap py-3 rounded-xl bg-[#031f50] text-xs font-bold text-white shadow-xs flex items-center justify-center gap-1.5"
+          >
+            <span>📲</span> Apple Wallet
+          </button>
+        </div>
+      </div>
+    </BottomSheet>
+  )
+}
+
+function SkeletonRecords() {
+  return (
+    <div className="space-y-3 py-1 select-none">
+      {[1, 2, 3].map((n) => (
+        <div
+          key={n}
+          className="rounded-[20px] border border-[#dae2ee] bg-white p-4 shadow-xs space-y-3 relative overflow-hidden"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="size-10 rounded-xl skeleton-shimmer shrink-0" />
+              <div className="space-y-2">
+                <div className="h-4 w-36 rounded-md skeleton-shimmer" />
+                <div className="h-3 w-24 rounded-md skeleton-shimmer" />
+              </div>
+            </div>
+            <div className="h-5 w-20 rounded-full skeleton-shimmer" />
+          </div>
+          <div className="h-3.5 w-4/5 rounded-md skeleton-shimmer" />
+          <div className="flex gap-2 pt-1">
+            <div className="h-5 w-20 rounded-md skeleton-shimmer" />
+            <div className="h-5 w-28 rounded-md skeleton-shimmer" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function PullToRefreshControl({
+  isRefreshing,
+  onRefresh,
+  lastUpdated,
+}: {
+  isRefreshing: boolean
+  onRefresh: () => void
+  lastUpdated?: string
+}) {
+  return (
+    <div className="flex items-center justify-between px-1 mb-2 select-none">
+      <div className="flex items-center gap-1.5 text-[11px] text-[#718096]">
+        <span className="inline-block size-2 rounded-full bg-emerald-500 animate-pulse" />
+        <span>{lastUpdated ? `Synced ${lastUpdated}` : "Secure Vault Connected"}</span>
+      </div>
+      <button
+        onClick={() => {
+          triggerHaptic("medium")
+          onRefresh()
+        }}
+        disabled={isRefreshing}
+        className={`mobile-tap inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+          isRefreshing
+            ? "border-blue-300 bg-blue-50 text-blue-700 cursor-wait shadow-2xs"
+            : "border-[#dae2ee] bg-white text-[#24518c] hover:bg-[#edf2fa] active:scale-95 shadow-2xs"
+        }`}
+      >
+        <span className={`inline-block text-xs ${isRefreshing ? "animate-spin" : ""}`}>
+          {isRefreshing ? "🔄" : "⟳"}
+        </span>
+        <span>{isRefreshing ? "Updating vault..." : "Pull to sync"}</span>
+      </button>
+    </div>
+  )
+}
+
 function Home({
   go,
   careStage,
+  openShare,
+  openEmergency,
 }: {
   go: (screen: Screen) => void
   careStage: "scheduled" | "booked" | "checkedIn"
+  openShare?: () => void
+  openEmergency?: () => void
 }) {
   return (
     <div className="stack">
-      <Card className="welliid-card border-[#031f50] bg-[#031f50] p-5 text-white">
+      <Card className="welliid-card border-[#031f50] bg-[#031f50] p-5 text-white shadow-lg">
         <div className="flex items-center justify-between text-[11px] font-medium tracking-[0.08em] text-[#e0e9f8]">
           <span>YOUR WELLIID</span>
           <Icon src={icons.fingerprint} size={28} />
@@ -319,33 +853,44 @@ function Home({
           <br />
           Accessible when it matters.
         </p>
-        <div className="mt-5 flex flex-wrap gap-2">
-          <span className="rounded-full bg-white/10 px-3 py-1.5 text-[10px] font-semibold text-white">
-            Synced today, 08:42
-          </span>
-          <span className="rounded-full bg-white/10 px-3 py-1.5 text-[10px] font-semibold text-white">
-            Available offline
-          </span>
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap gap-2">
+            <span className="rounded-full bg-white/10 px-3 py-1.5 text-[10px] font-semibold text-white">
+              Synced today, 08:42
+            </span>
+            <span className="rounded-full bg-white/10 px-3 py-1.5 text-[10px] font-semibold text-white">
+              Available offline
+            </span>
+          </div>
+          {openEmergency && (
+            <button
+              onClick={openEmergency}
+              className="mobile-tap inline-flex items-center gap-1.5 rounded-full bg-red-500/90 hover:bg-red-500 active:scale-95 text-white px-3 py-1.5 text-[11px] font-bold shadow-md transition-all select-none"
+            >
+              <span>🚨</span>
+              <span>Emergency Pass</span>
+            </button>
+          )}
         </div>
       </Card>
 
       <div className="grid grid-cols-4 gap-2">
         {[
-          [icons.calendar, "Appointments", "bookingTime"],
-          [icons.send, "Share record", "consentExpanded"],
-          [icons.scan, "Upload", "records"],
-          [icons.lab, "Lab results", "reports"],
-        ].map(([icon, label, target]) => (
+          { icon: icons.calendar, label: "Appointments", action: () => go("bookingTime") },
+          { icon: icons.send, label: "Share record", action: openShare ? openShare : () => go("consentExpanded") },
+          { icon: icons.scan, label: "Emergency QR", action: openEmergency ? openEmergency : () => go("emergencyQr") },
+          { icon: icons.lab, label: "Lab results", action: () => go("reports") },
+        ].map((item) => (
           <button
-            className="flex flex-col items-center gap-2 text-center"
-            key={label}
-            onClick={() => go(target as Screen)}
+            className="mobile-tap flex flex-col items-center gap-2 text-center active:scale-95 select-none"
+            key={item.label}
+            onClick={item.action}
           >
-            <span className="flex size-12 items-center justify-center rounded-2xl bg-[#edf2fa]">
-              <Icon src={icon} size={23} />
+            <span className="flex size-12 items-center justify-center rounded-2xl bg-[#edf2fa] hover:bg-[#e2eaf5] transition-colors shadow-2xs">
+              <Icon src={item.icon} size={23} />
             </span>
             <span className="text-[10px] font-semibold leading-tight text-[#031f50]">
-              {label}
+              {item.label}
             </span>
           </button>
         ))}
@@ -380,7 +925,7 @@ function Home({
         </p>
       </Card>
 
-      <SectionTitle action="View timeline">Next in your care</SectionTitle>
+      <SectionTitle action="View timeline" onAction={() => go("timeline")}>Next in your care</SectionTitle>
       <Card className="space-y-4">
         <Row
           detail={
@@ -415,7 +960,7 @@ function Home({
         />
       </Card>
 
-      <SectionTitle action="View all">Recent record activity</SectionTitle>
+      <SectionTitle action="View all" onAction={() => go("reports")}>Recent record activity</SectionTitle>
       <Card onClick={() => go("reports")}>
         <Row
           detail="SYNLAB Ikeja · 29 Sep 2026"
@@ -448,115 +993,228 @@ const recordCategories = [
 function Records({
   go,
   recordAdded,
+  openFilter,
+  showToast,
+  activeFilter = "All",
+  onClearFilter,
 }: {
   go: (screen: Screen) => void
   recordAdded: boolean
+  openFilter?: () => void
+  showToast?: (msg: string) => void
+  activeFilter?: string
+  onClearFilter?: () => void
 }) {
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [lastRefreshed, setLastRefreshed] = useState("just now")
+  const [searchQuery, setSearchQuery] = useState("")
+
+  const handleRefresh = () => {
+    if (isRefreshing) return
+    setIsRefreshing(true)
+    triggerHaptic("medium")
+    setTimeout(() => {
+      setIsRefreshing(false)
+      setLastRefreshed("just now")
+      triggerHaptic("success")
+      if (showToast) showToast("Health records synchronized from secure vault ✓")
+    }, 1200)
+  }
+
+  const displayedCategories = recordCategories.filter(([_, label]) => {
+    const matchesFilter =
+      activeFilter === "All" ||
+      label.toLowerCase().includes(activeFilter.toLowerCase()) ||
+      activeFilter.toLowerCase().includes(label.toLowerCase())
+    const matchesSearch =
+      !searchQuery.trim() ||
+      label.toLowerCase().includes(searchQuery.toLowerCase())
+    return matchesFilter && matchesSearch
+  })
+
   return (
     <div className="stack">
-      <label className="flex h-[52px] items-center gap-3 rounded-[14px] border border-[#dae2ee] bg-white px-4">
-        <Icon src={icons.search} />
-        <input
-          className="w-full bg-transparent text-sm outline-none placeholder:text-[#718096]"
-          placeholder="Search a test, medicine or provider"
-        />
-      </label>
-      <Card>
-        <Row
-          detail="Ask questions using only the records you choose"
-          icon={icons.sparklesRecord}
-          title="Understand my records"
-          onClick={() => go("recordChat")}
-        />
-      </Card>
-      {recordAdded && (
-        <Guidance title="Full blood count added">
-          Your reviewed upload is now saved as Patient Added. The original file
-          and AI extraction label were retained.
-        </Guidance>
-      )}
-      <div className="grid grid-cols-2 gap-3">
-        <Card className="p-4" onClick={() => go("timeline")}>
-          <Icon src={icons.history} />
-          <p className="mt-4 text-sm font-semibold text-[#031f50]">
-            Health timeline →
-          </p>
-          <p className="mt-2 text-xs text-[#53657c]">Your story over time</p>
-        </Card>
-        <Card className="p-4" onClick={() => go("healthPassport")}>
-          <Icon src={icons.book} />
-          <p className="mt-4 text-sm font-semibold text-[#031f50]">
-            Health passport →
-          </p>
-          <p className="mt-2 text-xs text-[#53657c]">A portable summary</p>
-        </Card>
-      </div>
-      <SectionTitle>Browse your records</SectionTitle>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {recordCategories.map(([icon, label, count]) => (
-          <Card
-            className="min-h-[124px] p-4"
-            key={label}
-            onClick={
-              label === "Laboratory"
-                ? () => go("reports")
-                : label === "Medications"
-                  ? () => go("medications")
-                  : label === "Medical"
-                    ? () => go("timeline")
-                    : undefined
-            }
+      {/* Search and Filter Row */}
+      <div className="flex items-center gap-2">
+        <label className="flex flex-1 h-[52px] items-center gap-3 rounded-[14px] border border-[#dae2ee] bg-white px-4 shadow-2xs">
+          <Icon src={icons.search} />
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-transparent text-sm outline-none placeholder:text-[#718096]"
+            placeholder="Search a test, medicine or provider"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="text-xs text-slate-400 hover:text-slate-600 font-bold"
+            >
+              ✕
+            </button>
+          )}
+        </label>
+        {openFilter && (
+          <button
+            onClick={() => {
+              triggerHaptic("light")
+              openFilter()
+            }}
+            className="mobile-tap relative flex size-[52px] shrink-0 items-center justify-center rounded-[14px] border border-[#dae2ee] bg-white text-[#031f50] hover:bg-[#edf2fa] active:scale-95 transition-all shadow-2xs"
+            title="Filter records"
           >
-            <Icon src={icon} />
-            <p className="mt-4 text-sm font-semibold text-[#031f50]">{label}</p>
-            <p className="mt-1 text-xs text-[#53657c]">{count}</p>
-          </Card>
-        ))}
+            <Icon src={icons.filter} size={20} />
+            {activeFilter !== "All" && (
+              <span className="absolute top-2.5 right-2.5 size-2.5 rounded-full bg-[#2563eb] ring-2 ring-white" />
+            )}
+          </button>
+        )}
       </div>
-      <SectionTitle>Know where it came from</SectionTitle>
-      <Card className="space-y-3 text-xs text-[#53657c]">
-        <p>
-          <Badge>Verified provider</Badge>{" "}
-          <span className="ml-2">Issued by a participating care provider</span>
-        </p>
-        <p>
-          <Badge>Patient Added</Badge>{" "}
-          <span className="ml-2">Information or files you added</span>
-        </p>
-        <p>
-          <Badge>Imported</Badge>{" "}
-          <span className="ml-2">Transferred from an external record</span>
-        </p>
-      </Card>
-      <Guidance title="1 document needs your review" tone="amber">
-        AI extracted your uploaded report. Confirm the fields before adding it.
-      </Guidance>
-      <PrimaryButton onClick={() => go("uploadReview")}>
-        Upload a health document
-      </PrimaryButton>
-      <SectionTitle>Connection & reliability</SectionTitle>
-      <Card className="space-y-4">
-        <Row
-          detail="See saved information and queued work"
-          icon={icons.cloudOff}
-          title="Offline view"
-          onClick={() => go("offline")}
-        />
-        <div className="h-px bg-[#dae2ee]" />
-        <Row
-          detail="Loading state for laboratory records"
-          icon={icons.loader}
-          title="Reports are loading"
-          onClick={() => go("labsLoading")}
-        />
-        <div className="h-px bg-[#dae2ee]" />
-        <Row
-          detail="Review a preserved local upload draft"
-          icon={icons.cloudOff}
-          title="Interrupted upload"
-          onClick={() => go("uploadFailed")}
-        />
-      </Card>
+
+      {activeFilter !== "All" && (
+        <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-[#eef4ff] border border-[#24518c]/30 text-xs text-[#031f50]">
+          <div className="flex items-center gap-2">
+            <span className="text-[#53657c]">Category filter:</span>
+            <span className="font-bold px-2.5 py-0.5 rounded-full bg-[#031f50] text-white text-[11px]">
+              {activeFilter}
+            </span>
+          </div>
+          <button
+            onClick={() => {
+              triggerHaptic("light")
+              if (onClearFilter) onClearFilter()
+            }}
+            className="mobile-tap text-xs font-bold text-[#24518c] hover:underline"
+          >
+            Reset ✕
+          </button>
+        </div>
+      )}
+
+      {/* Pull To Refresh Bar */}
+      <PullToRefreshControl
+        isRefreshing={isRefreshing}
+        onRefresh={handleRefresh}
+        lastUpdated={lastRefreshed}
+      />
+
+      {isRefreshing ? (
+        <SkeletonRecords />
+      ) : (
+        <>
+          <Card>
+            <Row
+              detail="Ask questions using only the records you choose"
+              icon={icons.sparklesRecord}
+              title="Understand my records"
+              onClick={() => go("recordChat")}
+            />
+          </Card>
+          {recordAdded && (
+            <Guidance title="Full blood count added">
+              Your reviewed upload is now saved as Patient Added. The original file
+              and AI extraction label were retained.
+            </Guidance>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <Card className="p-4" onClick={() => go("timeline")}>
+              <Icon src={icons.history} />
+              <p className="mt-4 text-sm font-semibold text-[#031f50]">
+                Health timeline →
+              </p>
+              <p className="mt-2 text-xs text-[#53657c]">Your story over time</p>
+            </Card>
+            <Card className="p-4" onClick={() => go("healthPassport")}>
+              <Icon src={icons.book} />
+              <p className="mt-4 text-sm font-semibold text-[#031f50]">
+                Health passport →
+              </p>
+              <p className="mt-2 text-xs text-[#53657c]">A portable summary</p>
+            </Card>
+          </div>
+          <SectionTitle>Browse your records</SectionTitle>
+          {displayedCategories.length === 0 ? (
+            <div className="p-6 text-center rounded-2xl bg-white border border-dashed border-slate-300">
+              <p className="text-sm font-semibold text-slate-700">No matching categories found</p>
+              <p className="text-xs text-slate-500 mt-1">Try resetting the filter or search query</p>
+              <button
+                onClick={() => {
+                  setSearchQuery("")
+                  if (onClearFilter) onClearFilter()
+                }}
+                className="mobile-tap mt-3 px-3 py-1.5 rounded-full bg-[#edf2fa] text-xs font-semibold text-[#031f50]"
+              >
+                Clear filters
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {displayedCategories.map(([icon, label, count]) => (
+                <Card
+                  className="min-h-[124px] p-4"
+                  key={label}
+                  onClick={
+                    label === "Laboratory"
+                      ? () => go("reports")
+                      : label === "Medications"
+                        ? () => go("medications")
+                        : label === "Medical"
+                          ? () => go("timeline")
+                          : undefined
+                  }
+                >
+                  <Icon src={icon} />
+                  <p className="mt-4 text-sm font-semibold text-[#031f50]">{label}</p>
+                  <p className="mt-1 text-xs text-[#53657c]">{count}</p>
+                </Card>
+              ))}
+            </div>
+          )}
+          <SectionTitle>Know where it came from</SectionTitle>
+          <Card className="space-y-3 text-xs text-[#53657c]">
+            <p>
+              <Badge>Verified provider</Badge>{" "}
+              <span className="ml-2">Issued by a participating care provider</span>
+            </p>
+            <p>
+              <Badge>Patient Added</Badge>{" "}
+              <span className="ml-2">Information or files you added</span>
+            </p>
+            <p>
+              <Badge>Imported</Badge>{" "}
+              <span className="ml-2">Transferred from an external record</span>
+            </p>
+          </Card>
+          <Guidance title="1 document needs your review" tone="amber">
+            AI extracted your uploaded report. Confirm the fields before adding it.
+          </Guidance>
+          <PrimaryButton onClick={() => go("uploadReview")}>
+            Upload a health document
+          </PrimaryButton>
+          <SectionTitle>Connection & reliability</SectionTitle>
+          <Card className="space-y-4">
+            <Row
+              detail="See saved information and queued work"
+              icon={icons.cloudOff}
+              title="Offline view"
+              onClick={() => go("offline")}
+            />
+            <div className="h-px bg-[#dae2ee]" />
+            <Row
+              detail="Loading state for laboratory records"
+              icon={icons.loader}
+              title="Reports are loading"
+              onClick={() => go("labsLoading")}
+            />
+            <div className="h-px bg-[#dae2ee]" />
+            <Row
+              detail="Review a preserved local upload draft"
+              icon={icons.cloudOff}
+              title="Interrupted upload"
+              onClick={() => go("uploadFailed")}
+            />
+          </Card>
+        </>
+      )}
     </div>
   )
 }
@@ -599,60 +1257,154 @@ const timelineItems = [
   ],
 ]
 
-function Timeline({ go }: { go: (screen: Screen) => void }) {
+function Timeline({
+  go,
+  openFilter,
+  showToast,
+  activeFilter = "All",
+  onClearFilter,
+}: {
+  go: (screen: Screen) => void
+  openFilter?: () => void
+  showToast?: (msg: string) => void
+  activeFilter?: string
+  onClearFilter?: () => void
+}) {
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [lastRefreshed, setLastRefreshed] = useState("just now")
+
+  const handleRefresh = () => {
+    if (isRefreshing) return
+    setIsRefreshing(true)
+    triggerHaptic("medium")
+    setTimeout(() => {
+      setIsRefreshing(false)
+      setLastRefreshed("just now")
+      triggerHaptic("success")
+      if (showToast) showToast("Timeline synchronized from clinic records ✓")
+    }, 1200)
+  }
+
+  const displayedTimeline = timelineItems.filter(([_, __, title, source, detail]) => {
+    if (activeFilter === "All") return true
+    const q = activeFilter.toLowerCase()
+    return (
+      title.toLowerCase().includes(q) ||
+      source.toLowerCase().includes(q) ||
+      detail.toLowerCase().includes(q)
+    )
+  })
+
   return (
     <div className="stack">
-      <div className="flex gap-2 overflow-x-auto">
+      <div className="flex gap-2 overflow-x-auto no-scrollbar">
         {["All records", "2026", "Filters"].map((item) => (
           <button
-            className="whitespace-nowrap rounded-full border border-[#dae2ee] bg-white px-3 py-2 text-xs font-semibold text-[#031f50]"
+            className={`mobile-tap whitespace-nowrap rounded-full border border-[#dae2ee] px-3.5 py-1.5 text-xs font-semibold active:scale-95 transition-all select-none ${
+              item === "Filters"
+                ? "bg-[#031f50] text-white flex items-center gap-1.5 shadow-2xs relative"
+                : "bg-white text-[#031f50]"
+            }`}
             key={item}
+            onClick={() => {
+              triggerHaptic("light")
+              if (item === "Filters" && openFilter) openFilter()
+            }}
           >
-            {item}
+            {item === "Filters" && <Icon src={icons.filter} size={14} />}
+            <span>{item}</span>
+            {item === "Filters" && activeFilter !== "All" && (
+              <span className="size-1.5 rounded-full bg-emerald-400" />
+            )}
           </button>
         ))}
       </div>
+
+      {activeFilter !== "All" && (
+        <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-[#eef4ff] border border-[#24518c]/30 text-xs text-[#031f50]">
+          <div className="flex items-center gap-2">
+            <span className="text-[#53657c]">Timeline filter:</span>
+            <span className="font-bold px-2.5 py-0.5 rounded-full bg-[#031f50] text-white text-[11px]">
+              {activeFilter}
+            </span>
+          </div>
+          <button
+            onClick={() => {
+              triggerHaptic("light")
+              if (onClearFilter) onClearFilter()
+            }}
+            className="mobile-tap text-xs font-bold text-[#24518c] hover:underline"
+          >
+            Reset ✕
+          </button>
+        </div>
+      )}
+
+      <PullToRefreshControl
+        isRefreshing={isRefreshing}
+        onRefresh={handleRefresh}
+        lastUpdated={lastRefreshed}
+      />
+
       <p className="text-xs leading-[1.45] text-[#53657c]">
         Filter by provider, doctor, lab, pharmacy, medicine, diagnosis, date or
         record type.
       </p>
-      <div className="space-y-3">
-        {timelineItems.map(([date, icon, title, source, detail], index) => (
-          <div
-            className="grid grid-cols-[30px_1fr] gap-2"
-            key={`${date}-${title}`}
+
+      {isRefreshing ? (
+        <SkeletonRecords />
+      ) : displayedTimeline.length === 0 ? (
+        <div className="p-6 text-center rounded-2xl bg-white border border-dashed border-slate-300">
+          <p className="text-sm font-semibold text-slate-700">No events matched this filter</p>
+          <p className="text-xs text-slate-500 mt-1">Try resetting the timeline filter</p>
+          <button
+            onClick={() => {
+              if (onClearFilter) onClearFilter()
+            }}
+            className="mobile-tap mt-3 px-3 py-1.5 rounded-full bg-[#edf2fa] text-xs font-semibold text-[#031f50]"
           >
-            <div className="flex flex-col items-center">
-              <span className="flex size-7 items-center justify-center rounded-full bg-[#edf2fa]">
-                <Icon src={icon} size={15} />
-              </span>
-              {index < timelineItems.length - 1 && (
-                <span className="mt-1 w-0.5 flex-1 bg-[#dae2ee]" />
-              )}
-            </div>
-            <div>
-              <p className="mb-2 text-[11px] font-semibold text-[#53657c]">
-                {date}
-              </p>
-              <Card
-                className="mb-1 p-4"
-                onClick={
-                  title === "Full blood count" ? () => go("result") : undefined
-                }
-              >
-                <p className="text-sm font-semibold text-[#031f50]">{title}</p>
-                <p className="mt-2 text-xs text-[#53657c]">{source}</p>
-                <p className="mt-3 text-xs leading-[1.45] text-[#173b71]">
-                  {detail}
+            Show all timeline events
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {displayedTimeline.map(([date, icon, title, source, detail], index) => (
+            <div
+              className="grid grid-cols-[30px_1fr] gap-2"
+              key={`${date}-${title}`}
+            >
+              <div className="flex flex-col items-center">
+                <span className="flex size-7 items-center justify-center rounded-full bg-[#edf2fa]">
+                  <Icon src={icon} size={15} />
+                </span>
+                {index < displayedTimeline.length - 1 && (
+                  <span className="mt-1 w-0.5 flex-1 bg-[#dae2ee]" />
+                )}
+              </div>
+              <div>
+                <p className="mb-2 text-[11px] font-semibold text-[#53657c]">
+                  {date}
                 </p>
-                <div className="mt-3">
-                  <Badge>Verified provider</Badge>
-                </div>
-              </Card>
+                <Card
+                  className="mb-1 p-4"
+                  onClick={
+                    title === "Full blood count" ? () => go("result") : undefined
+                  }
+                >
+                  <p className="text-sm font-semibold text-[#031f50]">{title}</p>
+                  <p className="mt-2 text-xs text-[#53657c]">{source}</p>
+                  <p className="mt-3 text-xs leading-[1.45] text-[#173b71]">
+                    {detail}
+                  </p>
+                  <div className="mt-3">
+                    <Badge>Verified provider</Badge>
+                  </div>
+                </Card>
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
       <Guidance title="Your own symptoms and measurements are Patient Added">
         They never silently rewrite this history.
       </Guidance>
@@ -3514,6 +4266,20 @@ export default function App() {
     "pending" | "approved" | "rejected"
   >("pending")
   const [emergencyActive, setEmergencyActive] = useState(false)
+  const [activeBottomSheet, setActiveBottomSheet] = useState<
+    "filter" | "shareConsent" | "emergencyQr" | null
+  >(null)
+  const [activeFilter, setActiveFilter] = useState("All")
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const showToast = (msg: string) => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current)
+    setToastMessage(msg)
+    toastTimeoutRef.current = setTimeout(() => {
+      setToastMessage(null)
+    }, 2800)
+  }
   const [deviceMode, setDeviceMode] = useState<DeviceMode>("iphone")
   const [currentTime, setCurrentTime] = useState("9:41")
   const contentRef = useRef<HTMLDivElement>(null)
@@ -3549,12 +4315,14 @@ export default function App() {
   const showNavigation = !entryScreens.includes(screen)
   const go = (next: Screen) => {
     if (next === screen) return
+    triggerHaptic("light")
     setScreenHistory((current) => [...current, screen])
     setScreen(next)
     contentRef.current?.scrollTo({ top: 0, behavior: "auto" })
     window.scrollTo({ top: 0, behavior: "auto" })
   }
   const goBack = () => {
+    triggerHaptic("light")
     setScreenHistory((current) => {
       const previous = current.at(-1)
       if (!previous) return current
@@ -3565,6 +4333,7 @@ export default function App() {
     })
   }
   const openSection = (next: (typeof nav)[number][0]) => {
+    triggerHaptic("light")
     setScreenHistory([])
     setScreen(next)
     contentRef.current?.scrollTo({ top: 0, behavior: "auto" })
@@ -3881,84 +4650,108 @@ export default function App() {
           ref={contentRef}
           className="flex-1 overflow-y-auto overscroll-contain px-4 pt-4 pb-6"
         >
-          {screen === "home" && <Home careStage={careStage} go={go} />}
-          {screen === "records" && (
-            <Records go={go} recordAdded={recordAdded} />
-          )}
-          {screen === "timeline" && <Timeline go={go} />}
-          {screen === "reports" && <Reports go={go} />}
-          {screen === "result" && <Result go={go} />}
-          {screen === "medications" && <Medications />}
-          {screen === "profile" && <Profile go={go} onSignOut={signOut} />}
-          {screen === "revoke" && (
-            <Outcome
-              go={go}
-              kind="revoke"
-              onConfirmRevoke={confirmRevocation}
-            />
-          )}
-          {screen === "shared" && <Outcome go={go} kind="shared" />}
-          {screen === "lostPhone" && <LostPhone go={go} />}
-          {screen === "recovered" && <Recovered go={go} />}
-          {screen === "verifyRecovery" && <VerifyRecovery go={go} />}
-          {screen === "recoverAccount" && <RecoverAccount go={go} />}
-          {screen === "emptyVault" && <EmptyVault go={go} />}
-          {screen === "preferences" && <Preferences go={go} />}
-          {screen === "createAccount" && <CreateAccount go={go} />}
-          {screen === "welcome" && (
-            <Welcome go={go} onCreateAccount={startAccountCreation} />
-          )}
-          {screen === "signIn" && (
-            <SignIn
-              go={go}
-              onCreateAccount={startAccountCreation}
-              onSignIn={signIn}
-            />
-          )}
-          {screen === "bookingReview" && (
-            <BookingReview go={go} onConfirm={confirmBooking} />
-          )}
-          {screen === "bookingTime" && <BookingTime go={go} />}
-          {screen === "offline" && <Offline go={go} />}
-          {screen === "uploadFailed" && <UploadFailed go={go} />}
-          {screen === "labsLoading" && <LabsLoading go={go} />}
-          {screen === "onboardingRecord" && (
-            <OnboardingRecord go={go} onComplete={completeOnboarding} />
-          )}
-          {screen === "onboardingId" && <OnboardingId go={go} />}
-          {screen === "verifyPhone" && <VerifyPhone go={go} />}
-          {screen === "checkedIn" && <CheckedIn go={go} />}
-          {screen === "checkIn" && <CheckIn onCheckIn={confirmCheckIn} />}
-          {screen === "bookingConfirmed" && <BookingConfirmed go={go} />}
-          {screen === "recordChat" && <RecordChat go={go} />}
-          {screen === "careDiscovery" && <CareDiscovery go={go} />}
-          {screen === "visitPrep" && <VisitPrep go={go} />}
-          {screen === "careJourney" && <CareJourney go={go} />}
-          {screen === "uploadReview" && <UploadReview onAdd={addRecord} />}
-          {screen === "recordAdded" && <RecordAdded go={go} />}
-          {screen === "consentExpanded" && (
-            <ConsentExpanded
-              activeConsent={activeConsent}
-              go={go}
-              onApprove={() => setPendingConsent("approved")}
-              onReject={() => setPendingConsent("rejected")}
-              pendingConsent={pendingConsent}
-            />
-          )}
-          {screen === "recordActivity" && (
-            <RecordActivity
-              activeConsent={activeConsent}
-              pendingConsent={pendingConsent}
-            />
-          )}
-          {screen === "emergencyQr" && (
-            <EmergencyQr
-              active={emergencyActive}
-              onActivate={activateEmergency}
-            />
-          )}
-          {screen === "emergencyInfo" && <EmergencyInfo onEnd={endEmergency} />}
-          {screen === "healthPassport" && <HealthPassport />}
+          <div key={screen} className="animate-screen-enter">
+            {screen === "home" && (
+              <Home
+                careStage={careStage}
+                go={go}
+                openShare={() => setActiveBottomSheet("shareConsent")}
+                openEmergency={() => setActiveBottomSheet("emergencyQr")}
+              />
+            )}
+            {screen === "records" && (
+              <Records
+                go={go}
+                recordAdded={recordAdded}
+                openFilter={() => setActiveBottomSheet("filter")}
+                showToast={showToast}
+                activeFilter={activeFilter}
+                onClearFilter={() => setActiveFilter("All")}
+              />
+            )}
+            {screen === "timeline" && (
+              <Timeline
+                go={go}
+                openFilter={() => setActiveBottomSheet("filter")}
+                showToast={showToast}
+                activeFilter={activeFilter}
+                onClearFilter={() => setActiveFilter("All")}
+              />
+            )}
+            {screen === "reports" && <Reports go={go} />}
+            {screen === "result" && <Result go={go} />}
+            {screen === "medications" && <Medications />}
+            {screen === "profile" && <Profile go={go} onSignOut={signOut} />}
+            {screen === "revoke" && (
+              <Outcome
+                go={go}
+                kind="revoke"
+                onConfirmRevoke={confirmRevocation}
+              />
+            )}
+            {screen === "shared" && <Outcome go={go} kind="shared" />}
+            {screen === "lostPhone" && <LostPhone go={go} />}
+            {screen === "recovered" && <Recovered go={go} />}
+            {screen === "verifyRecovery" && <VerifyRecovery go={go} />}
+            {screen === "recoverAccount" && <RecoverAccount go={go} />}
+            {screen === "emptyVault" && <EmptyVault go={go} />}
+            {screen === "preferences" && <Preferences go={go} />}
+            {screen === "createAccount" && <CreateAccount go={go} />}
+            {screen === "welcome" && (
+              <Welcome go={go} onCreateAccount={startAccountCreation} />
+            )}
+            {screen === "signIn" && (
+              <SignIn
+                go={go}
+                onCreateAccount={startAccountCreation}
+                onSignIn={signIn}
+              />
+            )}
+            {screen === "bookingReview" && (
+              <BookingReview go={go} onConfirm={confirmBooking} />
+            )}
+            {screen === "bookingTime" && <BookingTime go={go} />}
+            {screen === "offline" && <Offline go={go} />}
+            {screen === "uploadFailed" && <UploadFailed go={go} />}
+            {screen === "labsLoading" && <LabsLoading go={go} />}
+            {screen === "onboardingRecord" && (
+              <OnboardingRecord go={go} onComplete={completeOnboarding} />
+            )}
+            {screen === "onboardingId" && <OnboardingId go={go} />}
+            {screen === "verifyPhone" && <VerifyPhone go={go} />}
+            {screen === "checkedIn" && <CheckedIn go={go} />}
+            {screen === "checkIn" && <CheckIn onCheckIn={confirmCheckIn} />}
+            {screen === "bookingConfirmed" && <BookingConfirmed go={go} />}
+            {screen === "recordChat" && <RecordChat go={go} />}
+            {screen === "careDiscovery" && <CareDiscovery go={go} />}
+            {screen === "visitPrep" && <VisitPrep go={go} />}
+            {screen === "careJourney" && <CareJourney go={go} />}
+            {screen === "uploadReview" && <UploadReview onAdd={addRecord} />}
+            {screen === "recordAdded" && <RecordAdded go={go} />}
+            {screen === "consentExpanded" && (
+              <ConsentExpanded
+                activeConsent={activeConsent}
+                go={go}
+                onApprove={() => setPendingConsent("approved")}
+                onReject={() => setPendingConsent("rejected")}
+                pendingConsent={pendingConsent}
+              />
+            )}
+            {screen === "recordActivity" && (
+              <RecordActivity
+                activeConsent={activeConsent}
+                pendingConsent={pendingConsent}
+              />
+            )}
+            {screen === "emergencyQr" && (
+              <EmergencyQr
+                active={emergencyActive}
+                onActivate={activateEmergency}
+              />
+            )}
+            {screen === "emergencyInfo" && <EmergencyInfo onEnd={endEmergency} />}
+            {screen === "healthPassport" && <HealthPassport />}
+          </div>
         </main>
 
         {/* Bottom Navigation Bar */}
@@ -3987,6 +4780,37 @@ export default function App() {
             <MobileHomeIndicator />
           </nav>
         )}
+
+        {/* Native Mobile Polish Bottom Sheets */}
+        <FilterBottomSheet
+          isOpen={activeBottomSheet === "filter"}
+          onClose={() => setActiveBottomSheet(null)}
+          onApply={(filterType) => {
+            setActiveFilter(filterType)
+            showToast(`Filter applied: ${filterType} records`)
+          }}
+        />
+        <ShareConsentBottomSheet
+          isOpen={activeBottomSheet === "shareConsent"}
+          onClose={() => setActiveBottomSheet(null)}
+          onShare={(doc) => {
+            setActiveConsent(true)
+            showToast(`Shared encrypted access pass with ${doc} ✓`)
+          }}
+        />
+        <EmergencyQrBottomSheet
+          isOpen={activeBottomSheet === "emergencyQr"}
+          onClose={() => setActiveBottomSheet(null)}
+          onCopy={() => {
+            showToast("Emergency Medical Pass copied to clipboard ✓")
+          }}
+        />
+
+        {/* Floating Haptic Toast Notification */}
+        <ToastNotification
+          message={toastMessage}
+          onDismiss={() => setToastMessage(null)}
+        />
       </div>
     </div>
   )
