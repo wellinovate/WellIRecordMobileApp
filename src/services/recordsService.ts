@@ -70,6 +70,28 @@ export const recordsService = {
   },
 
   /**
+   * Fetches provider-submitted vitals from the shared vitals collection
+   */
+  async fetchVitals(): Promise<any[]> {
+    if (CONFIG.demoMode) {
+      return [];
+    }
+    const res = await apiClient.get<{ success: boolean; items: any[] }>('/records/vitals');
+    return res?.items || [];
+  },
+
+  /**
+   * Fetches provider-submitted medications from the shared medications collection
+   */
+  async fetchProviderMedications(): Promise<any[]> {
+    if (CONFIG.demoMode) {
+      return [];
+    }
+    const res = await apiClient.get<{ success: boolean; items: any[] }>('/records/medications');
+    return res?.items || [];
+  },
+
+  /**
    * Generates a pre-signed S3/GCS URL for client-side encrypted medical document upload
    */
   async getPresignedUploadUrl(

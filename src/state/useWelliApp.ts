@@ -469,15 +469,30 @@ export function useWelliApp() {
           // Fetch genuine health records and provider lab results in parallel
           try {
             console.log('[Records] Starting fetch...');
-            const [remoteRecordsResult, labResultsResult] = await Promise.allSettled([
+            const [remoteRecordsResult, labResultsResult, vitalsResult, providerMedicationsResult] = await Promise.allSettled([
               recordsService.fetchRecords('me'),
               recordsService.fetchLabResults(),
+              recordsService.fetchVitals(),
+              recordsService.fetchProviderMedications(),
             ]);
             console.log('[Records] remoteRecords status:', remoteRecordsResult.status, remoteRecordsResult.status === 'rejected' ? remoteRecordsResult.reason : remoteRecordsResult.value?.length);
             console.log('[Records] labResults status:', labResultsResult.status, labResultsResult.status === 'rejected' ? labResultsResult.reason : labResultsResult.value?.length);
+            console.log('[Records] vitals status:', vitalsResult.status, vitalsResult.status === 'rejected' ? vitalsResult.reason : vitalsResult.value?.length);
+            console.log('[Records] providerMedications status:', providerMedicationsResult.status, providerMedicationsResult.status === 'rejected' ? providerMedicationsResult.reason : providerMedicationsResult.value?.length);
 
             const remoteRecords = remoteRecordsResult.status === 'fulfilled' ? remoteRecordsResult.value : [];
             const labResults = labResultsResult.status === 'fulfilled' ? labResultsResult.value : [];
+            const vitals = vitalsResult.status === 'fulfilled' ? vitalsResult.value : [];
+            const providerMedications = providerMedicationsResult.status === 'fulfilled' ? providerMedicationsResult.value : [];
+
+            const formatDate = (value?: string | Date) =>
+              value
+                ? new Date(value).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: '2-digit',
+                    year: 'numeric',
+                  })
+                : '';
 
             const mappedLabRecords: HealthRecord[] = (labResults || []).map((lab: any) => ({
               id: String(lab._id || lab.id),
@@ -485,19 +500,7 @@ export function useWelliApp() {
               type: 'Lab Result' as const,
               title: lab.testName || 'Lab Result',
               provider: lab.providerName || lab.organizationName || 'Laboratory Services',
-              date: lab.resultedAt
-                ? new Date(lab.resultedAt).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: '2-digit',
-                    year: 'numeric',
-                  })
-                : lab.createdAt
-                ? new Date(lab.createdAt).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: '2-digit',
-                    year: 'numeric',
-                  })
-                : '',
+              date: formatDate(lab.resultedAt || lab.createdAt),
               summary:
                 lab.resultValue && lab.unit
                   ? `${lab.testName}: ${lab.resultValue} ${lab.unit} (${lab.interpretation || 'result'})`
@@ -505,9 +508,42 @@ export function useWelliApp() {
               attachments: lab.attachments || [],
             }));
 
+            const mappedVitalRecords: HealthRecord[] = (vitals || []).map((v: any) => {
+              const parts: string[] = [];
+              if (v.bloodPressure?.systolic && v.bloodPressure?.diastolic) {
+                parts.push(`BP ${v.bloodPressure.systolic}/${v.bloodPressure.diastolic}`);
+              }
+              if (v.heartRate) parts.push(`HR ${v.heartRate}bpm`);
+              if (v.temperature?.value) parts.push(`Temp ${v.temperature.value}°${v.temperature.unit || 'C'}`);
+              if (v.oxygenSaturation) parts.push(`SpO2 ${v.oxygenSaturation}%`);
+              return {
+                id: String(v._id || v.id),
+                ownerId: 'me',
+                type: 'Vitals' as const,
+                title: 'Vitals Check',
+                provider: v.providerName || v.organizationName || 'Clinical Visit',
+                date: formatDate(v.measuredAt || v.createdAt),
+                summary: parts.join(' · ') || 'Vitals recorded',
+                attachments: [],
+              };
+            });
+
+            const mappedMedicationRecords: HealthRecord[] = (providerMedications || []).map((m: any) => ({
+              id: String(m._id || m.id),
+              ownerId: 'me',
+              type: 'Medication' as const,
+              title: m.medicationName || m.brandName || m.genericName || 'Medication',
+              provider: m.providerName || m.organizationName || 'Prescribing Provider',
+              date: formatDate(m.createdAt),
+              summary: m.dosage?.value && m.dosage?.unit ? `${m.dosage.value}${m.dosage.unit}${m.form ? ` ${m.form}` : ''}` : m.form || '',
+              attachments: [],
+            }));
+
             const merged = [
               ...(Array.isArray(remoteRecords) ? remoteRecords : []),
               ...mappedLabRecords,
+              ...mappedVitalRecords,
+              ...mappedMedicationRecords,
             ];
 
             if (merged.length > 0) {

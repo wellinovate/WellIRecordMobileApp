@@ -25,6 +25,8 @@ import {
   AccessAuditLog,
   ChatIntent,
   LabResult,
+  VitalEntry,
+  MedicationEntry,
 } from './models';
 
 const app = express();
@@ -1681,6 +1683,62 @@ app.get('/api/v1/records/labs', async (req: Request, res: Response) => {
     return res.json({ success: true, items });
   } catch (err) {
     console.error('[GET /records/labs] ERROR:', err);
+    return res.status(500).json({ success: false, error: err });
+  }
+});
+
+// GET /api/v1/records/vitals — provider-submitted vitals, read from the
+// shared `vitals` collection the web backend writes to. Same pattern as
+// /records/labs above.
+app.get('/api/v1/records/vitals', async (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.json({ success: true, items: [] });
+    }
+    const profile = await UserProfile.findOne({ accountId: new mongoose.Types.ObjectId(authUserId) });
+    if (!profile) {
+      return res.json({ success: true, items: [] });
+    }
+    const items = await VitalEntry.find({
+      patientId: profile._id,
+      recordStatus: 'active',
+      patientVisible: true,
+    }).sort({ measuredAt: -1, createdAt: -1 });
+    return res.json({ success: true, items });
+  } catch (err) {
+    console.error('[GET /records/vitals] ERROR:', err);
+    return res.status(500).json({ success: false, error: err });
+  }
+});
+
+// GET /api/v1/records/medications — provider-submitted medications, read
+// from the shared `medications` collection the web backend writes to. Same
+// pattern as /records/labs above.
+app.get('/api/v1/records/medications', async (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.json({ success: true, items: [] });
+    }
+    const profile = await UserProfile.findOne({ accountId: new mongoose.Types.ObjectId(authUserId) });
+    if (!profile) {
+      return res.json({ success: true, items: [] });
+    }
+    const items = await MedicationEntry.find({
+      patientId: profile._id,
+      recordStatus: 'active',
+      patientVisible: true,
+    }).sort({ createdAt: -1 });
+    return res.json({ success: true, items });
+  } catch (err) {
+    console.error('[GET /records/medications] ERROR:', err);
     return res.status(500).json({ success: false, error: err });
   }
 });

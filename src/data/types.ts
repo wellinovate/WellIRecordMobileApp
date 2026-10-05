@@ -4,7 +4,9 @@ export type RecordType =
   | 'Imaging'
   | 'Clinical Note'
   | 'Immunization'
-  | 'Receipt';
+  | 'Receipt'
+  | 'Vitals'
+  | 'Medication';
 
 export interface LabBiomarker {
   analyte: string;

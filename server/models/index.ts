@@ -389,6 +389,52 @@ const LabResultSchema = new Schema<ILabResult>(
 );
 export const LabResult: Model<ILabResult> = mongoose.models.LabResult || mongoose.model<ILabResult>('LabResult', LabResultSchema, 'labresults');
 
+// 8b/8c. Read-only mirrors of the web backend's Vital and Medication models
+// (modules/vitals/vitals_model.js, modules/medications/medications_model.js
+// in wellinovate/WelliRecord) — same shared MongoDB cluster, same
+// `patientId`/`patientVisible`/`recordStatus` clinical-metadata fields as
+// LabResult above. Declared loosely (strict: false) since this app never
+// writes to these collections, only reads provider-submitted data the web
+// backend already wrote; mobile's own HealthRecord model is unaffected and
+// keeps handling patient-uploaded/OCR documents as before.
+export interface IVitalEntry extends Document {
+  patientId: mongoose.Types.ObjectId;
+  recordStatus: string;
+  patientVisible: boolean;
+  measuredAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+const VitalEntrySchema = new Schema<IVitalEntry>(
+  {
+    patientId: { type: Schema.Types.ObjectId, required: true, index: true },
+    recordStatus: { type: String, default: 'active' },
+    patientVisible: { type: Boolean, default: true },
+    measuredAt: { type: Date },
+  },
+  { timestamps: true, strict: false }
+);
+export const VitalEntry: Model<IVitalEntry> = mongoose.models.Vital || mongoose.model<IVitalEntry>('Vital', VitalEntrySchema, 'vitals');
+
+export interface IMedicationEntry extends Document {
+  patientId: mongoose.Types.ObjectId;
+  recordStatus: string;
+  patientVisible: boolean;
+  medicationName: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+const MedicationEntrySchema = new Schema<IMedicationEntry>(
+  {
+    patientId: { type: Schema.Types.ObjectId, required: true, index: true },
+    recordStatus: { type: String, default: 'active' },
+    patientVisible: { type: Boolean, default: true },
+    medicationName: { type: String, required: true },
+  },
+  { timestamps: true, strict: false }
+);
+export const MedicationEntry: Model<IMedicationEntry> = mongoose.models.Medication || mongoose.model<IMedicationEntry>('Medication', MedicationEntrySchema, 'medications');
+
 // 9. Account Model (Matching 'accounts' collection with phone e.g. 07030144923)
 export interface IAccount extends Document {
   phone?: string;

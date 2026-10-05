@@ -26,6 +26,8 @@ export const RECORD_META: Record<RecordType, { tint: string; emoji: string }> = 
   'Clinical Note': { tint: '#fdf4ec', emoji: '📋' },
   'Immunization': { tint: '#ede9fe', emoji: '💉' },
   'Receipt': { tint: '#fef3c7', emoji: '🧾' },
+  'Vitals': { tint: '#fee2e2', emoji: '❤️' },
+  'Medication': { tint: '#dbeafe', emoji: '💊' },
 };
 
 export const RECORDS: HealthRecord[] = [
@@ -705,6 +707,8 @@ export const RECORD_TYPES: (RecordType | 'All')[] = [
   'Clinical Note',
   'Immunization',
   'Receipt',
+  'Vitals',
+  'Medication',
 ];
 
 export const ONBOARDING: OnboardingSlide[] = [
