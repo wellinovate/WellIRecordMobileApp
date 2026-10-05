@@ -4217,10 +4217,11 @@ const nav = [
   ["profile", icons.fingerprint, "Profile"],
 ] as const
 
-type DeviceMode = "iphone" | "pixel" | "compact" | "fluid"
+type DeviceMode = "iphone" | "iphone11" | "pixel" | "compact" | "fluid"
 
 const DEVICE_WIDTHS: Record<DeviceMode, string> = {
   iphone: "sm:max-w-[402px]",
+  iphone11: "sm:max-w-[414px]",
   pixel: "sm:max-w-[412px]",
   compact: "sm:max-w-[375px]",
   fluid: "sm:max-w-md w-full",
@@ -4647,22 +4648,31 @@ export default function App() {
           {/* Device Model Selector */}
           <div className="flex items-center rounded-xl bg-[#1e293b] p-0.5 border border-white/15 text-xs font-medium">
             <button
+              onClick={() => setDeviceMode("pixel")}
+              className={`px-2.5 py-1 rounded-lg transition-all ${
+                deviceMode === "pixel" ? "bg-[#2563eb] text-white shadow-sm font-semibold" : "text-slate-400 hover:text-white"
+              }`}
+              title="Android Simulator (Pixel / Galaxy 412px)"
+            >
+              Android
+            </button>
+            <button
+              onClick={() => setDeviceMode("iphone11")}
+              className={`px-2.5 py-1 rounded-lg transition-all ${
+                deviceMode === "iphone11" ? "bg-[#2563eb] text-white shadow-sm font-semibold" : "text-slate-400 hover:text-white"
+              }`}
+              title="iPhone 11 (414px)"
+            >
+              iPhone 11
+            </button>
+            <button
               onClick={() => setDeviceMode("iphone")}
               className={`px-2.5 py-1 rounded-lg transition-all ${
                 deviceMode === "iphone" ? "bg-[#2563eb] text-white shadow-sm font-semibold" : "text-slate-400 hover:text-white"
               }`}
               title="iPhone 16 Pro (402px)"
             >
-              iPhone
-            </button>
-            <button
-              onClick={() => setDeviceMode("pixel")}
-              className={`px-2.5 py-1 rounded-lg transition-all ${
-                deviceMode === "pixel" ? "bg-[#2563eb] text-white shadow-sm font-semibold" : "text-slate-400 hover:text-white"
-              }`}
-              title="Pixel 9 (412px)"
-            >
-              Pixel
+              iPhone 16
             </button>
             <button
               onClick={() => setDeviceMode("compact")}
