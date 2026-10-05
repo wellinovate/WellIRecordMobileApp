@@ -27,6 +27,7 @@ import {
   LabResult,
   VitalEntry,
   MedicationEntry,
+  NotificationRecord,
 } from './models';
 
 const app = express();
@@ -151,6 +152,159 @@ async function generateUniqueShareToken(): Promise<string> {
     if (!existing) return token;
   }
   throw new Error('Could not generate a unique share token');
+}
+
+// Real-time in-app notification SSE active connections
+const liveNotificationSubscribers = new Map<string, Response>();
+
+function broadcastLiveNotification(notif: any) {
+  const payload = `data: ${JSON.stringify(notif)}\n\n`;
+  for (const [subId, clientRes] of liveNotificationSubscribers.entries()) {
+    try {
+      if (subId.startsWith(String(notif.userId))) {
+        clientRes.write(payload);
+      }
+    } catch {
+      liveNotificationSubscribers.delete(subId);
+    }
+  }
+}
+
+/**
+ * Push Notification Dispatcher:
+ * Dispatches an Expo Push Notification to all physical devices registered for
+ * this user, creates a persistent notification record in MongoDB, and broadcasts
+ * live to active SSE subscribers.
+ */
+async function dispatchPushNotification(params: {
+  userId: string | mongoose.Types.ObjectId;
+  title: string;
+  body: string;
+  type: 'critical_alert' | 'referral' | 'lab_result' | 'consent' | 'claim' | 'immunization' | 'prescription' | 'system';
+  emoji?: string;
+  tint?: string;
+  categoryLabel?: string;
+  actionLabel?: string;
+  targetTab?: string;
+  targetModal?: string;
+  targetId?: string;
+  metadata?: any;
+}) {
+  const {
+    userId,
+    title,
+    body,
+    type,
+    emoji = '🔔',
+    tint = '#e0e7ff',
+    categoryLabel = 'Notification',
+    actionLabel,
+    targetTab,
+    targetModal,
+    targetId,
+    metadata,
+  } = params;
+
+  console.log(`[PushEngine] Dispatching ${type} notification for user ${userId}: "${title}"`);
+
+  let notifRecord: any = null;
+  if (mongoose.connection.readyState === 1 && mongoose.isValidObjectId(userId)) {
+    try {
+      notifRecord = await NotificationRecord.create({
+        userId: new mongoose.Types.ObjectId(userId),
+        type,
+        emoji,
+        tint,
+        categoryLabel,
+        title,
+        desc: body,
+        time: 'Just now',
+        read: false,
+        actionLabel,
+        targetTab,
+        targetModal,
+        targetId,
+        metadata,
+      });
+    } catch (err) {
+      console.warn('[PushEngine] Failed to save NotificationRecord:', err);
+    }
+  }
+
+  // Live broadcast to in-app stream
+  broadcastLiveNotification({
+    id: notifRecord?._id?.toString() || `notif_${Date.now()}`,
+    userId: String(userId),
+    title,
+    desc: body,
+    type,
+    emoji,
+    tint,
+    categoryLabel,
+    actionLabel,
+    targetTab,
+    targetModal,
+    targetId,
+    metadata,
+    time: 'Just now',
+    read: false,
+  });
+
+  // Query Expo push tokens for this user
+  let tokens: string[] = [];
+  if (mongoose.connection.readyState === 1 && mongoose.isValidObjectId(userId)) {
+    try {
+      const [u, a, p] = await Promise.all([
+        User.findById(userId).select('pushTokens').lean(),
+        Account.findById(userId).select('pushTokens').lean(),
+        UserProfile.findOne({ accountId: userId }).select('pushTokens').lean(),
+      ]);
+      const tokenSet = new Set<string>();
+      (u?.pushTokens || []).forEach((t: string) => tokenSet.add(t));
+      (a?.pushTokens || []).forEach((t: string) => tokenSet.add(t));
+      (p?.pushTokens || []).forEach((t: string) => tokenSet.add(t));
+      tokens = Array.from(tokenSet).filter((t) => typeof t === 'string' && t.startsWith('ExponentPushToken'));
+    } catch (err) {
+      console.warn('[PushEngine] Error querying push tokens:', err);
+    }
+  }
+
+  // Dispatch to Expo Push API
+  if (tokens.length > 0) {
+    const messages = tokens.map((token) => ({
+      to: token,
+      sound: 'default',
+      title,
+      body,
+      data: {
+        type,
+        targetTab,
+        targetModal,
+        targetId,
+        metadata,
+      },
+      priority: type === 'critical_alert' ? 'high' : 'default',
+      channelId: type === 'critical_alert' ? 'emergency-alerts' : 'default',
+    }));
+
+    try {
+      const response = await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Accept-encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(messages),
+      });
+      const data = await response.json();
+      console.log('[PushEngine] Expo Push response:', data);
+    } catch (pushErr) {
+      console.warn('[PushEngine] Failed to dispatch to Expo Push service:', pushErr);
+    }
+  }
+
+  return notifRecord;
 }
 
 // Diagnostic logging — temporary, remove once the real cause is found.
@@ -2939,6 +3093,53 @@ app.get('/api/v1/shares/bridge/:token', async (req: Request, res: Response) => {
           .join('')
       : '<li>None on file</li>';
 
+    // 1. Record Access Audit Log for this Emergency Scan (NDPR compliance)
+    if (mongoose.connection.readyState === 1) {
+      try {
+        await AccessAuditLog.create({
+          grantId: grant._id,
+          accessedByName: 'First Responder / WelliBridge QR',
+          accessorRole: 'Emergency First Responder',
+          facilityName: 'WelliBridge Emergency Scan',
+          action: 'emergency_scan',
+          recordsCount: 1,
+          ipAddress: req.ip || '127.0.0.1',
+          metadata: {
+            token,
+            targetOwnerId,
+            userAgent: req.get('user-agent'),
+            scannedAt: new Date(),
+          },
+        });
+      } catch (logErr) {
+        console.warn('[Bridge] Failed to write emergency AccessAuditLog:', logErr);
+      }
+    }
+
+    // 2. Dispatch Real-Time Push Notification & In-App Alert to the Patient
+    const patientName = emergency.name || 'Patient';
+    const scanTimeStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    dispatchPushNotification({
+      userId: grant.grantorUserId,
+      type: 'critical_alert',
+      emoji: '🚨',
+      tint: '#ffe4e6',
+      categoryLabel: 'Emergency Alert',
+      title: '🚨 Emergency Medical ID Accessed!',
+      body: `Your Emergency Medical ID (${patientName}) was scanned by a first responder at ${scanTimeStr}. Tap to review access details or revoke link immediately.`,
+      actionLabel: 'Review Security Log',
+      targetModal: 'emergency',
+      targetTab: 'home',
+      metadata: {
+        token,
+        grantId: grant._id.toString(),
+        patientName,
+        ipAddress: req.ip || '127.0.0.1',
+        userAgent: req.get('user-agent'),
+        scannedAt: new Date().toISOString(),
+      },
+    }).catch((err) => console.warn('[Bridge] Push dispatch error:', err));
+
     res.status(200).send(`<!doctype html>
 <html>
 <head>
@@ -2947,6 +3148,9 @@ app.get('/api/v1/shares/bridge/:token', async (req: Request, res: Response) => {
   <title>WelliRecord Emergency ID</title>
 </head>
 <body style="font-family:sans-serif;max-width:480px;margin:40px auto;padding:0 20px;color:#0f172a;">
+  <div style="margin-bottom:20px;padding:10px 14px;background:#ecfdf5;border:1px solid #10b981;border-radius:8px;font-size:13px;color:#065f46;">
+    🛡️ <strong>Real-Time Security Notice:</strong> The patient has been automatically notified that this Emergency Medical ID was accessed at ${scanTimeStr}.
+  </div>
   <h2 style="margin-bottom:0;">${escapeHtml(emergency.name || 'WelliRecord Patient')}</h2>
   ${emergency.wrId ? `<p style="color:#64748b;margin-top:4px;">ID: ${escapeHtml(emergency.wrId)}</p>` : ''}
   ${emergency.dob ? `<p>DOB: ${escapeHtml(emergency.dob)}</p>` : ''}
@@ -3044,6 +3248,186 @@ app.post('/api/v1/auth/push-token', async (req: Request, res: Response) => {
     return res.json({ success: true, message: 'Push token registered' });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message || 'Failed to register push token' });
+  }
+});
+
+// Real-Time Notification Stream (SSE)
+app.get('/api/v1/notifications/stream', (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  const subId = `${authUserId}_${Date.now()}`;
+  liveNotificationSubscribers.set(subId, res);
+
+  res.write(`data: ${JSON.stringify({ type: 'connected', time: new Date().toISOString() })}\n\n`);
+
+  req.on('close', () => {
+    liveNotificationSubscribers.delete(subId);
+  });
+});
+
+// Fetch Notifications for Authenticated User
+app.get('/api/v1/notifications', async (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.json({ success: true, notifications: [] });
+    }
+
+    const items = await NotificationRecord.find({
+      userId: new mongoose.Types.ObjectId(authUserId),
+    })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .lean();
+
+    return res.json({
+      success: true,
+      notifications: items.map((item) => ({
+        id: item._id.toString(),
+        type: item.type,
+        emoji: item.emoji,
+        tint: item.tint,
+        categoryLabel: item.categoryLabel,
+        title: item.title,
+        desc: item.desc,
+        time: item.createdAt ? new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : item.time,
+        read: item.read,
+        actionLabel: item.actionLabel,
+        targetTab: item.targetTab,
+        targetModal: item.targetModal,
+        targetId: item.targetId,
+        metadata: item.metadata,
+      })),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message || 'Failed to fetch notifications' });
+  }
+});
+
+// Mark Notification as Read
+app.post('/api/v1/notifications/:id/read', async (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
+  const { id } = req.params;
+  try {
+    if (mongoose.connection.readyState === 1 && mongoose.isValidObjectId(id)) {
+      await NotificationRecord.findOneAndUpdate(
+        { _id: id, userId: authUserId },
+        { read: true }
+      );
+    }
+    return res.json({ success: true, message: 'Marked as read' });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Test Trigger: Instant Emergency Medical ID Access Alert
+app.post('/api/v1/notifications/test-emergency-alert', async (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
+  try {
+    let patientName = 'You';
+    if (mongoose.connection.readyState === 1) {
+      const p = await UserProfile.findOne({ accountId: authUserId }).lean();
+      if (p) patientName = p.fullName || p.name || 'You';
+    }
+
+    const testToken = `test_token_${Date.now()}`;
+    const scanTimeStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+    const notif = await dispatchPushNotification({
+      userId: authUserId,
+      type: 'critical_alert',
+      emoji: '🚨',
+      tint: '#ffe4e6',
+      categoryLabel: 'Emergency Alert',
+      title: '🚨 Emergency Medical ID Accessed!',
+      body: `Your Emergency Medical ID (${patientName}) was scanned by a first responder at ${scanTimeStr}. Tap to review access details or revoke link immediately.`,
+      actionLabel: 'Review Security Log',
+      targetModal: 'emergency',
+      targetTab: 'home',
+      metadata: {
+        token: testToken,
+        grantId: 'test-grant',
+        patientName,
+        ipAddress: req.ip || '127.0.0.1',
+        userAgent: req.get('user-agent'),
+        scannedAt: new Date().toISOString(),
+      },
+    });
+
+    return res.json({ success: true, message: 'Test emergency alert dispatched successfully', notification: notif });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Revoke Emergency Bridge Token Immediately (Locks QR code from further access)
+app.post('/api/v1/shares/bridge/revoke/:token', async (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
+  const { token } = req.params;
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const grant = await ShareGrant.findOne({ shareToken: token });
+      if (!grant) {
+        return res.status(404).json({ success: false, message: 'Share grant not found for this token' });
+      }
+
+      if (String(grant.grantorUserId) !== String(authUserId)) {
+        const owned = await callerCanAccessOwner(authUserId, String(grant.familyMemberId || grant.grantorUserId));
+        if (!owned) {
+          return res.status(403).json({ success: false, message: 'Cannot revoke a share grant you do not own' });
+        }
+      }
+
+      grant.status = 'revoked';
+      await grant.save();
+
+      await AccessAuditLog.create({
+        grantId: grant._id,
+        accessedByName: 'Patient (Self / Security Action)',
+        accessorRole: 'Patient Owner',
+        facilityName: 'WelliRecord Mobile Security Control',
+        action: 'revoke',
+        recordsCount: 0,
+        ipAddress: req.ip || '127.0.0.1',
+        metadata: {
+          token,
+          revokedAt: new Date(),
+        },
+      });
+    }
+
+    return res.json({
+      success: true,
+      status: 'revoked',
+      message: 'Emergency share link revoked successfully. First responders can no longer access this profile with this QR code.',
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message || 'Failed to revoke link' });
   }
 });
 

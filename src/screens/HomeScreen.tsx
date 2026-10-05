@@ -14,6 +14,7 @@ import { ChatEntryButton } from '../components/ChatEntryButton';
 import { RECORD_META } from '../data/mockData';
 import { hapticFeedback } from '../utils/haptics';
 import { OfflineSyncBanner } from '../components/OfflineSyncBanner';
+import { EmergencyScanAlertBanner } from '../components/EmergencyScanAlertBanner';
 import type { WelliApp } from '../state/useWelliApp';
 
 const PALETTE = {
@@ -187,6 +188,7 @@ export function HomeScreen({ app }: { app: WelliApp }) {
         showsVerticalScrollIndicator={false}
       >
         <OfflineSyncBanner />
+        <EmergencyScanAlertBanner app={app} />
 
         <Text style={styles.greeting}>Good day</Text>
         <Text style={styles.name}>{memberName}</Text>

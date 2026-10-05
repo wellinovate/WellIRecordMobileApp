@@ -13,6 +13,7 @@ import { Chip } from '../components/Chip';
 import { RECORD_META, RECORD_TYPES } from '../data/mockData';
 import { hapticFeedback } from '../utils/haptics';
 import { OfflineSyncBanner } from '../components/OfflineSyncBanner';
+import { EmergencyScanAlertBanner } from '../components/EmergencyScanAlertBanner';
 import type { WelliApp } from '../state/useWelliApp';
 
 export function RecordsScreen({ app }: { app: WelliApp }) {
@@ -91,8 +92,9 @@ export function RecordsScreen({ app }: { app: WelliApp }) {
         </TouchableOpacity>
       </View>
 
-      {/* Offline Sync Banner */}
+      {/* Offline Sync Banner & Emergency Scan Alert */}
       <OfflineSyncBanner />
+      <EmergencyScanAlertBanner app={app} />
 
       {/* Child Immunization Interactive Widget (if Child Dependent Active) */}
       {activeMember.isChild && (

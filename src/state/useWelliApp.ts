@@ -38,6 +38,7 @@ import { profileService } from '../services/profileService';
 import { familyService } from '../services/familyService';
 import { facilityService } from '../services/facilityService';
 import { sharingService } from '../services/sharingService';
+import { notificationService } from '../services/notificationService';
 import type { CareFacility } from '../data/types';
 
 export interface AppState {
@@ -615,6 +616,14 @@ export function useWelliApp() {
             patch({ facilitiesList: remoteFacilities });
           }
         }).catch(() => {});
+
+        // Initialize notification engine (Push token registration, SSE stream, persistent alerts)
+        notificationService.init().catch(() => {});
+        notificationService.subscribeToNotifications((notifs) => {
+          if (Array.isArray(notifs) && notifs.length > 0) {
+            patch({ notifications: notifs });
+          }
+        });
       } catch {
         // ignore corrupt local storage
       }
@@ -1394,6 +1403,7 @@ export function useWelliApp() {
       patch((s) => ({ notifications: s.notifications.filter((n) => n.id !== id) }));
     },
     markNotificationAsRead: (id: string) => {
+      notificationService.markAsRead(id);
       patch((s) => ({
         notifications: s.notifications.map((n) =>
           n.id === id ? { ...n, read: true } : n
@@ -1402,6 +1412,7 @@ export function useWelliApp() {
     },
     markAllNotificationsAsRead: () => {
       hapticFeedback.selection();
+      notificationService.markAllAsRead();
       patch((s) => ({
         notifications: s.notifications.map((n) => ({ ...n, read: true })),
       }));

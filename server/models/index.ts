@@ -291,9 +291,10 @@ export interface IAccessAuditLog extends Document {
   accessedByName: string;
   accessorRole: string;
   facilityName: string;
-  action: 'view' | 'download' | 'print' | 'revoke';
+  action: 'view' | 'download' | 'print' | 'revoke' | 'emergency_scan';
   recordsCount: number;
   ipAddress: string;
+  metadata?: any;
 }
 
 const AccessAuditLogSchema = new Schema<IAccessAuditLog>(
@@ -302,9 +303,10 @@ const AccessAuditLogSchema = new Schema<IAccessAuditLog>(
     accessedByName: { type: String, required: true },
     accessorRole: { type: String, required: true },
     facilityName: { type: String, required: true },
-    action: { type: String, required: true, enum: ['view', 'download', 'print', 'revoke'] },
+    action: { type: String, required: true, enum: ['view', 'download', 'print', 'revoke', 'emergency_scan'] },
     recordsCount: { type: Number, default: 1 },
     ipAddress: { type: String, required: true },
+    metadata: { type: Schema.Types.Mixed },
   },
   { timestamps: true }
 );
@@ -553,6 +555,7 @@ export interface IUserProfile extends Document {
   insuranceId?: string;
   authProvider?: string;
   isEmailVerified?: boolean;
+  pushTokens?: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -589,6 +592,7 @@ const UserProfileSchema = new Schema<IUserProfile>(
     insuranceId: { type: String },
     authProvider: { type: String },
     isEmailVerified: { type: Boolean },
+    pushTokens: { type: [String], default: [] },
   },
   { timestamps: true, strict: false }
 );
@@ -625,6 +629,50 @@ const ChatIntentSchema = new Schema<IChatIntent>(
 
 ChatIntentSchema.index({ audience: 1, isRoot: 1 });
 
+// 13. In-App & Push Notification Record Model
+export interface INotification extends Document {
+  userId: mongoose.Types.ObjectId;
+  type: 'critical_alert' | 'referral' | 'lab_result' | 'consent' | 'claim' | 'immunization' | 'prescription' | 'system';
+  emoji: string;
+  tint: string;
+  categoryLabel: string;
+  title: string;
+  desc: string;
+  time: string;
+  read: boolean;
+  actionLabel?: string;
+  targetTab?: string;
+  targetModal?: string;
+  targetId?: string;
+  metadata?: any;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const NotificationSchema = new Schema<INotification>(
+  {
+    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    type: {
+      type: String,
+      required: true,
+      enum: ['critical_alert', 'referral', 'lab_result', 'consent', 'claim', 'immunization', 'prescription', 'system'],
+    },
+    emoji: { type: String, default: '🔔' },
+    tint: { type: String, default: '#e0e7ff' },
+    categoryLabel: { type: String, default: 'Notification' },
+    title: { type: String, required: true },
+    desc: { type: String, required: true },
+    time: { type: String, default: 'Just now' },
+    read: { type: Boolean, default: false, index: true },
+    actionLabel: { type: String },
+    targetTab: { type: String },
+    targetModal: { type: String },
+    targetId: { type: String },
+    metadata: { type: Schema.Types.Mixed },
+  },
+  { timestamps: true }
+);
+
 // Export Mongoose Models
 export const User: Model<IUser> = mongoose.models.User || mongoose.model<IUser>('User', UserSchema);
 export const Account: Model<IAccount> = mongoose.models.Account || mongoose.model<IAccount>('Account', AccountSchema, 'accounts');
@@ -638,4 +686,6 @@ export const ShareGrant: Model<IShareGrant> = mongoose.models.ShareGrant || mong
 export const AccessAuditLog: Model<IAccessAuditLog> = mongoose.models.AccessAuditLog || mongoose.model<IAccessAuditLog>('AccessAuditLog', AccessAuditLogSchema);
 export const VitalLog: Model<IVitalLog> = mongoose.models.VitalLog || mongoose.model<IVitalLog>('VitalLog', VitalLogSchema);
 export const ChatIntent: Model<IChatIntent> = mongoose.models.ChatIntent || mongoose.model<IChatIntent>('ChatIntent', ChatIntentSchema);
+export const NotificationRecord: Model<INotification> =
+  mongoose.models.NotificationRecord || mongoose.model<INotification>('NotificationRecord', NotificationSchema, 'notifications');
 

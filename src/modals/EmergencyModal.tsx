@@ -17,6 +17,7 @@ import { ModalHeader } from '../components/ModalHeader';
 import { formatDob } from '../utils/formatDate';
 import { offlineSyncService } from '../services/offlineSyncService';
 import { sharingService } from '../services/sharingService';
+import { notificationService } from '../services/notificationService';
 import { hapticFeedback } from '../utils/haptics';
 import type { WelliApp } from '../state/useWelliApp';
 
@@ -35,6 +36,45 @@ export function EmergencyModal({ app }: { app: WelliApp }) {
   const guardianLine = isDependent ? `Guardian: ${family[0].name}` : null;
 
   const [qr, setQr] = useState<QrState>({ status: 'loading' });
+  const [isRevoking, setIsRevoking] = useState(false);
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
+
+  const handleSimulateScan = async () => {
+    setIsSimulating(true);
+    hapticFeedback.medium();
+    try {
+      await notificationService.triggerTestEmergencyAlert();
+      setFeedbackMsg('🚨 Scan alert sent! Look for the alert banner on screen.');
+      setTimeout(() => setFeedbackMsg(null), 5000);
+    } catch {
+      setFeedbackMsg('Simulation failed');
+    } finally {
+      setIsSimulating(false);
+    }
+  };
+
+  const handleRevokeActive = async () => {
+    if (qr.status !== 'ready' || !qr.url) return;
+    const token = qr.url.split('/').pop() || '';
+    if (!token) return;
+
+    setIsRevoking(true);
+    hapticFeedback.warning();
+    try {
+      await notificationService.revokeEmergencyToken(token);
+      setFeedbackMsg('🔒 QR Code revoked & locked. Generating new secure link...');
+      setQr({ status: 'loading' });
+      const newLink = await sharingService.createEmergencyShareLink(emergencyMember.id);
+      setQr({ status: 'ready', url: newLink.shareUrl, offline: false });
+      setFeedbackMsg('✅ New secure emergency QR generated!');
+      setTimeout(() => setFeedbackMsg(null), 4000);
+    } catch {
+      setFeedbackMsg('Failed to revoke link');
+    } finally {
+      setIsRevoking(false);
+    }
+  };
 
   // The QR code must encode a real, server-issued, token-gated share link —
   // never a URL built client-side from a predictable id (wrId / family
@@ -232,6 +272,65 @@ export function EmergencyModal({ app }: { app: WelliApp }) {
               </Text>
             )}
           </View>
+
+          {/* Access Guard & Test Simulation Card */}
+          <View style={styles.guardCard}>
+            <View style={styles.guardHeader}>
+              <View style={styles.shieldBadge}>
+                <Svg width={13} height={13} viewBox="0 0 24 24" fill="none">
+                  <Path
+                    d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"
+                    stroke="#10b981"
+                    strokeWidth={2.4}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </Svg>
+                <Text style={styles.shieldBadgeText}>Scan Guard Armed</Text>
+              </View>
+              <Text style={styles.guardSub}>Real-Time Security Push</Text>
+            </View>
+
+            <Text style={styles.guardDesc}>
+              Any scan of this QR code immediately triggers a high-priority push notification to your phone with the responder's IP and timestamp.
+            </Text>
+
+            {feedbackMsg && (
+              <View style={styles.feedbackBanner}>
+                <Text style={styles.feedbackText}>{feedbackMsg}</Text>
+              </View>
+            )}
+
+            <View style={styles.guardActions}>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={handleSimulateScan}
+                disabled={isSimulating}
+                style={styles.simulateBtn}
+              >
+                {isSimulating ? (
+                  <ActivityIndicator size="small" color="#991b1b" />
+                ) : (
+                  <Text style={styles.simulateBtnText}>🚨 Test First Responder Alert</Text>
+                )}
+              </TouchableOpacity>
+
+              {qr.status === 'ready' && !qr.offline && (
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={handleRevokeActive}
+                  disabled={isRevoking}
+                  style={styles.revokeQrBtn}
+                >
+                  {isRevoking ? (
+                    <ActivityIndicator size="small" color="#f43f5e" />
+                  ) : (
+                    <Text style={styles.revokeQrBtnText}>Revoke Active QR</Text>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
         </ScrollView>
       </SafeAreaView>
     </Modal>
@@ -381,6 +480,96 @@ const styles = StyleSheet.create({
   },
   callContactBtnText: {
     color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  guardCard: {
+    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    borderWidth: 1,
+    borderColor: 'rgba(51, 65, 85, 0.7)',
+    borderRadius: 18,
+    padding: 16,
+    width: '100%',
+    maxWidth: 280,
+    marginTop: 4,
+    gap: 10,
+  },
+  guardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  shieldBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderColor: 'rgba(16, 185, 129, 0.4)',
+    borderWidth: 1,
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
+    borderRadius: 8,
+  },
+  shieldBadgeText: {
+    color: '#34d399',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  guardSub: {
+    color: '#94a3b8',
+    fontSize: 9.5,
+    fontWeight: '600',
+  },
+  guardDesc: {
+    color: '#cbd5e1',
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  feedbackBanner: {
+    backgroundColor: 'rgba(2, 132, 199, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(2, 132, 199, 0.4)',
+    borderRadius: 8,
+    padding: 8,
+  },
+  feedbackText: {
+    color: '#7dd3fc',
+    fontSize: 10.5,
+    lineHeight: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  guardActions: {
+    gap: 8,
+    marginTop: 2,
+  },
+  simulateBtn: {
+    backgroundColor: '#fff1f2',
+    borderWidth: 1,
+    borderColor: '#fecdd3',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  simulateBtnText: {
+    color: '#9f1239',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  revokeQrBtn: {
+    backgroundColor: 'rgba(244, 63, 94, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(244, 63, 94, 0.35)',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  revokeQrBtnText: {
+    color: '#fb7185',
     fontSize: 11,
     fontWeight: '700',
   },
