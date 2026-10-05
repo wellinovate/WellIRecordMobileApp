@@ -12,6 +12,8 @@ dist
 dist-ssr
 # Expo & Build
 .expo/
+android/
+ios/
 *.tsbuildinfo
 *.local
 .env
