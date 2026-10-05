@@ -1,0 +1,10 @@
+{
+  "description": "This mobile-friendly app allows users to manage and track fictional patient health records efficiently, ensuring easy access to vital information.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
