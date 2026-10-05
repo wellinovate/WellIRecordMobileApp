@@ -1,14 +1,13 @@
-import React from 'react';
-import { AppRegistry } from 'react-native';
-import App from './App';
-import './index.css';
+import { StrictMode } from "react"
+import { createRoot } from "react-dom/client"
+import App from "./App"
+import "./index.css"
 
-AppRegistry.registerComponent('WelliRecord', () => App);
-
-const rootTag = document.getElementById('root');
-if (rootTag) {
-  AppRegistry.runApplication('WelliRecord', {
-    initialProps: {},
-    rootTag,
-  });
+const root = document.getElementById("root")
+if (root) {
+  createRoot(root).render(
+    <StrictMode>
+      <App />
+    </StrictMode>
+  )
 }

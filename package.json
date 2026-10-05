@@ -4,17 +4,14 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
     "start": "expo start",
     "web": "expo start --web",
     "android": "expo run:android",
     "ios": "expo start --go --ios",
-    "ios:dev": "expo start --ios",
-    "ios:tunnel": "expo start --go --ios --tunnel",
-    "dev": "expo start --go",
-    "build": "tsc -b",
-    "lint": "oxlint",
-    "migrate:chatbot": "npm --prefix server run migrate:chatbot",
-    "migrate:chatbot:provider": "npm --prefix server run migrate:chatbot:provider"
+    "lint": "oxlint"
   },
   "dependencies": {
     "@clerk/expo": "^4.6.2",

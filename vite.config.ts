@@ -1,26 +1,17 @@
-import react from '@vitejs/plugin-react';
-import tailwindcss from '@tailwindcss/vite';
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
+import path from 'node:path'
 
-import path from 'path';
-
-// https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  define: {
-    global: 'window',
-    __DEV__: JSON.stringify(process.env.NODE_ENV !== 'production'),
-  },
   resolve: {
     alias: {
-      'react-native': 'react-native-web',
-      'react-native-svg': 'react-native-svg',
-      'react-native-qrcode-svg': path.resolve(__dirname, 'src/components/QRCodeShim.tsx'),
+      '@': path.resolve(__dirname, './src'),
     },
-    extensions: ['.web.tsx', '.web.ts', '.web.jsx', '.web.js', '.tsx', '.ts', '.jsx', '.js'],
   },
   server: {
-    port: 5173,
+    port: parseInt(process.env.PORT || '8443'),
     host: true,
   },
-});
+})
