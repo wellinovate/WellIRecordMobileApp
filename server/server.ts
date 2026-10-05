@@ -135,6 +135,22 @@ async function callerCanAccessOwner(authUserId: string, targetOwnerId: string): 
   return Boolean(isDependent);
 }
 
+// Opaque, unguessable public lookup token for 'bridge' (QR / share-link)
+// grants — mirrors the web backend's WelliBridge token generation (24
+// random bytes, base64url). Not a JWT: looked up directly against
+// ShareGrant.shareToken, with a collision-check loop even though a
+// collision is astronomically unlikely.
+async function generateUniqueShareToken(): Promise<string> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const token = crypto.randomBytes(24).toString('base64url');
+    const existing = mongoose.connection.readyState === 1
+      ? await ShareGrant.exists({ shareToken: token })
+      : null;
+    if (!existing) return token;
+  }
+  throw new Error('Could not generate a unique share token');
+}
+
 // Diagnostic logging — temporary, remove once the real cause is found.
 // Logs memory usage on every request and around each Places API batch,
 // so we can see exactly where allocation spikes instead of guessing.
@@ -2674,20 +2690,63 @@ app.get('/api/v1/care/labs', async (req: Request, res: Response) => {
 });
 
 // 7. Create Share Grant & Audit Log (MongoDB)
+// Not in the original audit, found while reviewing a later feature: this was
+// fully unauthenticated, and grantorUserId was a freshly-generated random
+// ObjectId instead of the caller — anyone could write fake share grants and
+// fake NDPR access-audit-log entries for any recipient, attributed to
+// nobody real. That's both a spam/DoS vector and a corruption risk for a
+// compliance-mandated audit trail. Now requires auth, attributes the grant
+// to the real caller, and verifies every recordId actually belongs to them
+// (or a dependent they manage) before a grant can reference it.
 app.post('/api/v1/shares/grants', async (req: Request, res: Response) => {
-  const { recipientId, recipientType, recipientName, recordIds, expiry } = req.body;
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
+  const { recipientId, recipientType, recipientName, recordIds, expiry, familyMemberId } = req.body;
 
   try {
+    let shareToken: string | undefined;
+
+    if (recipientType === 'bridge') {
+      // Public QR / share-link grant (e.g. the Emergency Medical ID card):
+      // not tied to specific HealthRecord ids — it unlocks one family
+      // member's emergency summary via an opaque token instead.
+      const targetOwnerId = familyMemberId || 'me';
+      const owned = await callerCanAccessOwner(authUserId, String(targetOwnerId));
+      if (!owned) {
+        return res.status(403).json({ success: false, message: 'Cannot share a profile you do not own' });
+      }
+      shareToken = await generateUniqueShareToken();
+    } else if (Array.isArray(recordIds) && recordIds.length > 0) {
+      for (const recordId of recordIds) {
+        const record = await HealthRecord.findById(recordId).select('familyMemberId').lean();
+        if (!record) {
+          return res.status(404).json({ success: false, message: `Record ${recordId} not found` });
+        }
+        const owned = await callerCanAccessOwner(authUserId, String(record.familyMemberId));
+        if (!owned) {
+          return res.status(403).json({ success: false, message: 'Cannot share a record you do not own' });
+        }
+      }
+    }
+
     let grantId = `grant_${Date.now()}`;
     const expiresAt = new Date(Date.now() + 24 * 3600 * 1000);
 
     if (mongoose.connection.readyState === 1) {
       const grant = await ShareGrant.create({
-        grantorUserId: new mongoose.Types.ObjectId(),
+        grantorUserId: new mongoose.Types.ObjectId(authUserId),
         recipientType,
         recipientId,
         recipientName,
         recordIds: recordIds || [],
+        familyMemberId:
+          recipientType === 'bridge' && familyMemberId && mongoose.isValidObjectId(familyMemberId)
+            ? new mongoose.Types.ObjectId(familyMemberId)
+            : undefined,
+        shareToken,
         expiryCode: expiry || '24h',
         expiresAt,
         status: 'active',
@@ -2703,7 +2762,14 @@ app.post('/api/v1/shares/grants', async (req: Request, res: Response) => {
         recordsCount: recordIds?.length || 1,
         ipAddress: req.ip || '127.0.0.1',
       });
+    } else if (recipientType === 'bridge') {
+      // No DB connection — a bridge grant with no persisted token is
+      // useless (nothing could ever resolve it), unlike the demo-mode
+      // doctor/facility grants above which are just UI stand-ins.
+      return res.status(503).json({ success: false, message: 'Share service temporarily unavailable' });
     }
+
+    const baseUrl = process.env.PUBLIC_API_BASE_URL || `${req.protocol}://${req.get('host')}`;
 
     res.json({
       id: grantId,
@@ -2714,9 +2780,129 @@ app.post('/api/v1/shares/grants', async (req: Request, res: Response) => {
       expiry,
       expiresAt: expiresAt.toISOString(),
       status: 'active',
+      ...(shareToken ? { shareToken, shareUrl: `${baseUrl}/api/v1/shares/bridge/${shareToken}` } : {}),
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err });
+  }
+});
+
+// Minimal HTML escaper for values interpolated into the bridge page below —
+// this route is public, so anything a user put into their own name/
+// allergies/conditions fields must not be able to break out of the markup.
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// 7b. Emergency Bridge — public, token-gated redemption of a 'bridge' share
+// grant created above. Deliberately unauthenticated by design (first
+// responders scanning a QR code have no WelliRecord account), the same way
+// the web backend's WelliBridge GET /bridge/:token works: access control
+// lives entirely in the opaque, unguessable token, not in a session. Scope
+// is deliberately narrow — only the emergency-card fields, never full
+// health records — and the token must be active and unexpired.
+app.get('/api/v1/shares/bridge/:token', async (req: Request, res: Response) => {
+  const { token } = req.params;
+  res.set('Content-Type', 'text/html; charset=utf-8');
+
+  const renderError = (status: number, message: string) =>
+    res.status(status).send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>WelliRecord Emergency ID</title></head><body style="font-family:sans-serif;max-width:480px;margin:40px auto;padding:0 20px;color:#0f172a;"><h2>${escapeHtml(message)}</h2><p>This link may have expired or been revoked by the patient.</p></body></html>`);
+
+  if (!token || mongoose.connection.readyState !== 1) {
+    return renderError(404, 'Link not found');
+  }
+
+  try {
+    const grant = await ShareGrant.findOne({ shareToken: token, recipientType: 'bridge' });
+    if (!grant) {
+      return renderError(404, 'This link is invalid or does not exist');
+    }
+    if (grant.status === 'revoked') {
+      return renderError(410, 'This link has been revoked by the patient');
+    }
+    if (grant.expiresAt && grant.expiresAt.getTime() <= Date.now()) {
+      return renderError(410, 'This link has expired');
+    }
+
+    const targetOwnerId = grant.familyMemberId ? String(grant.familyMemberId) : String(grant.grantorUserId);
+    let emergency: {
+      name?: string; dob?: any; bloodType?: string; genotype?: string;
+      allergies?: string; conditions?: string; contact?: string;
+      emergencyContacts?: any[]; wrId?: string;
+    } | null = null;
+
+    if (targetOwnerId === String(grant.grantorUserId)) {
+      const profile = await UserProfile.findOne({ accountId: grant.grantorUserId }).lean();
+      if (profile) {
+        emergency = {
+          name: profile.fullName || profile.name,
+          dob: profile.dateOfBirth || profile.dob,
+          bloodType: profile.bloodType,
+          genotype: profile.genotype,
+          allergies: profile.allergies,
+          conditions: profile.conditions,
+          contact: profile.contact,
+          emergencyContacts: profile.emergencyContacts,
+          wrId: profile.wrId,
+        };
+      }
+    } else {
+      const member = await FamilyMember.findById(targetOwnerId).lean();
+      if (member) {
+        emergency = {
+          name: member.fullName || member.name,
+          dob: member.dateOfBirth || member.dob,
+          bloodType: member.bloodType,
+          genotype: member.genotype,
+          allergies: member.allergies,
+          conditions: (member as any).conditions,
+          contact: (member as any).contact,
+          emergencyContacts: (member as any).emergencyContacts,
+        };
+      }
+    }
+
+    if (!emergency) {
+      return renderError(404, 'No emergency profile found for this link');
+    }
+
+    const contacts = Array.isArray(emergency.emergencyContacts) ? emergency.emergencyContacts : [];
+    const contactsHtml = contacts.length
+      ? contacts
+          .map(
+            (c: any) =>
+              `<li>${escapeHtml(c?.name)}${c?.relationship ? ` (${escapeHtml(c.relationship)})` : ''}${c?.phone ? ` — ${escapeHtml(c.phone)}` : ''}</li>`
+          )
+          .join('')
+      : '<li>None on file</li>';
+
+    res.status(200).send(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WelliRecord Emergency ID</title>
+</head>
+<body style="font-family:sans-serif;max-width:480px;margin:40px auto;padding:0 20px;color:#0f172a;">
+  <h2 style="margin-bottom:0;">${escapeHtml(emergency.name || 'WelliRecord Patient')}</h2>
+  ${emergency.wrId ? `<p style="color:#64748b;margin-top:4px;">ID: ${escapeHtml(emergency.wrId)}</p>` : ''}
+  ${emergency.dob ? `<p>DOB: ${escapeHtml(emergency.dob)}</p>` : ''}
+  <p><strong>Blood Type:</strong> ${escapeHtml(emergency.bloodType || 'Unknown')}</p>
+  <p><strong>Genotype:</strong> ${escapeHtml(emergency.genotype || 'Unknown')}</p>
+  <p><strong>Allergies:</strong> ${escapeHtml(emergency.allergies || 'None on file')}</p>
+  <p><strong>Conditions:</strong> ${escapeHtml(emergency.conditions || 'None on file')}</p>
+  <p><strong>Emergency Contacts:</strong></p>
+  <ul>${contactsHtml}</ul>
+  <p style="color:#94a3b8;font-size:12px;margin-top:32px;">Shared via WelliRecord Emergency Medical ID. This link expires automatically and was shared by the patient.</p>
+</body>
+</html>`);
+  } catch (err) {
+    return renderError(500, 'Something went wrong loading this link');
   }
 });
 

@@ -254,6 +254,14 @@ export interface IShareGrant extends Document {
   recipientId?: string;
   recipientName: string;
   recordIds: mongoose.Types.ObjectId[];
+  // Only set for recipientType 'bridge' (public QR / share-link grants, e.g.
+  // the Emergency Medical ID card): identifies which family member's
+  // emergency summary the token unlocks, mirroring the web backend's
+  // WelliBridge access-grant pattern rather than a HealthRecord list.
+  familyMemberId?: mongoose.Types.ObjectId;
+  // Opaque, unguessable public lookup key for 'bridge' grants —
+  // crypto.randomBytes(24).toString('base64url'). Never a predictable ID.
+  shareToken?: string;
   expiryCode: '24h' | '7d' | '30d' | 'custom';
   expiresAt: Date;
   isOtpVerified: boolean;
@@ -267,6 +275,8 @@ const ShareGrantSchema = new Schema<IShareGrant>(
     recipientId: { type: String },
     recipientName: { type: String, required: true },
     recordIds: [{ type: Schema.Types.ObjectId, ref: 'HealthRecord' }],
+    familyMemberId: { type: Schema.Types.ObjectId },
+    shareToken: { type: String, unique: true, sparse: true, index: true },
     expiryCode: { type: String, required: true, enum: ['24h', '7d', '30d', 'custom'] },
     expiresAt: { type: Date, required: true, index: true },
     isOtpVerified: { type: Boolean, default: true },

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Modal,
   TouchableOpacity,
   Linking,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,8 +16,14 @@ import Svg, { Path } from 'react-native-svg';
 import { ModalHeader } from '../components/ModalHeader';
 import { formatDob } from '../utils/formatDate';
 import { offlineSyncService } from '../services/offlineSyncService';
+import { sharingService } from '../services/sharingService';
 import { hapticFeedback } from '../utils/haptics';
 import type { WelliApp } from '../state/useWelliApp';
+
+type QrState =
+  | { status: 'loading' }
+  | { status: 'ready'; url: string; offline: boolean }
+  | { status: 'unavailable' };
 
 export function EmergencyModal({ app }: { app: WelliApp }) {
   const { state, actions, family } = app;
@@ -27,25 +34,59 @@ export function EmergencyModal({ app }: { app: WelliApp }) {
   const isDependent = emergencyMember.role === 'dependent';
   const guardianLine = isDependent ? `Guardian: ${family[0].name}` : null;
 
+  const [qr, setQr] = useState<QrState>({ status: 'loading' });
+
+  // The QR code must encode a real, server-issued, token-gated share link —
+  // never a URL built client-side from a predictable id (wrId / family
+  // member id), which anyone could guess and use to pull this profile with
+  // no grant at all. When online, request a fresh link and cache it for
+  // offline use; when offline, fall back to the last link actually issued
+  // (never to a freshly-fabricated guess).
   useEffect(() => {
-    if (emergencyMember) {
-      offlineSyncService.cacheEmergencyProfile({
-        id: emergencyMember.id,
-        name: emergencyMember.name,
-        wrId: emergencyMember.wrId,
-        dob: emergencyMember.dob,
-        bloodType: emergencyMember.bloodType,
-        genotype: emergencyMember.genotype,
-        allergies: emergencyMember.allergies,
-        conditions: emergencyMember.conditions,
-        contact: emergencyMember.contact,
-        emergencyContacts: emergencyMember.emergencyContacts,
-        hmoProvider: (emergencyMember as any).hmoProvider,
-        hmoPolicyNumber: (emergencyMember as any).hmoPolicyNumber,
-        qrPayload: `https://wellirecord.com/emergency/${emergencyMember.wrId || emergencyMember.id}`,
-      });
-    }
-  }, [emergencyMember]);
+    if (!emergencyMember) return;
+    let cancelled = false;
+    setQr({ status: 'loading' });
+
+    (async () => {
+      if (offlineSyncService.isOnline()) {
+        try {
+          const link = await sharingService.createEmergencyShareLink(emergencyMember.id);
+          if (cancelled) return;
+          setQr({ status: 'ready', url: link.shareUrl, offline: false });
+          await offlineSyncService.cacheEmergencyProfile({
+            id: emergencyMember.id,
+            name: emergencyMember.name,
+            wrId: emergencyMember.wrId,
+            dob: emergencyMember.dob,
+            bloodType: emergencyMember.bloodType,
+            genotype: emergencyMember.genotype,
+            allergies: emergencyMember.allergies,
+            conditions: emergencyMember.conditions,
+            contact: emergencyMember.contact,
+            emergencyContacts: emergencyMember.emergencyContacts,
+            hmoProvider: (emergencyMember as any).hmoProvider,
+            hmoPolicyNumber: (emergencyMember as any).hmoPolicyNumber,
+            qrPayload: link.shareUrl,
+          });
+          return;
+        } catch (err) {
+          console.warn('[EmergencyModal] Failed to create a fresh share link, falling back to cache:', err);
+        }
+      }
+
+      const cached = await offlineSyncService.getCachedEmergencyProfile();
+      if (cancelled) return;
+      if (cached && cached.id === emergencyMember.id && cached.qrPayload) {
+        setQr({ status: 'ready', url: cached.qrPayload, offline: true });
+      } else {
+        setQr({ status: 'unavailable' });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [emergencyMember?.id]);
 
   const handleCallContact = () => {
     const phoneDigits = emergencyMember.contact.replace(/[^0-9+]/g, '');
@@ -94,18 +135,22 @@ export function EmergencyModal({ app }: { app: WelliApp }) {
                 <Text style={styles.idCardBadgeText}>Emergency Medical ID</Text>
               </View>
 
-              <View style={styles.offlineReadyPill}>
-                <Svg width={11} height={11} viewBox="0 0 24 24" fill="none">
-                  <Path
-                    d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"
-                    stroke="#10b981"
-                    strokeWidth={2.5}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </Svg>
-                <Text style={styles.offlineReadyText}>Offline Cached</Text>
-              </View>
+              {qr.status === 'ready' ? (
+                <View style={styles.offlineReadyPill}>
+                  <Svg width={11} height={11} viewBox="0 0 24 24" fill="none">
+                    <Path
+                      d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"
+                      stroke="#10b981"
+                      strokeWidth={2.5}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </Svg>
+                  <Text style={styles.offlineReadyText}>
+                    {qr.offline ? 'Offline Cached' : 'Secure Link Ready'}
+                  </Text>
+                </View>
+              ) : null}
             </View>
 
             <Text style={styles.memberName}>{emergencyMember.name}</Text>
@@ -166,15 +211,26 @@ export function EmergencyModal({ app }: { app: WelliApp }) {
 
           {/* First Responders QR Box */}
           <View style={styles.qrCard}>
-            <QRCode
-              value={`https://wellirecord.com/emergency/${emergencyMember.wrId || emergencyMember.id}`}
-              size={140}
-              color="#0f172a"
-              backgroundColor="#ffffff"
-            />
-            <Text style={styles.qrCaption}>
-              First responders can scan for offline medical profile
-            </Text>
+            {qr.status === 'ready' ? (
+              <>
+                <QRCode value={qr.url} size={140} color="#0f172a" backgroundColor="#ffffff" />
+                <Text style={styles.qrCaption}>
+                  {qr.offline
+                    ? 'Showing the last link generated while online — reconnect to refresh it'
+                    : 'First responders can scan for a secure, time-limited medical profile'}
+                </Text>
+              </>
+            ) : qr.status === 'loading' ? (
+              <>
+                <ActivityIndicator color="#0f172a" />
+                <Text style={styles.qrCaption}>Generating a secure share link…</Text>
+              </>
+            ) : (
+              <Text style={styles.qrCaption}>
+                Couldn't generate a secure share link. Connect to the internet and reopen this
+                screen to try again.
+              </Text>
+            )}
           </View>
         </ScrollView>
       </SafeAreaView>

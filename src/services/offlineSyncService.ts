@@ -152,10 +152,12 @@ class OfflineSyncService {
         emergencyContacts: profile.emergencyContacts || existing.emergencyContacts || [],
         hmoProvider: profile.hmoProvider || existing.hmoProvider || 'Hygeia HMO Nigeria',
         hmoPolicyNumber: profile.hmoPolicyNumber || existing.hmoPolicyNumber || 'HYG-90214-LAG',
-        qrPayload:
-          profile.qrPayload ||
-          existing.qrPayload ||
-          `https://wellirecord.com/emergency/${profile.wrId || existing.wrId || 'me'}`,
+        // No guessable fallback here on purpose: a QR payload must be a
+        // real server-issued, token-gated share link (see
+        // sharingService.createEmergencyShareLink) or nothing at all.
+        // Falling back to a predictable URL built from wrId/id would let
+        // anyone who learns that id pull this profile with no grant.
+        qrPayload: profile.qrPayload || existing.qrPayload || '',
         lastUpdated: Date.now(),
       };
       await storage.setItem(this.EMERGENCY_CACHE_KEY, JSON.stringify(updated));

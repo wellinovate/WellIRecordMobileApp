@@ -18,6 +18,10 @@ export interface ShareGrant {
   expiresAt: string;
   createdAt: string;
   status: 'active' | 'revoked' | 'expired';
+  // Only present for recipientType 'bridge' — the opaque public token and
+  // the full redemption URL a QR code should encode.
+  shareToken?: string;
+  shareUrl?: string;
 }
 
 export interface AccessAuditLog {
@@ -42,6 +46,9 @@ export const sharingService = {
     recordIds: string[];
     expiry: ShareExpiry;
     otpCode: string;
+    // Required when recipientType is 'bridge' — which family member's
+    // emergency summary the resulting public token unlocks.
+    familyMemberId?: string;
   }): Promise<ShareGrant> {
     if (CONFIG.demoMode) {
       await new Promise((res) => setTimeout(res, 400));
@@ -56,10 +63,38 @@ export const sharingService = {
         expiresAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
         createdAt: new Date().toISOString(),
         status: 'active',
+        ...(params.recipientType === 'bridge'
+          ? { shareToken: 'demo-token', shareUrl: 'https://wellirecordmobileapp.onrender.com/api/v1/shares/bridge/demo-token' }
+          : {}),
       };
     }
 
     return apiClient.post<ShareGrant>('/shares/grants', params);
+  },
+
+  /**
+   * Creates (or reuses a still-valid) public, token-gated Emergency Medical
+   * ID share link for one family member. This is the only safe way to get
+   * a URL for the Emergency QR code — it must never be built from a
+   * predictable id (wrId, family member id) client-side, since that would
+   * let anyone who learns/guesses the id pull PHI with no grant at all.
+   */
+  async createEmergencyShareLink(familyMemberId: string): Promise<{ shareUrl: string; expiresAt: string }> {
+    const grant = await sharingService.createShareGrant({
+      recipientId: 'first-responder',
+      recipientType: 'bridge',
+      recipientName: 'Emergency QR Code',
+      recordIds: [],
+      expiry: '24h',
+      otpCode: '',
+      familyMemberId,
+    });
+
+    if (!grant.shareUrl) {
+      throw new Error('Server did not return a share link for this emergency QR code');
+    }
+
+    return { shareUrl: grant.shareUrl, expiresAt: grant.expiresAt };
   },
 
   /**
