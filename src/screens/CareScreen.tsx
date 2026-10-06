@@ -380,6 +380,13 @@ export function CareScreen({ app }: { app: WelliApp }) {
               </TouchableOpacity>
               <TouchableOpacity
                 activeOpacity={0.8}
+                onPress={actions.openOrderTracking}
+                style={[styles.rxLocatorBtn, { backgroundColor: theme.surface2, borderColor: theme.border }]}
+              >
+                <Text style={[styles.rxLocatorBtnText, { color: '#0f766e' }]}>📦 Orders</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                activeOpacity={0.8}
                 onPress={actions.openPharmacyDirectory}
                 style={[styles.rxLocatorBtn, { backgroundColor: theme.surface2, borderColor: theme.border }]}
               >

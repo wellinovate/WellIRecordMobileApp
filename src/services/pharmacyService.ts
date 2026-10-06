@@ -65,18 +65,37 @@ export const pharmacyService = {
   },
 
   /**
-   * Tracks real-time delivery status for an active dispatch
+   * Lists the caller's own patient-initiated medication orders, newest first.
    */
-  async getDeliveryStatus(orderId: string): Promise<{ step: number; statusText: string; eta: string }> {
+  async fetchOrders(): Promise<PharmacyOrder[]> {
+    if (CONFIG.demoMode) return [];
+    const res = await apiClient.get<{ success: boolean; orders: PharmacyOrder[] }>('/pharmacy/orders');
+    return Array.isArray(res?.orders) ? res.orders : [];
+  },
+
+  /**
+   * Tracks delivery status for one order.
+   */
+  async getDeliveryStatus(orderId: string): Promise<PharmacyOrder> {
     if (CONFIG.demoMode) {
       return {
-        step: 2,
-        statusText: 'Rider en route via Lekki-Ikoyi Link Bridge',
+        id: orderId,
+        medicationName: 'Demo order',
+        dosage: '',
+        quantity: 1,
+        status: 'in_transit',
+        step: 3,
+        statusText: 'Rider en route',
         eta: '35 mins away',
+        deliveryAddress: '',
+        deliveryType: 'home',
+        familyMemberId: '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
     }
 
-    return apiClient.get<{ step: number; statusText: string; eta: string }>(`/pharmacy/orders/${orderId}/status`);
+    return apiClient.get<PharmacyOrder>(`/pharmacy/orders/${orderId}/status`);
   },
 
   /**
@@ -102,6 +121,25 @@ export const pharmacyService = {
     }
   },
 };
+
+export interface PharmacyOrder {
+  id: string;
+  medicationName: string;
+  dosage: string;
+  quantity: number;
+  status: string;
+  /** 0 review, 1 verified, 2 dispensed, 3 en route, 4 delivered, -1 rejected */
+  step: number;
+  statusText: string;
+  eta: string;
+  deliveryAddress: string;
+  deliveryType: string;
+  familyMemberId: string;
+  rejectionReason?: string;
+  rider?: { name: string; phone: string };
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface FetchPharmaciesResult {
   pharmacies: PharmacyDirectoryItem[];

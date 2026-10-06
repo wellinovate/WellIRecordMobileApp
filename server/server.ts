@@ -2028,6 +2028,93 @@ app.post('/api/v1/pharmacy/orders', async (req: Request, res: Response) => {
   }
 });
 
+// Order status -> tracker step. Steps: 0 awaiting review, 1 prescription
+// verified, 2 dispensed, 3 rider en route, 4 delivered, -1 rejected.
+const ORDER_STATUS_STEPS: Record<string, { step: number; statusText: string }> = {
+  pending_review: { step: 0, statusText: 'Awaiting pharmacist review' },
+  refill_requested: { step: 0, statusText: 'Refill requested, awaiting review' },
+  active: { step: 1, statusText: 'Prescription verified' },
+  dispensed: { step: 2, statusText: 'Dispensed, preparing for dispatch' },
+  in_transit: { step: 3, statusText: 'Rider en route' },
+  delivered: { step: 4, statusText: 'Delivered' },
+  rejected: { step: -1, statusText: 'Order not approved' },
+};
+
+function normalizeOrder(doc: any) {
+  const meta = ORDER_STATUS_STEPS[doc.status] || { step: 0, statusText: String(doc.status || 'Unknown') };
+  return {
+    id: String(doc._id),
+    medicationName: doc.medicationName,
+    dosage: doc.dosage || '',
+    quantity: doc.quantity || 1,
+    status: doc.status,
+    step: meta.step,
+    statusText: meta.statusText,
+    eta: doc.eta || '',
+    deliveryAddress: doc.deliveryAddress || '',
+    deliveryType: doc.deliveryType || 'home',
+    familyMemberId: doc.familyMemberId ? String(doc.familyMemberId) : '',
+    rejectionReason: doc.status === 'rejected' ? doc.rejectionReason || '' : undefined,
+    rider: doc.status === 'in_transit' && doc.riderName ? { name: doc.riderName, phone: doc.riderPhone || '' } : undefined,
+    createdAt: doc.createdAt,
+    updatedAt: doc.updatedAt,
+  };
+}
+
+// GET /api/v1/pharmacy/orders — the caller's own patient-initiated orders,
+// newest first. Scoped to the authenticated account only.
+app.get('/api/v1/pharmacy/orders', async (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+  if (mongoose.connection.readyState !== 1 || !mongoose.isValidObjectId(authUserId)) {
+    return res.status(503).json({ success: false, message: 'Database unavailable' });
+  }
+  try {
+    const docs = await Prescription.find({
+      accountId: new mongoose.Types.ObjectId(authUserId),
+      orderType: 'patient_order',
+    })
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .lean();
+    return res.json({ success: true, orders: docs.map(normalizeOrder) });
+  } catch (err) {
+    console.error('[GET /pharmacy/orders] ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Failed to load orders' });
+  }
+});
+
+// GET /api/v1/pharmacy/orders/:id/status — tracker data for one order.
+// Returns 404 (not 403) for orders the caller does not own.
+app.get('/api/v1/pharmacy/orders/:id/status', async (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+  const orderId = String(req.params.id);
+  if (!mongoose.isValidObjectId(orderId) || !mongoose.isValidObjectId(authUserId)) {
+    return res.status(404).json({ success: false, message: 'Order not found' });
+  }
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({ success: false, message: 'Database unavailable' });
+  }
+  try {
+    const doc: any = await Prescription.findOne({
+      _id: new mongoose.Types.ObjectId(orderId),
+      accountId: new mongoose.Types.ObjectId(authUserId),
+    }).lean();
+    if (!doc) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+    return res.json({ success: true, ...normalizeOrder(doc) });
+  } catch (err) {
+    console.error('[GET /pharmacy/orders/:id/status] ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Failed to load order status' });
+  }
+});
+
 // Simple shared-secret admin auth — no staff/role system exists yet.
 // Protects the pending-order review endpoints only. Replace with real
 // staff accounts + RBAC once that system is built.
