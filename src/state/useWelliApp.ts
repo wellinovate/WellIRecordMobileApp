@@ -37,6 +37,7 @@ import { recordsService } from '../services/recordsService';
 import { profileService } from '../services/profileService';
 import { familyService } from '../services/familyService';
 import { facilityService } from '../services/facilityService';
+import { pointsFromProvider, latestProviderLogs, type VitalPoint } from '../utils/vitalsSeries';
 import { careService, type AppointmentItem } from '../services/careService';
 import { sharingService } from '../services/sharingService';
 import { notificationService } from '../services/notificationService';
@@ -50,6 +51,8 @@ export interface AppState {
   recordsList: HealthRecord[];
   immunizationSchedule: ImmunizationMilestone[];
   vitalsLogs: VitalLogEntry[];
+  vitalsSeries: VitalPoint[];
+  showVitalsTrends: boolean;
   recordFilter: RecordType | 'All';
   recordQuery: string;
   recordDetailId: string | null;
@@ -255,6 +258,8 @@ const initialState: AppState = {
   recordsList: [],
   immunizationSchedule: [],
   vitalsLogs: [],
+  vitalsSeries: [],
+  showVitalsTrends: false,
   recordFilter: 'All',
   recordQuery: '',
   recordDetailId: null,
@@ -516,6 +521,14 @@ export function useWelliApp() {
                   ? `${lab.testName}: ${lab.resultValue} ${lab.unit} (${lab.interpretation || 'result'})`
                   : lab.interpretation || '',
               attachments: lab.attachments || [],
+            }));
+
+            patch((prev) => ({
+              vitalsSeries: pointsFromProvider(vitals),
+              vitalsLogs: [
+                ...latestProviderLogs(vitals),
+                ...prev.vitalsLogs.filter((l) => !l.id.startsWith('srv_')),
+              ],
             }));
 
             const mappedVitalRecords: HealthRecord[] = (vitals || []).map((v: any) => {
@@ -1213,6 +1226,7 @@ export function useWelliApp() {
                 familyMembers: [DEFAULT_PRIMARY_USER],
                 recordsList: [],
                 vitalsLogs: [],
+                vitalsSeries: [],
                 twoFactorEnabled: false,
                 faceIdEnabled: false,
               });
@@ -1234,6 +1248,7 @@ export function useWelliApp() {
         familyMembers: [DEFAULT_PRIMARY_USER],
         recordsList: [],
         vitalsLogs: [],
+        vitalsSeries: [],
         twoFactorEnabled: false,
         faceIdEnabled: false,
       });
@@ -2105,6 +2120,11 @@ export function useWelliApp() {
       patch({ showOrderTracking: true });
     },
     closeOrderTracking: () => patch({ showOrderTracking: false }),
+    openVitalsTrends: () => {
+      hapticFeedback.light();
+      patch({ showVitalsTrends: true });
+    },
+    closeVitalsTrends: () => patch({ showVitalsTrends: false }),
     openLabDirectory: () => {
       hapticFeedback.light();
       patch({ showLabDirectory: true });
@@ -2143,6 +2163,7 @@ export function useWelliApp() {
         familyMembers: [DEFAULT_PRIMARY_USER],
         recordsList: [],
         vitalsLogs: [],
+        vitalsSeries: [],
       });
       showToast('Logged out of vault');
     },

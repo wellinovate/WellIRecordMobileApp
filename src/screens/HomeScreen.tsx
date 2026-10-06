@@ -358,7 +358,9 @@ export function HomeScreen({ app }: { app: WelliApp }) {
         {/* ---------- Vitals & biometrics ---------- */}
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Vitals & biometrics</Text>
-          {vitals.length > 0 && <Text style={styles.sectionMeta}>Synced</Text>}
+          <TouchableOpacity onPress={actions.openVitalsTrends} accessibilityRole="button">
+            <Text style={[styles.sectionMeta, { color: PALETTE.sky }]}>View trends ›</Text>
+          </TouchableOpacity>
         </View>
 
         {vitals.length === 0 ? (
