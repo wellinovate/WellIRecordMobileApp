@@ -44,6 +44,7 @@ import { OrderMedicationModal } from './modals/OrderMedicationModal';
 import { MedicationReminderModal } from './modals/MedicationReminderModal';
 import { PharmacyDirectoryModal } from './modals/PharmacyDirectoryModal';
 import { OrderTrackingModal } from './modals/OrderTrackingModal';
+import { UpcomingVisitsModal } from './modals/UpcomingVisitsModal';
 import { LabDirectoryModal } from './modals/LabDirectoryModal';
 import { VaultExportModal } from './modals/VaultExportModal';
 
@@ -65,6 +66,10 @@ function MainWelliApp() {
     const onBackPress = () => {
       if (state.showVaultExport) {
         app.actions.closeVaultExport();
+        return true;
+      }
+      if (state.showUpcomingVisits) {
+        app.actions.closeUpcomingVisits();
         return true;
       }
       if (state.showOrderTracking) {
@@ -283,6 +288,7 @@ function MainWelliApp() {
           {Boolean(state.showMedicationReminder) && <MedicationReminderModal app={app} />}
           {Boolean(state.showPharmacyDirectory) && <PharmacyDirectoryModal app={app} />}
           {Boolean(state.showOrderTracking) && <OrderTrackingModal app={app} />}
+          {Boolean(state.showUpcomingVisits) && <UpcomingVisitsModal app={app} />}
           {Boolean(state.showLabDirectory) && <LabDirectoryModal app={app} />}
           {Boolean(state.showVaultExport) && <VaultExportModal app={app} />}
 

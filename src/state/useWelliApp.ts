@@ -37,6 +37,7 @@ import { recordsService } from '../services/recordsService';
 import { profileService } from '../services/profileService';
 import { familyService } from '../services/familyService';
 import { facilityService } from '../services/facilityService';
+import { careService, type AppointmentItem } from '../services/careService';
 import { sharingService } from '../services/sharingService';
 import { notificationService } from '../services/notificationService';
 import type { CareFacility } from '../data/types';
@@ -114,6 +115,9 @@ export interface AppState {
   showMedicationReminder: boolean;
   showPharmacyDirectory: boolean;
   showOrderTracking: boolean;
+  showUpcomingVisits: boolean;
+  appointments: AppointmentItem[];
+  bookingSubmitting: boolean;
   showLabDirectory: boolean;
   inCall: boolean;
   callMuted: boolean;
@@ -317,6 +321,9 @@ const initialState: AppState = {
   showMedicationReminder: false,
   showPharmacyDirectory: false,
   showOrderTracking: false,
+  showUpcomingVisits: false,
+  appointments: [],
+  bookingSubmitting: false,
   showLabDirectory: false,
   inCall: false,
   callMuted: false,
@@ -617,6 +624,10 @@ export function useWelliApp() {
           if (Array.isArray(remoteFacilities) && remoteFacilities.length > 0) {
             patch({ facilitiesList: remoteFacilities });
           }
+        }).catch(() => {});
+
+        careService.fetchAppointments().then((appointments) => {
+          patch({ appointments });
         }).catch(() => {});
 
         // Initialize notification engine (Push token registration, SSE stream, persistent alerts)
@@ -1345,26 +1356,63 @@ export function useWelliApp() {
       patch({ showBookAppointment: false, externalBookingFacility: null }),
     setBookingDate: (v: string) => patch({ bookingDate: v }),
     setBookingTimeSlot: (v: string) => patch({ bookingTimeSlot: v }),
-    confirmBooking: () => {
+    confirmBooking: async (extra?: { familyMemberId?: string; reason?: string }) => {
+      if (state.bookingSubmitting) return;
       const externalFacility = state.externalBookingFacility;
-      if (externalFacility) {
-        if (!state.bookingDate || !state.bookingTimeSlot) {
-          showToast('Choose a date and time to continue');
-          return;
-        }
-        patch({ showBookAppointment: false, externalBookingFacility: null });
-        showToast(`Appointment requested with ${externalFacility.name} — ${state.bookingTimeSlot}`);
-        return;
-      }
-
       const allFacilities = state.facilitiesList?.length ? state.facilitiesList : FACILITIES;
-      const facility = allFacilities.find((f) => f.id === state.bookingFacilityId);
-      if (!facility || !state.bookingDate || !state.bookingTimeSlot) {
+      const facility = externalFacility ? null : allFacilities.find((f) => f.id === state.bookingFacilityId);
+      if ((!externalFacility && !facility) || !state.bookingDate || !state.bookingTimeSlot) {
         showToast('Choose a date and time to continue');
         return;
       }
-      patch({ showBookAppointment: false });
-      showToast(`Appointment requested with ${facility.name} — ${state.bookingTimeSlot}`);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(state.bookingDate) || Number.isNaN(new Date(state.bookingDate).getTime())) {
+        showToast('Enter the date as YYYY-MM-DD');
+        return;
+      }
+      const name = externalFacility?.name || facility!.name;
+      patch({ bookingSubmitting: true });
+      try {
+        const created = await careService.requestAppointment({
+          facilityId: facility?.id,
+          facilityName: name,
+          facilityAddress: externalFacility?.address || facility?.address,
+          familyMemberId: extra?.familyMemberId && extra.familyMemberId !== 'me' ? extra.familyMemberId : undefined,
+          date: state.bookingDate,
+          timeSlot: state.bookingTimeSlot,
+          reason: extra?.reason?.trim() || undefined,
+        });
+        patch((s) => ({
+          showBookAppointment: false,
+          externalBookingFacility: null,
+          bookingSubmitting: false,
+          appointments: [...s.appointments, created].sort(
+            (a, b) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime()
+          ),
+        }));
+        showToast(`Request sent to ${name}. They will confirm your visit.`);
+      } catch (err: any) {
+        patch({ bookingSubmitting: false });
+        showToast(err?.message || 'Could not send the request. Try again.');
+      }
+    },
+    openUpcomingVisits: () => {
+      hapticFeedback.light();
+      patch({ showUpcomingVisits: true });
+      careService.fetchAppointments().then((appointments) => patch({ appointments })).catch(() => {});
+    },
+    closeUpcomingVisits: () => patch({ showUpcomingVisits: false }),
+    cancelAppointment: async (id: string) => {
+      try {
+        const updated = await careService.cancelAppointment(id);
+        patch((s) => ({
+          appointments: s.appointments.map((a) =>
+            a.id === id ? updated ?? { ...a, status: 'cancelled' } : a
+          ),
+        }));
+        showToast('Appointment cancelled');
+      } catch (err: any) {
+        showToast(err?.message || 'Could not cancel. Try again.');
+      }
     },
 
     openBilling: () => patch({ showBilling: true }),

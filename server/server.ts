@@ -28,6 +28,8 @@ import {
   VitalEntry,
   MedicationEntry,
   NotificationRecord,
+  AppointmentRequest,
+  AppointmentRead,
 } from './models';
 
 const app = express();
@@ -82,6 +84,14 @@ const otpLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: 'Too many verification code requests from this IP. Please try again after 10 minutes.' },
+});
+
+const appointmentLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 30, // 30 appointment writes per hour per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many appointment requests. Please try again later.' },
 });
 
 const ocrLimiter = rateLimit({
@@ -2986,6 +2996,189 @@ app.get('/api/v1/care/labs', async (req: Request, res: Response) => {
 
   const result = await labFetchInFlight;
   return res.json(result);
+});
+
+// ---------------------------------------------------------------------------
+// Appointments. Requests made in the mobile app live in `appointmentrequests`
+// (mobile facilities are not web organizations). Bookings made through the
+// web backend live in the shared `appointments` collection, keyed by
+// patientId = UserProfile._id. GET merges both; cancel handles both.
+// ---------------------------------------------------------------------------
+async function callerProfileIds(authUserId: string): Promise<mongoose.Types.ObjectId[]> {
+  if (!mongoose.isValidObjectId(authUserId)) return [];
+  const profiles = await UserProfile.find({ accountId: new mongoose.Types.ObjectId(authUserId) }, { _id: 1 }).lean();
+  return profiles.map((p: any) => p._id);
+}
+
+function normalizeAppointmentRequest(doc: any) {
+  return {
+    id: String(doc._id),
+    source: 'request' as const,
+    facilityName: doc.facilityName,
+    facilityAddress: doc.facilityAddress || '',
+    familyMemberId: doc.familyMemberId || '',
+    scheduledFor: doc.scheduledFor,
+    timeSlot: doc.timeSlot,
+    reason: doc.reason || '',
+    status: doc.status as string,
+  };
+}
+
+function normalizeWebAppointment(doc: any) {
+  const map: Record<string, string> = {
+    booked: 'confirmed',
+    'checked-in': 'checked_in',
+    cancelled: 'cancelled',
+    'no-show': 'no_show',
+    completed: 'completed',
+  };
+  return {
+    id: String(doc._id),
+    source: 'web' as const,
+    facilityName: 'Clinic booking',
+    facilityAddress: '',
+    familyMemberId: '',
+    scheduledFor: doc.scheduledFor,
+    timeSlot: '',
+    reason: doc.reasonForVisit || '',
+    status: map[doc.status] || String(doc.status || ''),
+  };
+}
+
+// POST /api/v1/appointments/requests
+app.post('/api/v1/appointments/requests', appointmentLimiter, async (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+  if (mongoose.connection.readyState !== 1 || !mongoose.isValidObjectId(authUserId)) {
+    return res.status(503).json({ success: false, message: 'Database unavailable' });
+  }
+
+  const { facilityId, facilityName, facilityAddress, date, timeSlot, reason, familyMemberId } = req.body || {};
+  const when = new Date(String(date || ''));
+  if (Number.isNaN(when.getTime())) {
+    return res.status(400).json({ success: false, message: 'A valid date is required' });
+  }
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const oneYearOut = new Date(startOfToday.getTime() + 366 * 24 * 60 * 60 * 1000);
+  if (when < startOfToday || when > oneYearOut) {
+    return res.status(400).json({ success: false, message: 'Choose a date within the next year' });
+  }
+  if (typeof timeSlot !== 'string' || !timeSlot.trim() || timeSlot.length > 80) {
+    return res.status(400).json({ success: false, message: 'A time slot is required' });
+  }
+  if (reason !== undefined && (typeof reason !== 'string' || reason.length > 500)) {
+    return res.status(400).json({ success: false, message: 'Reason must be 500 characters or fewer' });
+  }
+
+  try {
+    if (familyMemberId && !(await callerCanAccessOwner(authUserId, String(familyMemberId)))) {
+      return res.status(403).json({ success: false, message: 'You cannot book for this family member' });
+    }
+
+    let name = typeof facilityName === 'string' ? facilityName.trim().slice(0, 120) : '';
+    let address = typeof facilityAddress === 'string' ? facilityAddress.trim().slice(0, 200) : '';
+    if (facilityId && mongoose.isValidObjectId(String(facilityId))) {
+      const f: any = await Facility.findById(String(facilityId)).lean();
+      if (f) {
+        name = f.name;
+        address = f.address || address;
+      }
+    }
+    if (!name) {
+      return res.status(400).json({ success: false, message: 'A facility is required' });
+    }
+
+    const doc = await AppointmentRequest.create({
+      accountId: new mongoose.Types.ObjectId(authUserId),
+      familyMemberId: familyMemberId ? String(familyMemberId) : undefined,
+      facilityId: facilityId ? String(facilityId) : undefined,
+      facilityName: name,
+      facilityAddress: address,
+      scheduledFor: when,
+      timeSlot: timeSlot.trim(),
+      reason: typeof reason === 'string' ? reason.trim() : '',
+      status: 'requested',
+    });
+    return res.status(201).json({ success: true, appointment: normalizeAppointmentRequest(doc) });
+  } catch (err) {
+    console.error('[POST /appointments/requests] ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Failed to create appointment request' });
+  }
+});
+
+// GET /api/v1/appointments — the caller's requests plus their web bookings.
+app.get('/api/v1/appointments', async (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+  if (mongoose.connection.readyState !== 1 || !mongoose.isValidObjectId(authUserId)) {
+    return res.status(503).json({ success: false, message: 'Database unavailable' });
+  }
+  try {
+    const profileIds = await callerProfileIds(authUserId);
+    const [requests, web] = await Promise.all([
+      AppointmentRequest.find({ accountId: new mongoose.Types.ObjectId(authUserId) })
+        .sort({ scheduledFor: 1 })
+        .limit(200)
+        .lean(),
+      profileIds.length
+        ? AppointmentRead.find({ patientId: { $in: profileIds } }).sort({ scheduledFor: 1 }).limit(200).lean()
+        : Promise.resolve([]),
+    ]);
+    const items = [...requests.map(normalizeAppointmentRequest), ...web.map(normalizeWebAppointment)].sort(
+      (a, b) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime()
+    );
+    return res.json({ success: true, appointments: items });
+  } catch (err) {
+    console.error('[GET /appointments] ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Failed to load appointments' });
+  }
+});
+
+// POST /api/v1/appointments/:id/cancel — owner only; 404 for anything else.
+app.post('/api/v1/appointments/:id/cancel', appointmentLimiter, async (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+  const id = String(req.params.id);
+  if (!mongoose.isValidObjectId(id) || !mongoose.isValidObjectId(authUserId)) {
+    return res.status(404).json({ success: false, message: 'Appointment not found' });
+  }
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({ success: false, message: 'Database unavailable' });
+  }
+  try {
+    const oid = new mongoose.Types.ObjectId(id);
+    const own = await AppointmentRequest.findOne({ _id: oid, accountId: new mongoose.Types.ObjectId(authUserId) });
+    if (own) {
+      if (own.status === 'cancelled') {
+        return res.json({ success: true, appointment: normalizeAppointmentRequest(own) });
+      }
+      own.status = 'cancelled';
+      await own.save();
+      return res.json({ success: true, appointment: normalizeAppointmentRequest(own) });
+    }
+
+    const profileIds = await callerProfileIds(authUserId);
+    const web: any = profileIds.length ? await AppointmentRead.findOne({ _id: oid, patientId: { $in: profileIds } }) : null;
+    if (!web) {
+      return res.status(404).json({ success: false, message: 'Appointment not found' });
+    }
+    if (web.status !== 'booked') {
+      return res.status(409).json({ success: false, message: `A ${web.status} appointment cannot be cancelled` });
+    }
+    web.status = 'cancelled';
+    await web.save();
+    return res.json({ success: true, appointment: normalizeWebAppointment(web) });
+  } catch (err) {
+    console.error('[POST /appointments/:id/cancel] ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Failed to cancel appointment' });
+  }
 });
 
 // 7. Create Share Grant & Audit Log (MongoDB)

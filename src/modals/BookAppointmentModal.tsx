@@ -20,17 +20,30 @@ const TIME_SLOTS = [
   'Evening (04:30 PM – 06:30 PM)',
 ];
 
-const QUICK_DATES = [
-  { label: 'Today', value: '2026-05-14' },
-  { label: 'Tomorrow', value: '2026-05-15' },
-  { label: 'Monday', value: '2026-05-18' },
-  { label: 'Wednesday', value: '2026-05-20' },
-];
+function toYmd(d: Date) {
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+/** Today, tomorrow, then the next three days, computed from the device date. */
+function buildQuickDates() {
+  const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  return [0, 1, 2, 3, 4].map((offset) => {
+    const d = new Date();
+    d.setDate(d.getDate() + offset);
+    return {
+      label: offset === 0 ? 'Today' : offset === 1 ? 'Tomorrow' : names[d.getDay()],
+      value: toYmd(d),
+    };
+  });
+}
 
 export function BookAppointmentModal({ app }: { app: WelliApp }) {
   const { state, actions, facilities, family } = app;
   const [selectedMemberId, setSelectedMemberId] = useState<string>(state.activeFamilyId || 'me');
   const [visitReason, setVisitReason] = useState<string>('');
+  const quickDates = React.useMemo(buildQuickDates, [state.showBookAppointment]);
 
   if (!state.showBookAppointment) return null;
 
@@ -52,11 +65,11 @@ export function BookAppointmentModal({ app }: { app: WelliApp }) {
     : `${facility?.specialty} · ${displayAddress}`;
 
   const activePatient = family.find((f) => f.id === selectedMemberId) ?? family[0];
-  const disabled = !state.bookingDate || !state.bookingTimeSlot;
+  const disabled = !state.bookingDate || !state.bookingTimeSlot || Boolean(state.bookingSubmitting);
 
   const handleConfirm = () => {
     hapticFeedback.success();
-    actions.confirmBooking();
+    actions.confirmBooking({ familyMemberId: selectedMemberId, reason: visitReason });
   };
 
   return (
@@ -119,21 +132,25 @@ export function BookAppointmentModal({ app }: { app: WelliApp }) {
             })}
           </ScrollView>
 
-          {/* HMO Coverage Pre-Auth Notice */}
-          <View style={styles.hmoPreAuthBanner}>
-            <Text style={{ fontSize: 16 }}>🛡️</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.hmoTitle}>HMO Pre-Authorization Verified</Text>
-              <Text style={styles.hmoSub}>
-                {activePatient.insuranceProvider} · Policy ID: {activePatient.insuranceId} (80% Tariff Co-Pay Applies)
-              </Text>
+          {/* Insurance on file. Coverage is confirmed by the facility, not here. */}
+          {Boolean(activePatient?.insuranceProvider) && (
+            <View style={styles.hmoPreAuthBanner}>
+              <Text style={{ fontSize: 16 }}>🛡️</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.hmoTitle}>Insurance on file</Text>
+                <Text style={styles.hmoSub}>
+                  {activePatient.insuranceProvider}
+                  {activePatient.insuranceId ? ` · Policy ID: ${activePatient.insuranceId}` : ''}. The facility
+                  confirms coverage when it accepts your request.
+                </Text>
+              </View>
             </View>
-          </View>
+          )}
 
           {/* Date Picker */}
           <Text style={styles.sectionLabel}>SELECT DATE</Text>
           <View style={styles.quickDatesRow}>
-            {QUICK_DATES.map((qd) => {
+            {quickDates.map((qd) => {
               const isSelected = state.bookingDate === qd.value;
               return (
                 <TouchableOpacity
@@ -231,7 +248,7 @@ export function BookAppointmentModal({ app }: { app: WelliApp }) {
                 { color: disabled ? '#64748b' : '#ffffff' },
               ]}
             >
-              Confirm Appointment Request ›
+              {state.bookingSubmitting ? 'Sending…' : 'Send appointment request ›'}
             </Text>
           </TouchableOpacity>
         </View>

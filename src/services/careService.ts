@@ -8,22 +8,35 @@ import { apiClient } from './apiClient';
 import { FACILITIES } from '../data/mockData';
 import type { CareFacility } from '../data/types';
 
-export interface BookAppointmentPayload {
-  facilityId: string;
-  patientId: string;
-  appointmentDate: string;
+export interface AppointmentRequestPayload {
+  facilityId?: string;
+  facilityName?: string;
+  facilityAddress?: string;
+  familyMemberId?: string;
+  /** YYYY-MM-DD */
+  date: string;
   timeSlot: string;
-  reason: string;
-  hmoProvider?: string;
+  reason?: string;
 }
 
-export interface AppointmentConfirmation {
-  appointmentId: string;
+export type AppointmentStatus =
+  | 'requested'
+  | 'confirmed'
+  | 'checked_in'
+  | 'completed'
+  | 'no_show'
+  | 'cancelled';
+
+export interface AppointmentItem {
+  id: string;
+  source: 'request' | 'web';
   facilityName: string;
-  appointmentDate: string;
+  facilityAddress: string;
+  familyMemberId: string;
+  scheduledFor: string;
   timeSlot: string;
-  status: 'confirmed' | 'pending_preauth';
-  qrCheckInCode: string;
+  reason: string;
+  status: AppointmentStatus | string;
 }
 
 export const careService = {
@@ -61,21 +74,45 @@ export const careService = {
   },
 
   /**
-   * Books a hospital consultation or lab appointment with HMO verification
+   * Sends an appointment request to the server. The facility confirms it.
    */
-  async bookAppointment(payload: BookAppointmentPayload): Promise<AppointmentConfirmation> {
+  async requestAppointment(payload: AppointmentRequestPayload): Promise<AppointmentItem> {
     if (CONFIG.demoMode) {
-      await new Promise((res) => setTimeout(res, 500));
+      await new Promise((res) => setTimeout(res, 400));
       return {
-        appointmentId: `apt_${Date.now()}`,
-        facilityName: 'Lagoon Hospital Lekki',
-        appointmentDate: payload.appointmentDate || 'Tomorrow',
-        timeSlot: payload.timeSlot || '10:30 AM',
-        status: 'confirmed',
-        qrCheckInCode: `WL-APT-${Date.now()}`,
+        id: `apt_${Date.now()}`,
+        source: 'request',
+        facilityName: payload.facilityName || 'Demo facility',
+        facilityAddress: payload.facilityAddress || '',
+        familyMemberId: payload.familyMemberId || '',
+        scheduledFor: new Date(payload.date).toISOString(),
+        timeSlot: payload.timeSlot,
+        reason: payload.reason || '',
+        status: 'requested',
       };
     }
+    const res = await apiClient.post<{ success: boolean; appointment: AppointmentItem }>(
+      '/appointments/requests',
+      payload
+    );
+    return res.appointment;
+  },
 
-    return apiClient.post<AppointmentConfirmation>('/care/appointments', payload);
+  /**
+   * Lists the caller's appointment requests and web bookings, soonest first.
+   */
+  async fetchAppointments(): Promise<AppointmentItem[]> {
+    if (CONFIG.demoMode) return [];
+    const res = await apiClient.get<{ success: boolean; appointments: AppointmentItem[] }>('/appointments');
+    return Array.isArray(res?.appointments) ? res.appointments : [];
+  },
+
+  async cancelAppointment(id: string): Promise<AppointmentItem | null> {
+    if (CONFIG.demoMode) return null;
+    const res = await apiClient.post<{ success: boolean; appointment: AppointmentItem }>(
+      `/appointments/${id}/cancel`,
+      {}
+    );
+    return res.appointment;
   },
 };

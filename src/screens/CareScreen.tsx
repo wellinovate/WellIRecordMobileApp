@@ -256,6 +256,14 @@ export function CareScreen({ app }: { app: WelliApp }) {
           </TouchableOpacity>
         )}
         <Text style={[styles.title, { color: theme.text }]}>Find Care</Text>
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={actions.openUpcomingVisits}
+          accessibilityRole="button"
+          style={{ marginLeft: 'auto', paddingHorizontal: 10, paddingVertical: 6 }}
+        >
+          <Text style={{ color: '#0284c7', fontWeight: '700', fontSize: 13 }}>📅 My visits</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Search Input */}

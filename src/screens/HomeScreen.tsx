@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatVisitDate, isUpcoming } from '../modals/UpcomingVisitsModal';
 import {
   View,
   Text,
@@ -47,7 +48,8 @@ export function HomeScreen({ app }: { app: WelliApp }) {
     (r) => r.ownerId === state.activeFamilyId || r.ownerId === 'me'
   );
   const recentRecords = ownedRecords.slice(0, 3);
-  const hasUpcomingVisit = Boolean(state.bookingFacilityId && state.bookingDate);
+  const nextVisit = state.appointments.find(isUpcoming);
+  const hasUpcomingVisit = Boolean(nextVisit);
   const vitals = state.vitalsLogs || [];
   const memberName =
     activeMember.name && activeMember.name !== 'You'
@@ -337,14 +339,16 @@ export function HomeScreen({ app }: { app: WelliApp }) {
         {hasUpcomingVisit && (
           <TouchableOpacity
             activeOpacity={0.7}
-            onPress={() => actions.setTab('care')}
+            onPress={actions.openUpcomingVisits}
             style={styles.upcomingCard}
           >
             <View style={styles.pulseDot} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.upcomingTitle}>Upcoming Healthcare Consultation</Text>
+              <Text style={styles.upcomingTitle}>{nextVisit?.facilityName}</Text>
               <Text style={styles.upcomingTime}>
-                {state.bookingDate} · {state.bookingTimeSlot || 'Confirmed'}
+                {formatVisitDate(nextVisit!.scheduledFor)}
+                {nextVisit?.timeSlot ? ` · ${nextVisit.timeSlot}` : ''}
+                {nextVisit?.status === 'requested' ? ' · Awaiting confirmation' : ''}
               </Text>
             </View>
             <Text style={styles.joinText}>View ›</Text>

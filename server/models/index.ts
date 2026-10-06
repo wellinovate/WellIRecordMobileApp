@@ -673,6 +673,37 @@ const NotificationSchema = new Schema<INotification>(
   { timestamps: true }
 );
 
+// Mobile appointment requests. Mobile facilities are a separate collection
+// from the web backend's OrganizationProfile, so requests live here and
+// facility staff confirm them. Confirmed web bookings are read from the
+// shared `appointments` collection (see AppointmentRead below).
+export interface IAppointmentRequest extends Document {
+  accountId: mongoose.Types.ObjectId;
+  familyMemberId?: string;
+  facilityId?: string;
+  facilityName: string;
+  facilityAddress?: string;
+  scheduledFor: Date;
+  timeSlot: string;
+  reason?: string;
+  status: 'requested' | 'confirmed' | 'cancelled';
+}
+
+const AppointmentRequestSchema = new Schema<IAppointmentRequest>(
+  {
+    accountId: { type: Schema.Types.ObjectId, ref: 'Account', required: true, index: true },
+    familyMemberId: { type: String },
+    facilityId: { type: String },
+    facilityName: { type: String, required: true },
+    facilityAddress: { type: String },
+    scheduledFor: { type: Date, required: true, index: true },
+    timeSlot: { type: String, required: true },
+    reason: { type: String, default: '' },
+    status: { type: String, enum: ['requested', 'confirmed', 'cancelled'], default: 'requested' },
+  },
+  { timestamps: true }
+);
+
 // Export Mongoose Models
 export const User: Model<IUser> = mongoose.models.User || mongoose.model<IUser>('User', UserSchema);
 export const Account: Model<IAccount> = mongoose.models.Account || mongoose.model<IAccount>('Account', AccountSchema, 'accounts');
@@ -688,4 +719,13 @@ export const VitalLog: Model<IVitalLog> = mongoose.models.VitalLog || mongoose.m
 export const ChatIntent: Model<IChatIntent> = mongoose.models.ChatIntent || mongoose.model<IChatIntent>('ChatIntent', ChatIntentSchema);
 export const NotificationRecord: Model<INotification> =
   mongoose.models.NotificationRecord || mongoose.model<INotification>('NotificationRecord', NotificationSchema, 'notifications');
+
+export const AppointmentRequest: Model<IAppointmentRequest> =
+  mongoose.models.AppointmentRequest ||
+  mongoose.model<IAppointmentRequest>('AppointmentRequest', AppointmentRequestSchema, 'appointmentrequests');
+
+// Loose read/cancel mirror of the web backend's `appointments` collection.
+const AppointmentReadSchema = new Schema({}, { strict: false, collection: 'appointments' });
+export const AppointmentRead: Model<any> =
+  mongoose.models.AppointmentRead || mongoose.model('AppointmentRead', AppointmentReadSchema, 'appointments');
 
