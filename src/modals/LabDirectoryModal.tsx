@@ -74,6 +74,24 @@ export function LabDirectoryModal({ app }: { app: WelliApp }) {
   const [selectedLab, setSelectedLab] = useState<LabDirectoryItem | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [mapFailed, setMapFailed] = useState(false);
+
+  // If map tiles never load (invalid/restricted Google Maps key, no network),
+  // Android shows a blank grid. Fall back to the list instead of a white screen.
+  useEffect(() => {
+    if (!state.showLabDirectory) {
+      setMapLoaded(false);
+      setMapFailed(false);
+      return;
+    }
+    if (viewMode !== 'map' || mapLoaded) return;
+    const timer = setTimeout(() => {
+      setMapFailed(true);
+      setViewMode('list');
+    }, 7000);
+    return () => clearTimeout(timer);
+  }, [state.showLabDirectory, viewMode, mapLoaded]);
 
   const isVisible = Boolean(state.showLabDirectory);
 
@@ -192,6 +210,14 @@ export function LabDirectoryModal({ app }: { app: WelliApp }) {
         </View>
 
         {/* Fallback Notice Banner when Google Places API is offline or returns empty */}
+        {mapFailed && viewMode === 'list' && (
+          <View style={[styles.fallbackBanner, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
+            <Text style={[styles.fallbackBannerText, { color: '#92400E' }]}>
+              The map did not load, so the list is shown. Tap Map to try again.
+            </Text>
+          </View>
+        )}
+
         {usedFallback && (
           <View style={[styles.fallbackBanner, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
             <Text style={{ fontSize: 13 }}>⚠️</Text>
@@ -305,6 +331,7 @@ export function LabDirectoryModal({ app }: { app: WelliApp }) {
               showsUserLocation={false}
               showsCompass={true}
               showsScale={true}
+              onMapLoaded={() => setMapLoaded(true)}
             >
               {filteredLabs.map((lab) => {
                 if (!lab.lat || !lab.lng) return null;
