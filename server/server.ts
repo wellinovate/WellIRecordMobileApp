@@ -1822,6 +1822,23 @@ app.get('/api/v1/records', async (req: Request, res: Response) => {
   }
 });
 
+// Resolves OrganizationProfile ids to display names in one query so record
+// lists can show "SYNLAB Ikeja" instead of an opaque ObjectId. Missing or
+// unknown ids simply have no entry in the map.
+async function organizationNames(ids: unknown[]): Promise<Map<string, string>> {
+  const unique = Array.from(
+    new Set(ids.filter((id) => id && mongoose.isValidObjectId(String(id))).map(String))
+  );
+  const names = new Map<string, string>();
+  if (unique.length === 0) return names;
+  const orgs: any[] = await OrganizationProfile.find(
+    { _id: { $in: unique.map((id) => new mongoose.Types.ObjectId(id)) } },
+    'organizationName'
+  ).lean();
+  for (const org of orgs) names.set(String(org._id), org.organizationName);
+  return names;
+}
+
 // GET /api/v1/records/labs — provider-submitted lab results, read from the
 // shared `labresults` collection the web backend writes to. authUserId from
 // the JWT is the Account id, not the UserProfile id these records are keyed
@@ -1839,11 +1856,18 @@ app.get('/api/v1/records/labs', async (req: Request, res: Response) => {
     if (!profile) {
       return res.json({ success: true, items: [] });
     }
-    const items = await LabResult.find({
+    const labs: any[] = await LabResult.find({
       patientId: profile._id,
       recordStatus: 'active',
       patientVisible: true,
-    }).sort({ resultedAt: -1, createdAt: -1 });
+    })
+      .sort({ resultedAt: -1, createdAt: -1 })
+      .lean();
+    const names = await organizationNames(labs.map((l) => l.organizationId));
+    const items = labs.map((l) => ({
+      ...l,
+      organizationName: l.organizationId ? names.get(String(l.organizationId)) ?? null : null,
+    }));
     return res.json({ success: true, items });
   } catch (err) {
     console.error('[GET /records/labs] ERROR:', err);
@@ -1867,11 +1891,18 @@ app.get('/api/v1/records/vitals', async (req: Request, res: Response) => {
     if (!profile) {
       return res.json({ success: true, items: [] });
     }
-    const items = await VitalEntry.find({
+    const vitals: any[] = await VitalEntry.find({
       patientId: profile._id,
       recordStatus: 'active',
       patientVisible: true,
-    }).sort({ measuredAt: -1, createdAt: -1 });
+    })
+      .sort({ measuredAt: -1, createdAt: -1 })
+      .lean();
+    const names = await organizationNames(vitals.map((v) => v.organizationId));
+    const items = vitals.map((v) => ({
+      ...v,
+      organizationName: v.organizationId ? names.get(String(v.organizationId)) ?? null : null,
+    }));
     return res.json({ success: true, items });
   } catch (err) {
     console.error('[GET /records/vitals] ERROR:', err);
@@ -1895,11 +1926,24 @@ app.get('/api/v1/records/medications', async (req: Request, res: Response) => {
     if (!profile) {
       return res.json({ success: true, items: [] });
     }
-    const items = await MedicationEntry.find({
+    const meds: any[] = await MedicationEntry.find({
       patientId: profile._id,
       recordStatus: 'active',
       patientVisible: true,
-    }).sort({ createdAt: -1 });
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+    // prescribedBy and organizationId both point at OrganizationProfile.
+    const names = await organizationNames(
+      meds.flatMap((m) => [m.prescribedBy, m.organizationId])
+    );
+    const items = meds.map((m) => {
+      const orgId = m.prescribedBy ?? m.organizationId;
+      return {
+        ...m,
+        organizationName: orgId ? names.get(String(orgId)) ?? null : null,
+      };
+    });
     return res.json({ success: true, items });
   } catch (err) {
     console.error('[GET /records/medications] ERROR:', err);
