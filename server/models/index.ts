@@ -729,3 +729,43 @@ const AppointmentReadSchema = new Schema({}, { strict: false, collection: 'appoi
 export const AppointmentRead: Model<any> =
   mongoose.models.AppointmentRead || mongoose.model('AppointmentRead', AppointmentReadSchema, 'appointments');
 
+// Patient consent grants. Same `accessgrants` collection the web backend
+// (modules/access/access_grant_model.js in wellinovate/WelliRecord) enforces
+// when providers read a patient's record, so a grant made, approved or
+// revoked from the app takes effect there immediately. patientId is the
+// UserProfile._id; grantedBy is the patient's Account id.
+const AccessGrantSchema = new Schema(
+  {
+    patientId: { type: Schema.Types.ObjectId, required: true, index: true },
+    grantedBy: { type: Schema.Types.ObjectId, required: true, index: true },
+    requestedBy: { type: Schema.Types.ObjectId, default: null },
+    granteeType: { type: String, required: true },
+    shareToken: { type: String, default: null },
+    granteeUserId: { type: Schema.Types.ObjectId, default: null },
+    granteeOrganizationId: { type: Schema.Types.ObjectId, default: null },
+    accessScope: { type: String, required: true },
+    category: { type: String, default: null },
+    recordId: { type: Schema.Types.ObjectId, default: null },
+    encounterId: { type: Schema.Types.ObjectId, default: null },
+    recordFrom: { type: Date, default: null },
+    recordTo: { type: Date, default: null },
+    startsAt: { type: Date, default: Date.now },
+    expiresAt: { type: Date, default: null },
+    permissions: {
+      view: { type: Boolean, default: true },
+      download: { type: Boolean, default: false },
+      reshare: { type: Boolean, default: false },
+      write: { type: Boolean, default: false },
+    },
+    purpose: { type: String, default: null },
+    status: { type: String, default: 'active', index: true },
+    reviewedAt: { type: Date, default: null },
+    revokedAt: { type: Date, default: null },
+    revokedBy: { type: Schema.Types.ObjectId, default: null },
+    rejectionReason: { type: String, default: null },
+    notes: { type: String, default: null },
+  },
+  { timestamps: true, strict: false }
+);
+export const AccessGrant: Model<any> =
+  mongoose.models.AccessGrant || mongoose.model('AccessGrant', AccessGrantSchema, 'accessgrants');

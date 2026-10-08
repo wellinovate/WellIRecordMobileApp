@@ -30,6 +30,7 @@ import {
   NotificationRecord,
   AppointmentRequest,
   AppointmentRead,
+  AccessGrant,
 } from './models';
 
 const app = express();
@@ -3752,6 +3753,282 @@ app.post('/api/v1/shares/bridge/revoke/:token', async (req: Request, res: Respon
     });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message || 'Failed to revoke link' });
+  }
+});
+
+// -------------------------------------------------------------
+// CONSENT: patient-managed access grants
+// -------------------------------------------------------------
+// Reads and writes the shared `accessgrants` collection that the web backend
+// checks before showing a patient's record to a provider. Statuses:
+//   pending  — a provider asked; no access until the patient approves
+//   active   — access allowed until expiresAt
+//   rejected / revoked / expired — no access
+const GRANT_CATEGORIES = [
+  'vitals', 'medications', 'allergies', 'diagnoses', 'lab-results',
+  'radiology', 'procedures', 'immunizations', 'vision',
+];
+
+const consentLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many consent changes. Please try again later.' },
+});
+
+// A grant whose end time has passed no longer gives access, even if a
+// cleanup job has not flipped its stored status yet.
+function effectiveGrantStatus(g: any): string {
+  if (g.status === 'active' && g.expiresAt && new Date(g.expiresAt).getTime() <= Date.now()) {
+    return 'expired';
+  }
+  return g.status;
+}
+
+function normalizeGrant(g: any, names: Map<string, string>) {
+  const orgId = g.granteeOrganizationId || g.granteeUserId || g.requestedBy;
+  return {
+    id: String(g._id),
+    status: effectiveGrantStatus(g),
+    granteeType: g.granteeType,
+    granteeName:
+      g.granteeType === 'link'
+        ? 'Share link'
+        : (orgId && names.get(String(orgId))) || 'Provider',
+    accessScope: g.accessScope,
+    category: g.category || null,
+    recordFrom: g.recordFrom || null,
+    recordTo: g.recordTo || null,
+    startsAt: g.startsAt || null,
+    expiresAt: g.expiresAt || null,
+    permissions: {
+      view: g.permissions?.view !== false,
+      download: !!g.permissions?.download,
+      reshare: !!g.permissions?.reshare,
+      write: !!g.permissions?.write,
+    },
+    purpose: g.purpose || null,
+    // Whether a provider started this request (true) or the patient shared
+    // on their own (false).
+    requestedByProvider: !!g.requestedBy,
+    rejectionReason: g.rejectionReason || null,
+    createdAt: g.createdAt,
+    reviewedAt: g.reviewedAt || null,
+    revokedAt: g.revokedAt || null,
+  };
+}
+
+// Loads a grant only if it belongs to the caller's own profile(s).
+async function ownGrant(authUserId: string, id: string) {
+  if (!mongoose.isValidObjectId(id)) return null;
+  const profileIds = await callerProfileIds(authUserId);
+  if (!profileIds.length) return null;
+  return AccessGrant.findOne({ _id: new mongoose.Types.ObjectId(id), patientId: { $in: profileIds } });
+}
+
+async function respondWithGrant(res: Response, grant: any) {
+  const names = await organizationNames([grant.granteeOrganizationId, grant.granteeUserId, grant.requestedBy]);
+  return res.json({ success: true, grant: normalizeGrant(grant, names) });
+}
+
+// GET /api/v1/access/grants — everything the caller has shared or been asked
+// to share, newest first. Share-link (QR) grants are listed without tokens.
+app.get('/api/v1/access/grants', async (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({ success: false, message: 'Database unavailable' });
+  }
+  try {
+    const profileIds = await callerProfileIds(authUserId);
+    if (!profileIds.length) return res.json({ success: true, grants: [] });
+    const docs: any[] = await AccessGrant.find({ patientId: { $in: profileIds } })
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .lean();
+    const names = await organizationNames(
+      docs.flatMap((g) => [g.granteeOrganizationId, g.granteeUserId, g.requestedBy])
+    );
+    return res.json({ success: true, grants: docs.map((g) => normalizeGrant(g, names)) });
+  } catch (err) {
+    console.error('[GET /access/grants] ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Failed to load consent grants' });
+  }
+});
+
+// POST /api/v1/access/grants — the patient shares with an organization.
+// Body: { granteeOrganizationId (id or WR-ORG id), accessScope: 'full-record'
+// | 'category', category?, durationDays?, purpose? }. View-only.
+app.post('/api/v1/access/grants', consentLimiter, async (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({ success: false, message: 'Database unavailable' });
+  }
+
+  const { granteeOrganizationId, accessScope, category, durationDays, purpose } = req.body || {};
+  if (typeof granteeOrganizationId !== 'string' || !granteeOrganizationId.trim()) {
+    return res.status(400).json({ success: false, message: 'Choose a provider to share with' });
+  }
+  if (accessScope !== 'full-record' && accessScope !== 'category') {
+    return res.status(400).json({ success: false, message: 'Choose what to share' });
+  }
+  if (accessScope === 'category' && !GRANT_CATEGORIES.includes(category)) {
+    return res.status(400).json({ success: false, message: 'Choose a valid record category' });
+  }
+  const days = durationDays === undefined ? 7 : Number(durationDays);
+  if (!Number.isInteger(days) || days < 1 || days > 365) {
+    return res.status(400).json({ success: false, message: 'Duration must be between 1 and 365 days' });
+  }
+  if (purpose !== undefined && (typeof purpose !== 'string' || purpose.length > 300)) {
+    return res.status(400).json({ success: false, message: 'Purpose must be 300 characters or fewer' });
+  }
+
+  try {
+    const profileIds = await callerProfileIds(authUserId);
+    if (!profileIds.length) {
+      return res.status(404).json({ success: false, message: 'Complete your profile before sharing records' });
+    }
+    const wanted = granteeOrganizationId.trim();
+    const org: any = await OrganizationProfile.findOne(
+      mongoose.isValidObjectId(wanted) ? { _id: wanted } : { wrOrgId: wanted },
+      'organizationName'
+    ).lean();
+    if (!org) {
+      return res.status(404).json({ success: false, message: 'Provider not found' });
+    }
+
+    const now = new Date();
+    const existing = await AccessGrant.findOne({
+      patientId: profileIds[0],
+      granteeType: 'organization',
+      granteeOrganizationId: org._id,
+      accessScope,
+      category: accessScope === 'category' ? category : null,
+      status: 'active',
+      $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }],
+    });
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        message: `You already share this with ${org.organizationName}. Revoke it first to change it.`,
+      });
+    }
+
+    const grant = await AccessGrant.create({
+      patientId: profileIds[0],
+      grantedBy: new mongoose.Types.ObjectId(authUserId),
+      granteeType: 'organization',
+      granteeOrganizationId: org._id,
+      accessScope,
+      category: accessScope === 'category' ? category : null,
+      startsAt: now,
+      expiresAt: new Date(now.getTime() + days * 24 * 60 * 60 * 1000),
+      permissions: { view: true, download: false, reshare: false, write: false },
+      purpose: typeof purpose === 'string' && purpose.trim() ? purpose.trim() : null,
+      status: 'active',
+      reviewedAt: now,
+    });
+    const names = new Map<string, string>([[String(org._id), org.organizationName]]);
+    return res.status(201).json({ success: true, grant: normalizeGrant(grant, names) });
+  } catch (err) {
+    console.error('[POST /access/grants] ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Failed to create the consent grant' });
+  }
+});
+
+// POST /api/v1/access/grants/:id/approve — pending request -> active.
+// Optional body { durationDays } overrides the requested duration.
+app.post('/api/v1/access/grants/:id/approve', consentLimiter, async (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+  try {
+    const grant: any = await ownGrant(authUserId, String(req.params.id));
+    if (!grant) return res.status(404).json({ success: false, message: 'Consent request not found' });
+    if (grant.status !== 'pending') {
+      return res.status(409).json({ success: false, message: `A ${effectiveGrantStatus(grant)} request cannot be approved` });
+    }
+    const now = new Date();
+    let expiresAt: Date;
+    if (req.body?.durationDays !== undefined) {
+      const days = Number(req.body.durationDays);
+      if (!Number.isInteger(days) || days < 1 || days > 365) {
+        return res.status(400).json({ success: false, message: 'Duration must be between 1 and 365 days' });
+      }
+      expiresAt = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+    } else if (grant.expiresAt && new Date(grant.expiresAt).getTime() > now.getTime()) {
+      expiresAt = new Date(grant.expiresAt);
+    } else {
+      expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    }
+    grant.status = 'active';
+    grant.startsAt = now;
+    grant.expiresAt = expiresAt;
+    grant.reviewedAt = now;
+    grant.grantedBy = new mongoose.Types.ObjectId(authUserId);
+    await grant.save();
+    return respondWithGrant(res, grant);
+  } catch (err) {
+    console.error('[POST /access/grants/:id/approve] ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Failed to approve the request' });
+  }
+});
+
+// POST /api/v1/access/grants/:id/reject — pending request -> rejected.
+app.post('/api/v1/access/grants/:id/reject', consentLimiter, async (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+  const reason = req.body?.reason;
+  if (reason !== undefined && (typeof reason !== 'string' || reason.length > 500)) {
+    return res.status(400).json({ success: false, message: 'Reason must be 500 characters or fewer' });
+  }
+  try {
+    const grant: any = await ownGrant(authUserId, String(req.params.id));
+    if (!grant) return res.status(404).json({ success: false, message: 'Consent request not found' });
+    if (grant.status !== 'pending') {
+      return res.status(409).json({ success: false, message: `A ${effectiveGrantStatus(grant)} request cannot be rejected` });
+    }
+    grant.status = 'rejected';
+    grant.reviewedAt = new Date();
+    grant.rejectionReason = typeof reason === 'string' && reason.trim() ? reason.trim() : null;
+    await grant.save();
+    return respondWithGrant(res, grant);
+  } catch (err) {
+    console.error('[POST /access/grants/:id/reject] ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Failed to reject the request' });
+  }
+});
+
+// POST /api/v1/access/grants/:id/revoke — ends future access immediately.
+app.post('/api/v1/access/grants/:id/revoke', consentLimiter, async (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+  try {
+    const grant: any = await ownGrant(authUserId, String(req.params.id));
+    if (!grant) return res.status(404).json({ success: false, message: 'Consent grant not found' });
+    if (grant.status === 'revoked') return respondWithGrant(res, grant);
+    if (grant.status !== 'active' && grant.status !== 'pending') {
+      return res.status(409).json({ success: false, message: `A ${effectiveGrantStatus(grant)} grant cannot be revoked` });
+    }
+    grant.status = 'revoked';
+    grant.revokedAt = new Date();
+    grant.revokedBy = new mongoose.Types.ObjectId(authUserId);
+    await grant.save();
+    return respondWithGrant(res, grant);
+  } catch (err) {
+    console.error('[POST /access/grants/:id/revoke] ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Failed to revoke access' });
   }
 });
 
