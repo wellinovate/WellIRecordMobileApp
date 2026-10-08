@@ -500,12 +500,22 @@ app.post('/api/v1/auth/otp/send', otpLimiter, async (req: Request, res: Response
           return res.json({
             success: true,
             message: `Verification code sent to ${targetPhone} via SMS.`,
-            termiiResponse: data,
             expiresInSeconds: 300,
           });
         }
+        // Termii rejected the message (sender ID, balance, DND route, bad
+        // number). Log it and tell the app, instead of claiming it was sent.
+        console.error('[SMS Rejected]', response.status, JSON.stringify(data));
+        return res.status(502).json({
+          success: false,
+          message: 'We could not send the SMS code. Try again, or sign in with email.',
+        });
       } catch (smsErr) {
         console.error('[SMS Error]', smsErr);
+        return res.status(502).json({
+          success: false,
+          message: 'We could not reach the SMS service. Try again, or sign in with email.',
+        });
       }
     }
 
