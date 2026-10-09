@@ -740,7 +740,9 @@ const AccessGrantSchema = new Schema(
     grantedBy: { type: Schema.Types.ObjectId, required: true, index: true },
     requestedBy: { type: Schema.Types.ObjectId, default: null },
     granteeType: { type: String, required: true },
-    shareToken: { type: String, default: null },
+    // No default: the web collection has a unique sparse index on shareToken,
+    // and an explicit null is indexed, so a second grant would collide.
+    shareToken: { type: String },
     granteeUserId: { type: Schema.Types.ObjectId, default: null },
     granteeOrganizationId: { type: Schema.Types.ObjectId, default: null },
     accessScope: { type: String, required: true },
