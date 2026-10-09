@@ -3869,6 +3869,85 @@ app.get('/api/v1/access/grants', async (req: Request, res: Response) => {
   }
 });
 
+// POST /api/v1/access/grants/code — sends the signed-in patient a one-time
+// code (email if the account has one, otherwise SMS). The code must be sent
+// back with POST /access/grants to confirm the share.
+const shareCodeLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many confirmation codes requested. Try again later.' },
+});
+
+function maskContact(value: string): string {
+  if (value.includes('@')) {
+    const [name, domain] = value.split('@');
+    return `${name.slice(0, 2)}***@${domain}`;
+  }
+  return `${value.slice(0, 4)}***${value.slice(-2)}`;
+}
+
+app.post('/api/v1/access/grants/code', shareCodeLimiter, async (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+  if (!mongoose.isValidObjectId(authUserId) || mongoose.connection.readyState !== 1) {
+    return res.status(503).json({ success: false, message: 'Database unavailable' });
+  }
+  try {
+    const account: any = await Account.findById(authUserId).select('email phoneNumber phone').lean();
+    const email: string | undefined = account?.email;
+    const phone: string | undefined = account?.phoneNumber || account?.phone;
+    if (!email && !phone) {
+      return res.status(404).json({ success: false, message: 'No email or phone number on your account to send a code to' });
+    }
+
+    const code = generateOtp(`consent:${authUserId}`);
+    const text = `Your WelliRecord code to confirm sharing your health record is ${code}. Valid for 5 minutes. Do not share it with anyone.`;
+
+    if (email) {
+      const result = await sendWelliEmail({
+        to: email,
+        subject: 'Confirm sharing your WelliRecord',
+        text,
+        html: `<p>${text}</p><p>If you did not start this, ignore this message and do not share the code.</p>`,
+      });
+      if (!result.success) {
+        console.error('[POST /access/grants/code] email failed:', result.error);
+        return res.status(502).json({ success: false, message: 'We could not send the confirmation code. Try again.' });
+      }
+      return res.json({ success: true, channel: 'email', sentTo: maskContact(email), expiresInSeconds: 300 });
+    }
+
+    if (!TERMII_API_KEY || TERMII_API_KEY === 'TL_TEST_KEY') {
+      return res.status(502).json({ success: false, message: 'SMS is not available. Add an email to your account.' });
+    }
+    const response = await fetch('https://api.ng.termii.com/api/sms/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: TERMII_API_KEY,
+        to: String(phone).replace(/[^0-9]/g, ''),
+        from: 'N-Alert',
+        sms: text,
+        type: 'plain',
+        channel: 'dnd',
+      }),
+    });
+    const data: any = await response.json();
+    if (data.code === 'ok' || data.message?.includes('Successfully')) {
+      return res.json({ success: true, channel: 'sms', sentTo: maskContact(String(phone)), expiresInSeconds: 300 });
+    }
+    console.error('[POST /access/grants/code] SMS Rejected', response.status, JSON.stringify(data));
+    return res.status(502).json({ success: false, message: 'We could not send the confirmation code. Try again.' });
+  } catch (err) {
+    console.error('[POST /access/grants/code] ERROR:', err);
+    return res.status(502).json({ success: false, message: 'We could not send the confirmation code. Try again.' });
+  }
+});
+
 // POST /api/v1/access/grants — the patient shares with an organization.
 // Body: { granteeOrganizationId (id or WR-ORG id), accessScope: 'full-record'
 // | 'category', category?, durationDays?, purpose? }. View-only.
@@ -3881,7 +3960,7 @@ app.post('/api/v1/access/grants', consentLimiter, async (req: Request, res: Resp
     return res.status(503).json({ success: false, message: 'Database unavailable' });
   }
 
-  const { granteeOrganizationId, accessScope, category, durationDays, purpose } = req.body || {};
+  const { granteeOrganizationId, accessScope, category, durationDays, purpose, code } = req.body || {};
   if (typeof granteeOrganizationId !== 'string' || !granteeOrganizationId.trim()) {
     return res.status(400).json({ success: false, message: 'Choose a provider to share with' });
   }
@@ -3897,6 +3976,10 @@ app.post('/api/v1/access/grants', consentLimiter, async (req: Request, res: Resp
   }
   if (purpose !== undefined && (typeof purpose !== 'string' || purpose.length > 300)) {
     return res.status(400).json({ success: false, message: 'Purpose must be 300 characters or fewer' });
+  }
+  // Sharing needs the one-time code sent by POST /access/grants/code.
+  if (typeof code !== 'string' || !verifyStoredOtp(`consent:${authUserId}`, code.trim())) {
+    return res.status(400).json({ success: false, message: 'Invalid or expired confirmation code' });
   }
 
   try {
