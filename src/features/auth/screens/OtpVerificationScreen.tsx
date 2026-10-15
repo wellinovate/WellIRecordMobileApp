@@ -494,7 +494,7 @@ const styles = StyleSheet.create({
   },
 
   content: {
-    paddingHorizontal: 18,
+    paddingHorizontal: 28,
     paddingTop: 10,
     paddingBottom: 18,
   },
@@ -526,12 +526,12 @@ const styles = StyleSheet.create({
 
   headerBrand: {
     color: '#111827',
-    fontSize: 11,
+    fontSize: 26,
     fontWeight: '600',
   },
 
   tradeMark: {
-    fontSize: 6,
+    fontSize: 22,
   },
 
   headerSpacer: {
@@ -547,7 +547,7 @@ const styles = StyleSheet.create({
 
   flowLabel: {
     color: '#24456E',
-    fontSize: 8.5,
+    fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0.15,
   },

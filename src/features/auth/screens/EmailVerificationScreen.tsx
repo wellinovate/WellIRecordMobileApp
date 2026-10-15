@@ -331,12 +331,12 @@ const styles = StyleSheet.create({
 
   brandName: {
     color: '#101827',
-    fontSize: 13,
+    fontSize: 26,
     fontWeight: '700',
   },
 
   tradeMark: {
-    fontSize: 7,
+    fontSize: 22,
   },
 
   headerSpacer: {
@@ -345,7 +345,7 @@ const styles = StyleSheet.create({
 
   eyebrow: {
     color: '#45617E',
-    fontSize: 9,
+    fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0.4,
     marginBottom: 7,
@@ -361,7 +361,7 @@ const styles = StyleSheet.create({
 
   subtitle: {
     color: '#30445E',
-    fontSize: 12.5,
+    fontSize: 14,
     lineHeight: 18,
     marginTop: 3,
     marginBottom: 20,
@@ -369,7 +369,7 @@ const styles = StyleSheet.create({
   },
 
   heroCard: {
-    height: 101,
+    height: 141,
     backgroundColor: '#D4DDED',
     borderTopWidth: 5,
     borderTopColor: '#0B3268',
@@ -380,8 +380,8 @@ const styles = StyleSheet.create({
   },
 
   logoBadge: {
-    width: 57,
-    height: 57,
+    width: 77,
+    height: 77,
     backgroundColor: '#FFFFFF',
     borderRadius: 13,
     alignItems: 'center',
@@ -398,8 +398,8 @@ const styles = StyleSheet.create({
   },
 
   mailIcon: {
-    width: 28,
-    height: 28,
+    width: 36,
+    height: 36,
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
     alignItems: 'center',
@@ -424,21 +424,21 @@ const styles = StyleSheet.create({
 
   cardTitle: {
     color: '#102F5C',
-    fontSize: 16,
+    fontSize: 23,
     fontWeight: '800',
     marginBottom: 8,
   },
 
   cardDescription: {
     color: '#1B3D68',
-    fontSize: 11.5,
+    fontSize: 14,
     lineHeight: 16,
     maxWidth: 250,
   },
 
   emailText: {
     color: '#0B2E61',
-    fontSize: 10.5,
+    fontSize: 14,
     fontWeight: '600',
     marginTop: 3,
     marginBottom: 10,
@@ -446,9 +446,10 @@ const styles = StyleSheet.create({
 
   fieldLabel: {
     color: '#243E60',
-    fontSize: 10,
+    fontSize: 14,
     marginTop: 11,
     marginBottom: 6,
+    fontWeight: '800',
   },
 
   codeInput: {
@@ -457,7 +458,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F2F4F9',
     paddingHorizontal: 13,
     color: '#151B25',
-    fontSize: 12,
+    fontSize: 14,
     marginBottom: 10,
   },
 
@@ -473,7 +474,7 @@ const styles = StyleSheet.create({
 
   errorText: {
     color: '#A52D2D',
-    fontSize: 9.5,
+    fontSize: 12,
     lineHeight: 13,
   },
 
@@ -491,7 +492,7 @@ const styles = StyleSheet.create({
 
   verifyButtonText: {
     color: '#FFFFFF',
-    fontSize: 11,
+    fontSize: 14,
     fontWeight: '500',
   },
 
@@ -504,7 +505,7 @@ const styles = StyleSheet.create({
 
   resendText: {
     color: '#173D70',
-    fontSize: 9.5,
+    fontSize: 14,
     fontWeight: '500',
   },
 
@@ -533,15 +534,15 @@ const styles = StyleSheet.create({
 
   privacyTitle: {
     color: '#17375F',
-    fontSize: 11,
+    fontSize: 14,
     fontWeight: '700',
     marginBottom: 3,
   },
 
   privacyText: {
     color: '#566A83',
-    fontSize: 8.5,
-    lineHeight: 12,
+    fontSize: 10,
+    lineHeight: 16,
     maxWidth: 245,
   },
 
@@ -556,13 +557,13 @@ const styles = StyleSheet.create({
 
   differentEmailText: {
     color: '#173B69',
-    fontSize: 10.5,
+    fontSize: 14,
     fontWeight: '500',
   },
 
   previewNotice: {
     color: '#2E3440',
-    fontSize: 8,
+    fontSize: 10,
     lineHeight: 11,
     maxWidth: 260,
     marginBottom: 17,
