@@ -2,14 +2,26 @@
  * WelliRecord Offline-First Sync & Emergency Vault Service
  *
  * Provides:
- * 1. Persistent Emergency Medical ID & QR offline caching in secure storage
- * 2. Stale-While-Revalidate caching for Health Records vault
- * 3. Offline mutation sync queue for uploads, prescription orders, and edits
- * 4. Automatic background synchronization upon network recovery
+ * 1. Persistent Emergency Medical ID & QR offline caching
+ * 2. Offline caching for health records
+ * 3. Offline mutation queue
+ * 4. Queue synchronization when connectivity is available
+ * 5. Simulated offline mode for development/demo purposes
+ *
+ * NOTE:
+ * - Web can use navigator.onLine and browser online/offline events.
+ * - Native currently assumes online unless simulated offline mode is enabled.
+ * - Native network monitoring can later be upgraded with @react-native-community/netinfo.
  */
 
-import { storage } from '../utils/secureStorage';
-import type { HealthRecord } from '../data/types';
+import { Platform } from "react-native";
+
+import type { HealthRecord } from "../data/types";
+import { storage } from "../utils/secureStorage";
+
+/* =========================================================
+   TYPES
+========================================================= */
 
 export interface EmergencyOfflineProfile {
   id: string;
@@ -21,18 +33,30 @@ export interface EmergencyOfflineProfile {
   allergies: string;
   conditions: string;
   contact: string;
-  emergencyContacts?: Array<{ name?: string; phone?: string; relationship?: string }>;
+
+  emergencyContacts?: Array<{
+    name?: string;
+    phone?: string;
+    relationship?: string;
+  }>;
+
   hmoProvider?: string;
   hmoPolicyNumber?: string;
+
+  /**
+   * Must be a real server-issued, token-gated share link.
+   * Never generate a predictable emergency URL from wrId/id.
+   */
   qrPayload: string;
+
   lastUpdated: number;
 }
 
 export type QueuedActionType =
-  | 'CREATE_RECORD'
-  | 'DELETE_RECORD'
-  | 'UPDATE_PROFILE'
-  | 'ORDER_PRESCRIPTION';
+  | "CREATE_RECORD"
+  | "DELETE_RECORD"
+  | "UPDATE_PROFILE"
+  | "ORDER_PRESCRIPTION";
 
 export interface QueuedSyncItem {
   id: string;
@@ -40,45 +64,188 @@ export interface QueuedSyncItem {
   payload: any;
   createdAt: number;
   retryCount: number;
-  status: 'pending' | 'syncing' | 'failed';
+  status: "pending" | "syncing" | "failed";
   error?: string;
 }
 
-type SyncListener = (status: {
+export interface OfflineSyncStatus {
   isOnline: boolean;
   isSyncing: boolean;
   pendingCount: number;
   lastSyncedAt: number | null;
-}) => void;
+}
+
+type SyncListener = (
+  status: OfflineSyncStatus,
+) => void;
+
+/* =========================================================
+   CONSTANTS
+========================================================= */
+
+const EMERGENCY_CACHE_KEY =
+  "welli_emergency_offline_profile";
+
+const SYNC_QUEUE_KEY =
+  "welli_offline_mutation_queue";
+
+const RECORD_CACHE_PREFIX =
+  "welli_offline_records_";
+
+const MAX_SYNC_RETRIES = 5;
+
+/* =========================================================
+   PLATFORM HELPERS
+========================================================= */
+
+/**
+ * Safely reads navigator.onLine only when running on web.
+ *
+ * Returns:
+ * - true / false when browser connectivity state is available
+ * - null when unavailable or running on native
+ */
+function getWebOnlineState(): boolean | null {
+  if (Platform.OS !== "web") {
+    return null;
+  }
+
+  try {
+    const navigatorRef = (
+      globalThis as typeof globalThis & {
+        navigator?: {
+          onLine?: boolean;
+        };
+      }
+    ).navigator;
+
+    if (
+      typeof navigatorRef?.onLine === "boolean"
+    ) {
+      return navigatorRef.onLine;
+    }
+  } catch {
+    // Browser connectivity state unavailable.
+  }
+
+  return null;
+}
+
+/**
+ * Safely returns the browser window without assuming
+ * window exists in React Native.
+ */
+function getWebWindow():
+  | {
+      addEventListener?: (
+        event: string,
+        callback: () => void,
+      ) => void;
+    }
+  | null {
+  if (Platform.OS !== "web") {
+    return null;
+  }
+
+  try {
+    const globalRef = globalThis as typeof globalThis & {
+      window?: {
+        addEventListener?: (
+          event: string,
+          callback: () => void,
+        ) => void;
+      };
+    };
+
+    return globalRef.window ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/* =========================================================
+   SERVICE
+========================================================= */
 
 class OfflineSyncService {
-  private isOnlineState: boolean = typeof navigator !== 'undefined' ? navigator.onLine : true;
-  private isSimulatedOffline: boolean = false;
-  private isSyncing: boolean = false;
+  /**
+   * Native currently defaults to online.
+   *
+   * Web uses navigator.onLine when available.
+   */
+  private isOnlineState: boolean =
+    getWebOnlineState() ?? true;
+
+  private isSimulatedOffline = false;
+
+  private isSyncing = false;
+
   private lastSyncedAt: number | null = null;
-  private listeners: Set<SyncListener> = new Set();
+
+  private listeners = new Set<SyncListener>();
 
   constructor() {
-    if (typeof window !== 'undefined') {
-      window.addEventListener('online', () => this.handleNetworkChange(true));
-      window.addEventListener('offline', () => this.handleNetworkChange(false));
-    }
+    this.registerWebNetworkListeners();
   }
 
-  // -------------------------------------------------------------
-  // NETWORK STATUS & SIMULATION
-  // -------------------------------------------------------------
+  /* =======================================================
+     NETWORK
+  ======================================================= */
+
+  private registerWebNetworkListeners(): void {
+    const webWindow = getWebWindow();
+
+    if (
+      !webWindow ||
+      typeof webWindow.addEventListener !==
+        "function"
+    ) {
+      return;
+    }
+
+    webWindow.addEventListener(
+      "online",
+      this.handleWebOnline,
+    );
+
+    webWindow.addEventListener(
+      "offline",
+      this.handleWebOffline,
+    );
+  }
+
+  private handleWebOnline = (): void => {
+    this.handleNetworkChange(true);
+  };
+
+  private handleWebOffline = (): void => {
+    this.handleNetworkChange(false);
+  };
 
   public isOnline(): boolean {
-    if (this.isSimulatedOffline) return false;
-    return typeof navigator !== 'undefined' ? navigator.onLine : this.isOnlineState;
+    if (this.isSimulatedOffline) {
+      return false;
+    }
+
+    const webOnlineState =
+      getWebOnlineState();
+
+    if (webOnlineState !== null) {
+      return webOnlineState;
+    }
+
+    return this.isOnlineState;
   }
 
-  public setSimulatedOffline(offline: boolean) {
+  public setSimulatedOffline(
+    offline: boolean,
+  ): void {
     this.isSimulatedOffline = offline;
-    this.notify();
+
+    void this.notify();
+
     if (!offline && this.isOnline()) {
-      this.processQueue();
+      void this.processQueue();
     }
   }
 
@@ -86,255 +253,612 @@ class OfflineSyncService {
     return this.isSimulatedOffline;
   }
 
-  private handleNetworkChange(online: boolean) {
+  private handleNetworkChange(
+    online: boolean,
+  ): void {
     this.isOnlineState = online;
-    this.notify();
-    if (online && !this.isSimulatedOffline) {
-      this.processQueue();
+
+    void this.notify();
+
+    if (
+      online &&
+      !this.isSimulatedOffline
+    ) {
+      void this.processQueue();
     }
   }
 
-  public subscribe(listener: SyncListener): () => void {
+  /* =======================================================
+     SUBSCRIPTIONS
+  ======================================================= */
+
+  public subscribe(
+    listener: SyncListener,
+  ): () => void {
     this.listeners.add(listener);
+
+    /**
+     * Give subscribers an immediate snapshot so UI
+     * does not need to wait for storage.
+     */
     listener({
       isOnline: this.isOnline(),
       isSyncing: this.isSyncing,
       pendingCount: 0,
       lastSyncedAt: this.lastSyncedAt,
     });
-    this.getQueueCount().then((count) => {
-      listener({
-        isOnline: this.isOnline(),
-        isSyncing: this.isSyncing,
-        pendingCount: count,
-        lastSyncedAt: this.lastSyncedAt,
+
+    /**
+     * Then asynchronously provide the real queue count.
+     */
+    void this.getQueueCount()
+      .then((pendingCount) => {
+        if (!this.listeners.has(listener)) {
+          return;
+        }
+
+        listener({
+          isOnline: this.isOnline(),
+          isSyncing: this.isSyncing,
+          pendingCount,
+          lastSyncedAt:
+            this.lastSyncedAt,
+        });
+      })
+      .catch((error) => {
+        console.warn(
+          "[offlineSync] Failed to read queue count:",
+          error,
+        );
       });
-    });
-    return () => this.listeners.delete(listener);
+
+    return () => {
+      this.listeners.delete(listener);
+    };
   }
 
-  private async notify() {
-    const pendingCount = await this.getQueueCount();
-    const payload = {
+  private async notify(): Promise<void> {
+    let pendingCount = 0;
+
+    try {
+      pendingCount =
+        await this.getQueueCount();
+    } catch (error) {
+      console.warn(
+        "[offlineSync] Failed to calculate pending queue count:",
+        error,
+      );
+    }
+
+    const payload: OfflineSyncStatus = {
       isOnline: this.isOnline(),
       isSyncing: this.isSyncing,
       pendingCount,
       lastSyncedAt: this.lastSyncedAt,
     };
-    this.listeners.forEach((fn) => {
-      try {
-        fn(payload);
-      } catch (e) {
-        console.error('[offlineSync] listener error:', e);
-      }
-    });
+
+    this.listeners.forEach(
+      (listener) => {
+        try {
+          listener(payload);
+        } catch (error) {
+          console.error(
+            "[offlineSync] Listener error:",
+            error,
+          );
+        }
+      },
+    );
   }
 
-  // -------------------------------------------------------------
-  // EMERGENCY MEDICAL ID & QR OFFLINE CACHE
-  // -------------------------------------------------------------
+  /* =======================================================
+     EMERGENCY PROFILE CACHE
+  ======================================================= */
 
-  private readonly EMERGENCY_CACHE_KEY = 'welli_emergency_offline_profile';
-
-  public async cacheEmergencyProfile(profile: Partial<EmergencyOfflineProfile>): Promise<void> {
+  public async cacheEmergencyProfile(
+    profile: Partial<EmergencyOfflineProfile>,
+  ): Promise<void> {
     try {
-      const existing = (await this.getCachedEmergencyProfile()) || ({} as EmergencyOfflineProfile);
+      const existing =
+        (await this.getCachedEmergencyProfile()) ??
+        ({} as EmergencyOfflineProfile);
+
       const updated: EmergencyOfflineProfile = {
-        id: profile.id || existing.id || 'me',
-        name: profile.name || existing.name || 'WelliRecord Patient',
-        wrId: profile.wrId || existing.wrId || 'WR-892401',
-        dob: profile.dob || existing.dob || '1992-06-14',
-        bloodType: profile.bloodType || existing.bloodType || 'O+',
-        genotype: profile.genotype || existing.genotype || 'AA',
-        allergies: profile.allergies || existing.allergies || 'Penicillin, Peanuts (Severe)',
-        conditions: profile.conditions || existing.conditions || 'Mild Asthma',
-        contact: profile.contact || existing.contact || 'Dr. Chidi Okafor (+234 803 123 4567)',
-        emergencyContacts: profile.emergencyContacts || existing.emergencyContacts || [],
-        hmoProvider: profile.hmoProvider || existing.hmoProvider || 'Hygeia HMO Nigeria',
-        hmoPolicyNumber: profile.hmoPolicyNumber || existing.hmoPolicyNumber || 'HYG-90214-LAG',
-        // No guessable fallback here on purpose: a QR payload must be a
-        // real server-issued, token-gated share link (see
-        // sharingService.createEmergencyShareLink) or nothing at all.
-        // Falling back to a predictable URL built from wrId/id would let
-        // anyone who learns that id pull this profile with no grant.
-        qrPayload: profile.qrPayload || existing.qrPayload || '',
+        id:
+          profile.id ??
+          existing.id ??
+          "me",
+
+        name:
+          profile.name ??
+          existing.name ??
+          "WelliRecord Patient",
+
+        wrId:
+          profile.wrId ??
+          existing.wrId ??
+          "WR-892401",
+
+        dob:
+          profile.dob ??
+          existing.dob ??
+          "1992-06-14",
+
+        bloodType:
+          profile.bloodType ??
+          existing.bloodType ??
+          "O+",
+
+        genotype:
+          profile.genotype ??
+          existing.genotype ??
+          "AA",
+
+        allergies:
+          profile.allergies ??
+          existing.allergies ??
+          "Penicillin, Peanuts (Severe)",
+
+        conditions:
+          profile.conditions ??
+          existing.conditions ??
+          "Mild Asthma",
+
+        contact:
+          profile.contact ??
+          existing.contact ??
+          "Dr. Chidi Okafor (+234 803 123 4567)",
+
+        emergencyContacts:
+          profile.emergencyContacts ??
+          existing.emergencyContacts ??
+          [],
+
+        hmoProvider:
+          profile.hmoProvider ??
+          existing.hmoProvider ??
+          "Hygeia HMO Nigeria",
+
+        hmoPolicyNumber:
+          profile.hmoPolicyNumber ??
+          existing.hmoPolicyNumber ??
+          "HYG-90214-LAG",
+
+        /**
+         * Deliberately no predictable fallback.
+         *
+         * Emergency QR links must be issued by the
+         * server/share service.
+         */
+        qrPayload:
+          profile.qrPayload ??
+          existing.qrPayload ??
+          "",
+
         lastUpdated: Date.now(),
       };
-      await storage.setItem(this.EMERGENCY_CACHE_KEY, JSON.stringify(updated));
-    } catch (err) {
-      console.warn('[offlineSync] Failed to cache emergency profile:', err);
+
+      await storage.setItem(
+        EMERGENCY_CACHE_KEY,
+        JSON.stringify(updated),
+      );
+    } catch (error) {
+      console.warn(
+        "[offlineSync] Failed to cache emergency profile:",
+        error,
+      );
     }
   }
 
   public async getCachedEmergencyProfile(): Promise<EmergencyOfflineProfile | null> {
     try {
-      const raw = await storage.getItem(this.EMERGENCY_CACHE_KEY);
-      if (!raw) return null;
-      return JSON.parse(raw);
-    } catch {
+      const raw =
+        await storage.getItem(
+          EMERGENCY_CACHE_KEY,
+        );
+
+      if (!raw) {
+        return null;
+      }
+
+      const parsed = JSON.parse(raw);
+
+      if (
+        !parsed ||
+        typeof parsed !== "object"
+      ) {
+        return null;
+      }
+
+      return parsed as EmergencyOfflineProfile;
+    } catch (error) {
+      console.warn(
+        "[offlineSync] Failed to read emergency profile:",
+        error,
+      );
+
       return null;
     }
   }
 
-  // -------------------------------------------------------------
-  // HEALTH RECORDS OFFLINE VAULT CACHE
-  // -------------------------------------------------------------
+  /* =======================================================
+     HEALTH RECORD CACHE
+  ======================================================= */
 
-  private getRecordsCacheKey(ownerId: string = 'me'): string {
-    return `welli_offline_records_${ownerId}`;
+  private getRecordsCacheKey(
+    ownerId = "me",
+  ): string {
+    return `${RECORD_CACHE_PREFIX}${ownerId}`;
   }
 
-  public async cacheRecords(ownerId: string = 'me', records: HealthRecord[]): Promise<void> {
+  public async cacheRecords(
+    ownerId = "me",
+    records: HealthRecord[],
+  ): Promise<void> {
     try {
-      const key = this.getRecordsCacheKey(ownerId);
+      const key =
+        this.getRecordsCacheKey(ownerId);
+
       await storage.setItem(
         key,
         JSON.stringify({
           cachedAt: Date.now(),
           records,
-        })
+        }),
       );
-    } catch (err) {
-      console.warn('[offlineSync] Failed to cache health records:', err);
+    } catch (error) {
+      console.warn(
+        "[offlineSync] Failed to cache health records:",
+        error,
+      );
     }
   }
 
-  public async getCachedRecords(ownerId: string = 'me'): Promise<HealthRecord[] | null> {
+  public async getCachedRecords(
+    ownerId = "me",
+  ): Promise<HealthRecord[] | null> {
     try {
-      const key = this.getRecordsCacheKey(ownerId);
-      const raw = await storage.getItem(key);
-      if (!raw) return null;
+      const key =
+        this.getRecordsCacheKey(ownerId);
+
+      const raw =
+        await storage.getItem(key);
+
+      if (!raw) {
+        return null;
+      }
+
       const parsed = JSON.parse(raw);
-      return Array.isArray(parsed?.records) ? parsed.records : null;
-    } catch {
+
+      if (!Array.isArray(parsed?.records)) {
+        return null;
+      }
+
+      return parsed.records as HealthRecord[];
+    } catch (error) {
+      console.warn(
+        "[offlineSync] Failed to read cached health records:",
+        error,
+      );
+
       return null;
     }
   }
 
-  // -------------------------------------------------------------
-  // MUTATION SYNC QUEUE
-  // -------------------------------------------------------------
+  /* =======================================================
+     SYNC QUEUE STORAGE
+  ======================================================= */
 
-  private readonly SYNC_QUEUE_KEY = 'welli_offline_mutation_queue';
-
-  public async getQueue(): Promise<QueuedSyncItem[]> {
+  public async getQueue(): Promise<
+    QueuedSyncItem[]
+  > {
     try {
-      const raw = await storage.getItem(this.SYNC_QUEUE_KEY);
-      if (!raw) return [];
-      const list = JSON.parse(raw);
-      return Array.isArray(list) ? list : [];
-    } catch {
+      const raw =
+        await storage.getItem(
+          SYNC_QUEUE_KEY,
+        );
+
+      if (!raw) {
+        return [];
+      }
+
+      const parsed = JSON.parse(raw);
+
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+
+      return parsed as QueuedSyncItem[];
+    } catch (error) {
+      console.warn(
+        "[offlineSync] Failed to read queue:",
+        error,
+      );
+
       return [];
     }
   }
 
   public async getQueueCount(): Promise<number> {
-    const q = await this.getQueue();
-    return q.filter((item) => item.status === 'pending' || item.status === 'failed').length;
+    const queue = await this.getQueue();
+
+    return queue.filter(
+      (item) =>
+        item.status === "pending" ||
+        item.status === "failed",
+    ).length;
   }
 
-  private async saveQueue(queue: QueuedSyncItem[]): Promise<void> {
+  private async saveQueue(
+    queue: QueuedSyncItem[],
+    notifyListeners = true,
+  ): Promise<void> {
     try {
-      await storage.setItem(this.SYNC_QUEUE_KEY, JSON.stringify(queue));
-      this.notify();
-    } catch (err) {
-      console.error('[offlineSync] Failed to save queue:', err);
+      await storage.setItem(
+        SYNC_QUEUE_KEY,
+        JSON.stringify(queue),
+      );
+
+      if (notifyListeners) {
+        await this.notify();
+      }
+    } catch (error) {
+      console.error(
+        "[offlineSync] Failed to save queue:",
+        error,
+      );
+
+      throw error;
     }
   }
 
-  public async enqueue(type: QueuedActionType, payload: any): Promise<QueuedSyncItem> {
+  /* =======================================================
+     ENQUEUE
+  ======================================================= */
+
+  public async enqueue(
+    type: QueuedActionType,
+    payload: any,
+  ): Promise<QueuedSyncItem> {
     const queue = await this.getQueue();
+
     const item: QueuedSyncItem = {
-      id: `queue_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      id: this.createQueueId(),
       type,
       payload,
       createdAt: Date.now(),
       retryCount: 0,
-      status: 'pending',
+      status: "pending",
     };
+
     queue.push(item);
+
     await this.saveQueue(queue);
 
-    // If online, attempt immediate sync
+    /**
+     * Do not block the caller waiting for network sync.
+     */
     if (this.isOnline()) {
-      this.processQueue();
+      void this.processQueue();
     }
 
     return item;
   }
 
-  public async processQueue(): Promise<{ synced: number; failed: number }> {
-    if (!this.isOnline() || this.isSyncing) {
-      return { synced: 0, failed: 0 };
+  private createQueueId(): string {
+    const randomPart = Math.random()
+      .toString(36)
+      .slice(2, 9);
+
+    return `queue_${Date.now()}_${randomPart}`;
+  }
+
+  /* =======================================================
+     PROCESS QUEUE
+  ======================================================= */
+
+  public async processQueue(): Promise<{
+    synced: number;
+    failed: number;
+  }> {
+    if (
+      !this.isOnline() ||
+      this.isSyncing
+    ) {
+      return {
+        synced: 0,
+        failed: 0,
+      };
     }
 
     this.isSyncing = true;
-    this.notify();
+
+    await this.notify();
 
     let synced = 0;
     let failed = 0;
-    const queue = await this.getQueue();
-    const remainingQueue: QueuedSyncItem[] = [];
 
-    for (const item of queue) {
-      if (item.status === 'syncing') continue;
-      item.status = 'syncing';
+    try {
+      const queue = await this.getQueue();
 
-      try {
-        await this.executeMutation(item);
-        synced++;
-        // Successfully synced — do not re-add to remainingQueue
-      } catch (err: any) {
-        console.warn(`[offlineSync] Failed to sync item ${item.id}:`, err);
-        item.retryCount++;
-        item.status = 'failed';
-        item.error = err?.message || String(err);
-        failed++;
-        // Keep in queue if retryCount is within reason (< 5)
-        if (item.retryCount < 5) {
-          remainingQueue.push(item);
+      if (queue.length === 0) {
+        this.lastSyncedAt = Date.now();
+
+        return {
+          synced: 0,
+          failed: 0,
+        };
+      }
+
+      const remainingQueue: QueuedSyncItem[] =
+        [];
+
+      for (const queuedItem of queue) {
+        /**
+         * Clone rather than mutating persisted state objects
+         * directly.
+         */
+        const item: QueuedSyncItem = {
+          ...queuedItem,
+          status: "syncing",
+        };
+
+        try {
+          await this.executeMutation(item);
+
+          synced += 1;
+        } catch (error: any) {
+          failed += 1;
+
+          const retryCount =
+            item.retryCount + 1;
+
+          console.warn(
+            `[offlineSync] Failed to sync item ${item.id}:`,
+            error,
+          );
+
+          /**
+           * Only retain the failed item while retries remain.
+           */
+          if (
+            retryCount <
+            MAX_SYNC_RETRIES
+          ) {
+            remainingQueue.push({
+              ...item,
+              retryCount,
+              status: "failed",
+              error:
+                error?.message ??
+                String(error),
+            });
+          } else {
+            console.warn(
+              `[offlineSync] Dropping queue item ${item.id} after ${MAX_SYNC_RETRIES} failed attempts.`,
+            );
+          }
         }
       }
+
+      /**
+       * Avoid notifying here because the finally block will
+       * publish the final status after isSyncing is false.
+       */
+      await this.saveQueue(
+        remainingQueue,
+        false,
+      );
+
+      this.lastSyncedAt = Date.now();
+
+      return {
+        synced,
+        failed,
+      };
+    } catch (error) {
+      console.error(
+        "[offlineSync] Queue processing failed:",
+        error,
+      );
+
+      return {
+        synced,
+        failed: failed + 1,
+      };
+    } finally {
+      this.isSyncing = false;
+
+      await this.notify();
     }
-
-    await this.saveQueue(remainingQueue);
-    this.isSyncing = false;
-    this.lastSyncedAt = Date.now();
-    this.notify();
-
-    return { synced, failed };
   }
 
-  private async executeMutation(item: QueuedSyncItem): Promise<void> {
-    // Dynamic import to avoid circular dependency
-    const { apiClient } = await import('./apiClient');
+  /* =======================================================
+     EXECUTE MUTATION
+  ======================================================= */
+
+  private async executeMutation(
+    item: QueuedSyncItem,
+  ): Promise<void> {
+    /**
+     * Dynamic import keeps apiClient out of service
+     * initialization and reduces circular dependency risk.
+     */
+    const { apiClient } =
+      await import("./apiClient");
 
     switch (item.type) {
-      case 'CREATE_RECORD': {
-        await apiClient.post('/records', item.payload);
-        break;
+      case "CREATE_RECORD": {
+        await apiClient.post(
+          "/records",
+          item.payload,
+        );
+
+        return;
       }
-      case 'DELETE_RECORD': {
-        await apiClient.delete(`/records/${item.payload.recordId}`);
-        break;
+
+      case "DELETE_RECORD": {
+        const recordId =
+          item.payload?.recordId;
+
+        if (!recordId) {
+          throw new Error(
+            "DELETE_RECORD requires payload.recordId",
+          );
+        }
+
+        await apiClient.delete(
+          `/records/${recordId}`,
+        );
+
+        return;
       }
-      case 'UPDATE_PROFILE': {
-        await apiClient.post('/profile/update', item.payload);
-        break;
+
+      case "UPDATE_PROFILE": {
+        await apiClient.post(
+          "/profile/update",
+          item.payload,
+        );
+
+        return;
       }
-      case 'ORDER_PRESCRIPTION': {
-        await apiClient.post('/pharmacy/orders', item.payload);
-        break;
+
+      case "ORDER_PRESCRIPTION": {
+        await apiClient.post(
+          "/pharmacy/orders",
+          item.payload,
+        );
+
+        return;
       }
-      default:
-        throw new Error(`Unknown mutation type: ${(item as any).type}`);
+
+      default: {
+        const exhaustiveType =
+          (item as QueuedSyncItem).type;
+
+        throw new Error(
+          `Unknown mutation type: ${String(
+            exhaustiveType,
+          )}`,
+        );
+      }
     }
   }
+
+  /* =======================================================
+     CLEAR QUEUE
+  ======================================================= */
 
   public async clearQueue(): Promise<void> {
     await this.saveQueue([]);
   }
 }
 
-export const offlineSyncService = new OfflineSyncService();
+/* =========================================================
+   SINGLETON
+========================================================= */
+
+export const offlineSyncService =
+  new OfflineSyncService();
+
 export default offlineSyncService;

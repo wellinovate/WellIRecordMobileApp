@@ -1,576 +1,1203 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from "react";
 import {
-  View,
-  Text,
-  ScrollView,
-  StyleSheet,
-  Modal,
-  TouchableOpacity,
-  Linking,
   ActivityIndicator,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import QRCode from 'react-native-qrcode-svg';
-import Svg, { Path } from 'react-native-svg';
-import { ModalHeader } from '../components/ModalHeader';
-import { formatDob } from '../utils/formatDate';
-import { offlineSyncService } from '../services/offlineSyncService';
-import { sharingService } from '../services/sharingService';
-import { notificationService } from '../services/notificationService';
-import { hapticFeedback } from '../utils/haptics';
-import type { WelliApp } from '../state/useWelliApp';
+  Linking,
+  Modal,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import QRCode from "react-native-qrcode-svg";
+import Svg, { Circle, Path } from "react-native-svg";
+
+import { formatDob } from "../utils/formatDate";
+import { offlineSyncService } from "../services/offlineSyncService";
+import { sharingService } from "../services/sharingService";
+import { notificationService } from "../services/notificationService";
+import { hapticFeedback } from "../utils/haptics";
+import type { WelliApp } from "../state/useWelliApp";
+
+type EmergencyStep = "setup" | "review" | "contact" | "allergy";
 
 type QrState =
-  | { status: 'loading' }
-  | { status: 'ready'; url: string; offline: boolean }
-  | { status: 'unavailable' };
+  | { status: "loading" }
+  | { status: "ready"; url: string; offline: boolean }
+  | { status: "unavailable" };
 
-export function EmergencyModal({ app }: { app: WelliApp }) {
+type ContactDraft = {
+  name: string;
+  relationship: string;
+  phone: string;
+};
+
+function BackIcon() {
+  return (
+    <Svg width={19} height={19} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M15 18L9 12L15 6"
+        stroke="#172033"
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+function WarningIcon() {
+  return (
+    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 4L21 20H3L12 4Z"
+        stroke="#A96726"
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M12 9V14"
+        stroke="#A96726"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+      />
+      <Circle cx={12} cy={17} r={0.8} fill="#A96726" />
+    </Svg>
+  );
+}
+
+function ChevronIcon() {
+  return (
+    <Svg width={17} height={17} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M9 6L15 12L9 18"
+        stroke="#8EA5C0"
+        strokeWidth={1.7}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+function PhoneIcon() {
+  return (
+    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M22 16.92V20a2 2 0 0 1-2.18 2A19.79 19.79 0 0 1 11.19 18.93 19.5 19.5 0 0 1 5.19 12.93 19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3A2 2 0 0 1 9.1 3.72c.12.93.35 1.85.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.96.35 1.88.58 2.81.7A2 2 0 0 1 22 16.92Z"
+        stroke="#315B90"
+        strokeWidth={1.7}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+function Header({
+  onBack,
+}: {
+  onBack: () => void;
+}) {
+  return (
+    <View className="min-h-[44px] flex-row items-center justify-between">
+      <TouchableOpacity
+        activeOpacity={0.72}
+        onPress={onBack}
+        className="h-9 w-9 items-center justify-center rounded-full bg-slate-50"
+      >
+        <BackIcon />
+      </TouchableOpacity>
+
+      <Text className="text-[12px] font-semibold text-slate-800">
+        WelliRecord<Text className="text-[7px]">™</Text>
+      </Text>
+
+      <View className="h-9 w-9" />
+    </View>
+  );
+}
+
+function AllergyWarning({
+  onPress,
+  allergyText,
+}: {
+  onPress: () => void;
+  allergyText: string;
+}) {
+  const notRecorded =
+    !allergyText ||
+    /^(none on file|not recorded|unknown|none reported)$/i.test(
+      allergyText.trim(),
+    );
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.8}
+      onPress={onPress}
+      className="mt-5 rounded-2xl border border-[#F0CAA0] bg-[#FFF4E7] p-4"
+    >
+      <View className="flex-row items-start gap-3">
+        <WarningIcon />
+
+        <View className="flex-1">
+          <Text className="text-[13px] font-bold text-[#A96726]">
+            Allergies: {notRecorded ? "Not recorded" : allergyText}
+          </Text>
+
+          <Text className="mt-2 text-[11.5px] leading-[17px] text-[#7C5B38]">
+            Unknown status. Not recorded does not mean “No known allergies”.
+            Confirm with the patient or care team.
+          </Text>
+        </View>
+
+        <ChevronIcon />
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function LabDetailsCard({
+  bloodType,
+  genotype,
+}: {
+  bloodType?: string;
+  genotype?: string;
+}) {
+  return (
+    <View className="mt-4 rounded-2xl bg-[#EEF3FA] p-4">
+      <Text className="text-[14px] font-extrabold text-[#082F67]">
+        Verified lab details
+      </Text>
+
+      <View className="mt-4 gap-4">
+        <View className="flex-row items-center">
+          <View className="flex-1">
+            <Text className="text-[12px] font-semibold text-[#173B68]">
+              Blood group
+            </Text>
+            <Text className="mt-1 text-[10.5px] leading-[15px] text-slate-500">
+              No verified result available · read-only
+            </Text>
+          </View>
+
+          <Text className="text-[14px] font-bold text-[#315B90]">
+            {bloodType || "—"}
+          </Text>
+        </View>
+
+        <View className="h-px bg-[#DCE5F0]" />
+
+        <View className="flex-row items-center">
+          <View className="flex-1">
+            <Text className="text-[12px] font-semibold text-[#173B68]">
+              Genotype
+            </Text>
+            <Text className="mt-1 text-[10.5px] leading-[15px] text-slate-500">
+              No verified result available · read-only
+            </Text>
+          </View>
+
+          <Text className="text-[14px] font-bold text-[#315B90]">
+            {genotype || "—"}
+          </Text>
+        </View>
+      </View>
+
+      <Text className="mt-4 text-[10.5px] leading-[15px] text-slate-500">
+        Only verified lab entries can populate these details.
+      </Text>
+    </View>
+  );
+}
+
+function ContactCard({
+  contact,
+  onEdit,
+  onCall,
+}: {
+  contact: ContactDraft;
+  onEdit: () => void;
+  onCall: () => void;
+}) {
+  const hasContact =
+    Boolean(contact.name.trim()) ||
+    Boolean(contact.phone.trim());
+
+  return (
+    <View className="mt-4 rounded-2xl bg-[#EEF3FA] p-4">
+      <Text className="text-[14px] font-extrabold text-[#082F67]">
+        Emergency contact
+      </Text>
+
+      <View className="mt-3 flex-row items-start gap-3">
+        <PhoneIcon />
+
+        <View className="flex-1">
+          <Text className="text-[12px] font-semibold text-[#173B68]">
+            {hasContact ? contact.name || "Named contact" : "Not added"}
+          </Text>
+
+          <Text className="mt-1 text-[10.5px] leading-[15px] text-slate-500">
+            {hasContact
+              ? [
+                  contact.relationship,
+                  contact.phone,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+              : "No name or contact number available"}
+          </Text>
+        </View>
+      </View>
+
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onPress={onEdit}
+        className="mt-4 min-h-[44px] items-center justify-center rounded-xl bg-[#E1E8F4]"
+      >
+        <Text className="text-[12px] font-semibold text-[#315B90]">
+          {hasContact
+            ? "Edit named contact"
+            : "Add or edit named contact"}
+        </Text>
+      </TouchableOpacity>
+
+      {hasContact && contact.phone ? (
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={onCall}
+          className="mt-2 min-h-[44px] items-center justify-center rounded-xl border border-[#C9D7E8] bg-white"
+        >
+          <Text className="text-[12px] font-semibold text-[#315B90]">
+            Call emergency contact
+          </Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
+}
+
+export function EmergencyModal({
+  app,
+}: {
+  app: WelliApp;
+}) {
   const { state, actions, family } = app;
-  if (!state.showEmergency) return null;
 
   const emergencyMember =
-    family.find((f) => f.id === state.activeFamilyId) ?? family[0];
-  const isDependent = emergencyMember.role === 'dependent';
-  const guardianLine = isDependent ? `Guardian: ${family[0].name}` : null;
+    family.find(
+      (member) =>
+        member.id === state.activeFamilyId,
+    ) ??
+    family[0] ??
+    null;
 
-  const [qr, setQr] = useState<QrState>({ status: 'loading' });
-  const [isRevoking, setIsRevoking] = useState(false);
-  const [isSimulating, setIsSimulating] = useState(false);
-  const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
+  const initialContact = useMemo<ContactDraft>(() => {
+    const first =
+      emergencyMember?.emergencyContacts?.[0];
 
-  const handleSimulateScan = async () => {
-    setIsSimulating(true);
-    hapticFeedback.medium();
-    try {
-      await notificationService.triggerTestEmergencyAlert();
-      setFeedbackMsg('🚨 Scan alert sent! Look for the alert banner on screen.');
-      setTimeout(() => setFeedbackMsg(null), 5000);
-    } catch {
-      setFeedbackMsg('Simulation failed');
-    } finally {
-      setIsSimulating(false);
-    }
-  };
+    return {
+      name: first?.name || "",
+      relationship:
+        first?.relationship || "",
+      phone: first?.phone || "",
+    };
+  }, [
+    emergencyMember?.id,
+    emergencyMember?.emergencyContacts,
+  ]);
 
-  const handleRevokeActive = async () => {
-    if (qr.status !== 'ready' || !qr.url) return;
-    const token = qr.url.split('/').pop() || '';
-    if (!token) return;
+  const [step, setStep] =
+    useState<EmergencyStep>("setup");
 
-    setIsRevoking(true);
-    hapticFeedback.warning();
-    try {
-      await notificationService.revokeEmergencyToken(token);
-      setFeedbackMsg('🔒 QR Code revoked & locked. Generating new secure link...');
-      setQr({ status: 'loading' });
-      const newLink = await sharingService.createEmergencyShareLink(emergencyMember.id);
-      setQr({ status: 'ready', url: newLink.shareUrl, offline: false });
-      setFeedbackMsg('✅ New secure emergency QR generated!');
-      setTimeout(() => setFeedbackMsg(null), 4000);
-    } catch {
-      setFeedbackMsg('Failed to revoke link');
-    } finally {
-      setIsRevoking(false);
-    }
-  };
+  const [contactDraft, setContactDraft] =
+    useState<ContactDraft>(initialContact);
 
-  // The QR code must encode a real, server-issued, token-gated share link —
-  // never a URL built client-side from a predictable id (wrId / family
-  // member id), which anyone could guess and use to pull this profile with
-  // no grant at all. When online, request a fresh link and cache it for
-  // offline use; when offline, fall back to the last link actually issued
-  // (never to a freshly-fabricated guess).
+  const [qr, setQr] = useState<QrState>({
+    status: "loading",
+  });
+
+  const [isRevoking, setIsRevoking] =
+    useState(false);
+
+  const [isSimulating, setIsSimulating] =
+    useState(false);
+
+  const [feedbackMsg, setFeedbackMsg] =
+    useState<string | null>(null);
+
   useEffect(() => {
-    if (!emergencyMember) return;
-    let cancelled = false;
-    setQr({ status: 'loading' });
+    setContactDraft(initialContact);
+  }, [initialContact]);
 
-    (async () => {
+  useEffect(() => {
+    if (!state.showEmergency) {
+      setStep("setup");
+    }
+  }, [state.showEmergency]);
+
+  useEffect(() => {
+    if (
+      !state.showEmergency ||
+      !emergencyMember
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    setQr({
+      status: "loading",
+    });
+
+    void (async () => {
       if (offlineSyncService.isOnline()) {
         try {
-          const link = await sharingService.createEmergencyShareLink(emergencyMember.id);
-          if (cancelled) return;
-          setQr({ status: 'ready', url: link.shareUrl, offline: false });
-          await offlineSyncService.cacheEmergencyProfile({
-            id: emergencyMember.id,
-            name: emergencyMember.name,
-            wrId: emergencyMember.wrId,
-            dob: emergencyMember.dob,
-            bloodType: emergencyMember.bloodType,
-            genotype: emergencyMember.genotype,
-            allergies: emergencyMember.allergies,
-            conditions: emergencyMember.conditions,
-            contact: emergencyMember.contact,
-            emergencyContacts: emergencyMember.emergencyContacts,
-            hmoProvider: (emergencyMember as any).hmoProvider,
-            hmoPolicyNumber: (emergencyMember as any).hmoPolicyNumber,
-            qrPayload: link.shareUrl,
+          const link =
+            await sharingService.createEmergencyShareLink(
+              emergencyMember.id,
+            );
+
+          if (cancelled) {
+            return;
+          }
+
+          setQr({
+            status: "ready",
+            url: link.shareUrl,
+            offline: false,
           });
+
+          await offlineSyncService.cacheEmergencyProfile(
+            {
+              id: emergencyMember.id,
+              name: emergencyMember.name,
+              wrId: emergencyMember.wrId,
+              dob: emergencyMember.dob,
+              bloodType:
+                emergencyMember.bloodType,
+              genotype:
+                emergencyMember.genotype,
+              allergies:
+                emergencyMember.allergies,
+              conditions:
+                emergencyMember.conditions,
+              contact:
+                emergencyMember.contact,
+              emergencyContacts:
+                emergencyMember.emergencyContacts,
+              hmoProvider: (
+                emergencyMember as any
+              ).hmoProvider,
+              hmoPolicyNumber: (
+                emergencyMember as any
+              ).hmoPolicyNumber,
+              qrPayload: link.shareUrl,
+            },
+          );
+
           return;
-        } catch (err) {
-          console.warn('[EmergencyModal] Failed to create a fresh share link, falling back to cache:', err);
+        } catch (error) {
+          console.warn(
+            "[EmergencyModal] Failed to create a fresh share link, falling back to cache:",
+            error,
+          );
         }
       }
 
-      const cached = await offlineSyncService.getCachedEmergencyProfile();
-      if (cancelled) return;
-      if (cached && cached.id === emergencyMember.id && cached.qrPayload) {
-        setQr({ status: 'ready', url: cached.qrPayload, offline: true });
+      const cached =
+        await offlineSyncService.getCachedEmergencyProfile();
+
+      if (cancelled) {
+        return;
+      }
+
+      if (
+        cached &&
+        cached.id === emergencyMember.id &&
+        cached.qrPayload
+      ) {
+        setQr({
+          status: "ready",
+          url: cached.qrPayload,
+          offline: true,
+        });
       } else {
-        setQr({ status: 'unavailable' });
+        setQr({
+          status: "unavailable",
+        });
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [emergencyMember?.id]);
+  }, [
+    state.showEmergency,
+    emergencyMember?.id,
+  ]);
+
+  if (
+    !state.showEmergency ||
+    !emergencyMember
+  ) {
+    return null;
+  }
+
+  const isDependent =
+    emergencyMember.role === "dependent";
+
+  const guardianLine =
+    isDependent && family[0]
+      ? `Guardian: ${family[0].name}`
+      : null;
+
+  const allergyText =
+    emergencyMember.allergies || "";
+
+  const recordedAllergyStatus =
+    allergyText &&
+    !/^(none on file|not recorded|unknown|none reported)$/i.test(
+      allergyText.trim(),
+    )
+      ? allergyText
+      : "Not recorded";
+
+  const hasContact =
+    Boolean(contactDraft.name.trim()) ||
+    Boolean(contactDraft.phone.trim());
+
+  const close = () => {
+    setStep("setup");
+    actions.closeEmergency();
+  };
+
+  const goBack = () => {
+    if (step === "review") {
+      setStep("setup");
+      return;
+    }
+
+    if (
+      step === "contact" ||
+      step === "allergy"
+    ) {
+      setStep("review");
+      return;
+    }
+
+    close();
+  };
+
+  const openAssistant = () => {
+    close();
+    actions.setTab("chat");
+  };
 
   const handleCallContact = () => {
-    const phoneDigits = emergencyMember.contact.replace(/[^0-9+]/g, '');
-    if (phoneDigits) {
-      hapticFeedback.medium();
-      Linking.openURL(`tel:${phoneDigits}`).catch(() => {});
+    const source =
+      contactDraft.phone ||
+      emergencyMember.contact ||
+      "";
+
+    const phoneDigits = source.replace(
+      /[^0-9+]/g,
+      "",
+    );
+
+    if (!phoneDigits) {
+      actions.showToast(
+        "No emergency contact number is available",
+      );
+      return;
     }
+
+    hapticFeedback.medium();
+
+    Linking.openURL(
+      `tel:${phoneDigits}`,
+    ).catch(() => {
+      actions.showToast(
+        "Unable to open the phone dialer",
+      );
+    });
+  };
+
+  const handleSimulateScan = async () => {
+    setIsSimulating(true);
+    hapticFeedback.medium();
+
+    try {
+      await notificationService.triggerTestEmergencyAlert();
+
+      setFeedbackMsg(
+        "Scan alert sent. Look for the emergency alert banner.",
+      );
+
+      setTimeout(
+        () => setFeedbackMsg(null),
+        5000,
+      );
+    } catch {
+      setFeedbackMsg(
+        "Simulation failed",
+      );
+    } finally {
+      setIsSimulating(false);
+    }
+  };
+
+  const handleRevokeActive = async () => {
+    if (
+      qr.status !== "ready" ||
+      !qr.url
+    ) {
+      return;
+    }
+
+    const token =
+      qr.url.split("/").pop() || "";
+
+    if (!token) {
+      return;
+    }
+
+    setIsRevoking(true);
+    hapticFeedback.warning();
+
+    try {
+      await notificationService.revokeEmergencyToken(
+        token,
+      );
+
+      setFeedbackMsg(
+        "QR code revoked. Generating a new secure link…",
+      );
+
+      setQr({
+        status: "loading",
+      });
+
+      const newLink =
+        await sharingService.createEmergencyShareLink(
+          emergencyMember.id,
+        );
+
+      setQr({
+        status: "ready",
+        url: newLink.shareUrl,
+        offline: false,
+      });
+
+      setFeedbackMsg(
+        "New secure Emergency ID QR generated.",
+      );
+
+      setTimeout(
+        () => setFeedbackMsg(null),
+        4000,
+      );
+    } catch {
+      setFeedbackMsg(
+        "Failed to revoke the active QR code",
+      );
+    } finally {
+      setIsRevoking(false);
+    }
+  };
+
+  const saveContactPreview = () => {
+    hapticFeedback.success();
+
+    actions.showToast(
+      "Emergency contact saved in this UI preview",
+    );
+
+    setStep("review");
+  };
+
+  const confirmReview = () => {
+    hapticFeedback.success();
+
+    actions.showToast(
+      "Emergency ID review confirmed",
+    );
   };
 
   return (
     <Modal
       visible={state.showEmergency}
-      animationType="fade"
+      animationType="slide"
       transparent={false}
-      onRequestClose={actions.closeEmergency}
+      onRequestClose={goBack}
     >
-      <SafeAreaView style={styles.container}>
-        <ModalHeader
-          title="Emergency Medical ID"
-          dark
-          onClose={actions.closeEmergency}
-          onBack={actions.closeEmergency}
-        />
-
-        <ScrollView
-          style={styles.scrollArea}
-          contentContainerStyle={styles.scrollInner}
-        >
-          {/* Main ID Card */}
-          <LinearGradient
-            colors={['#020617', '#1e3a8a']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.idCard}
+      <SafeAreaView className="flex-1 bg-white">
+        {/* =====================================================
+            SETUP
+        ====================================================== */}
+        {step === "setup" ? (
+          <ScrollView
+            className="flex-1"
+            contentContainerStyle={{
+              paddingHorizontal: 16,
+              paddingTop: 8,
+              paddingBottom: 32,
+            }}
+            showsVerticalScrollIndicator={false}
           >
-            <View style={styles.badgeRow}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-                <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-                  <Path
-                    d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6l7-3z"
-                    stroke="#fbbf24"
-                    strokeWidth={1.8}
-                    strokeLinejoin="round"
-                  />
-                </Svg>
-                <Text style={styles.idCardBadgeText}>Emergency Medical ID</Text>
-              </View>
+            <Header onBack={close} />
 
-              {qr.status === 'ready' ? (
-                <View style={styles.offlineReadyPill}>
-                  <Svg width={11} height={11} viewBox="0 0 24 24" fill="none">
-                    <Path
-                      d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"
-                      stroke="#10b981"
-                      strokeWidth={2.5}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </Svg>
-                  <Text style={styles.offlineReadyText}>
-                    {qr.offline ? 'Offline Cached' : 'Secure Link Ready'}
-                  </Text>
-                </View>
+            <Text className="mt-3 text-[11px] font-semibold text-[#315B90]">
+              Emergency ID · 1 of 2
+            </Text>
+
+            <Text className="mt-3 text-[28px] leading-[34px] font-extrabold text-[#082F67]">
+              Set up Emergency ID
+            </Text>
+
+            <Text className="mt-1 text-[13px] leading-[19px] text-slate-500">
+              Review essential information. Emergency ID is always free to
+              access.
+            </Text>
+
+            <AllergyWarning
+              allergyText={allergyText}
+              onPress={() =>
+                setStep("allergy")
+              }
+            />
+
+            <ContactCard
+              contact={contactDraft}
+              onEdit={() =>
+                setStep("contact")
+              }
+              onCall={handleCallContact}
+            />
+
+            <LabDetailsCard
+              bloodType={
+                emergencyMember.bloodType
+              }
+              genotype={
+                emergencyMember.genotype
+              }
+            />
+
+            <Text className="mt-4 text-[10.5px] leading-[15px] text-slate-500">
+              Blood group and genotype cannot be entered here. Ask your care
+              team about verified lab entries.
+            </Text>
+
+            <TouchableOpacity
+              activeOpacity={0.86}
+              onPress={() =>
+                setStep("review")
+              }
+              className="mt-6 min-h-[48px] items-center justify-center rounded-xl bg-[#082F67]"
+            >
+              <Text className="text-[14px] font-semibold text-white">
+                Preview Emergency ID
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.78}
+              onPress={openAssistant}
+              className="mt-3 min-h-[46px] items-center justify-center rounded-xl bg-[#EEF3FA]"
+            >
+              <Text className="text-[13px] font-semibold text-[#315B90]">
+                Set up with Assistant
+              </Text>
+            </TouchableOpacity>
+
+            <Text className="mt-3 text-center text-[10.5px] text-slate-400">
+              Design preview · no action is connected.
+            </Text>
+          </ScrollView>
+        ) : null}
+
+        {/* =====================================================
+            REVIEW
+        ====================================================== */}
+        {step === "review" ? (
+          <ScrollView
+            className="flex-1"
+            contentContainerStyle={{
+              paddingHorizontal: 16,
+              paddingTop: 8,
+              paddingBottom: 32,
+            }}
+            showsVerticalScrollIndicator={false}
+          >
+            <Header onBack={goBack} />
+
+            <Text className="mt-3 text-[11px] font-semibold text-[#315B90]">
+              Emergency ID · 2 of 2
+            </Text>
+
+            <Text className="mt-3 text-[28px] leading-[34px] font-extrabold text-[#082F67]">
+              Review Emergency ID
+            </Text>
+
+            <Text className="mt-1 text-[13px] leading-[19px] text-slate-500">
+              Always free. Check the source and unknown status before relying on
+              this information.
+            </Text>
+
+            <AllergyWarning
+              allergyText={allergyText}
+              onPress={() =>
+                setStep("allergy")
+              }
+            />
+
+            <View className="mt-4 rounded-2xl bg-[#082F67] p-4">
+              <Text className="text-[11px] font-semibold text-[#BFD0E5]">
+                WelliRecord Emergency ID
+              </Text>
+
+              <Text className="mt-4 text-[20px] font-extrabold text-white">
+                {emergencyMember.name}
+              </Text>
+
+              {emergencyMember.wrId ? (
+                <Text className="mt-1 text-[11.5px] font-semibold text-[#BFD0E5]">
+                  Illustrative patient · {emergencyMember.wrId}
+                </Text>
+              ) : null}
+
+              <Text className="mt-1 text-[11px] text-[#A8BCD5]">
+                DOB: {formatDob(emergencyMember.dob)}
+              </Text>
+
+              {guardianLine ? (
+                <Text className="mt-1 text-[11px] font-semibold text-[#F4D49E]">
+                  {guardianLine}
+                </Text>
               ) : null}
             </View>
 
-            <Text style={styles.memberName}>{emergencyMember.name}</Text>
-            {emergencyMember.wrId ? (
-              <Text style={[styles.dobText, { color: '#38bdf8', fontWeight: '700', marginBottom: 2 }]}>
-                ID: {emergencyMember.wrId}
+            <LabDetailsCard
+              bloodType={
+                emergencyMember.bloodType
+              }
+              genotype={
+                emergencyMember.genotype
+              }
+            />
+
+            <ContactCard
+              contact={contactDraft}
+              onEdit={() =>
+                setStep("contact")
+              }
+              onCall={handleCallContact}
+            />
+
+            <View className="mt-4 rounded-2xl bg-[#EEF3FA] p-4">
+              <Text className="text-[14px] font-extrabold text-[#082F67]">
+                Secure Emergency QR
               </Text>
-            ) : null}
-            <Text style={styles.dobText}>DOB: {formatDob(emergencyMember.dob)}</Text>
-            {guardianLine ? (
-              <Text style={styles.guardianText}>{guardianLine}</Text>
-            ) : null}
 
-            <View style={styles.gridTwo}>
-              <View>
-                <Text style={styles.fieldLabel}>Blood Type</Text>
-                <Text style={styles.fieldValue}>{emergencyMember.bloodType}</Text>
+              <View className="mt-4 items-center">
+                {qr.status === "ready" ? (
+                  <>
+                    <View className="rounded-xl bg-white p-3">
+                      <QRCode
+                        value={qr.url}
+                        size={112}
+                        color="#0F172A"
+                        backgroundColor="#FFFFFF"
+                      />
+                    </View>
+
+                    <Text className="mt-3 text-center text-[10.5px] leading-[15px] text-slate-500">
+                      {qr.offline
+                        ? "Showing the last secure link generated while online."
+                        : "First responders can scan this time-limited Emergency ID link."}
+                    </Text>
+                  </>
+                ) : qr.status ===
+                  "loading" ? (
+                  <>
+                    <ActivityIndicator
+                      color="#082F67"
+                    />
+
+                    <Text className="mt-3 text-[10.5px] text-slate-500">
+                      Generating secure share link…
+                    </Text>
+                  </>
+                ) : (
+                  <Text className="text-center text-[10.5px] leading-[15px] text-slate-500">
+                    Secure QR is unavailable. Reconnect to the internet and
+                    reopen Emergency ID.
+                  </Text>
+                )}
               </View>
-              <View>
-                <Text style={styles.fieldLabel}>Genotype</Text>
-                <Text style={styles.fieldValue}>{emergencyMember.genotype}</Text>
-              </View>
             </View>
 
-            <View style={styles.fieldBlock}>
-              <Text style={styles.fieldLabel}>Allergies</Text>
-              <Text style={styles.fieldValue}>{emergencyMember.allergies}</Text>
-            </View>
+            {/* Existing security behavior is preserved here. */}
+            <View className="mt-4 rounded-2xl border border-[#D7E2F1] bg-[#F8FAFD] p-4">
+              <Text className="text-[13px] font-bold text-[#173B68]">
+                Emergency QR security
+              </Text>
 
-            <View style={styles.fieldBlock}>
-              <Text style={styles.fieldLabel}>Conditions</Text>
-              <Text style={styles.fieldValue}>{emergencyMember.conditions}</Text>
-            </View>
+              <Text className="mt-2 text-[11.5px] leading-[17px] text-slate-500">
+                Emergency QR scans can trigger a security alert. You can also
+                revoke an active online QR and generate a fresh secure link.
+              </Text>
 
-            <View style={styles.divider} />
+              {feedbackMsg ? (
+                <View className="mt-3 rounded-xl bg-[#E7F3FB] p-3">
+                  <Text className="text-center text-[11px] font-semibold text-[#315B90]">
+                    {feedbackMsg}
+                  </Text>
+                </View>
+              ) : null}
 
-            <View style={styles.fieldBlock}>
-              <Text style={styles.fieldLabel}>Emergency Contact</Text>
-              <Text style={styles.contactValue}>{emergencyMember.contact}</Text>
               <TouchableOpacity
                 activeOpacity={0.8}
-                onPress={handleCallContact}
-                style={styles.callContactBtn}
-              >
-                <Svg width={13} height={13} viewBox="0 0 24 24" fill="none">
-                  <Path
-                    d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"
-                    stroke="#ffffff"
-                    strokeWidth={2.2}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </Svg>
-                <Text style={styles.callContactBtnText}>Call Emergency Contact</Text>
-              </TouchableOpacity>
-            </View>
-          </LinearGradient>
-
-          {/* First Responders QR Box */}
-          <View style={styles.qrCard}>
-            {qr.status === 'ready' ? (
-              <>
-                <QRCode value={qr.url} size={140} color="#0f172a" backgroundColor="#ffffff" />
-                <Text style={styles.qrCaption}>
-                  {qr.offline
-                    ? 'Showing the last link generated while online — reconnect to refresh it'
-                    : 'First responders can scan for a secure, time-limited medical profile'}
-                </Text>
-              </>
-            ) : qr.status === 'loading' ? (
-              <>
-                <ActivityIndicator color="#0f172a" />
-                <Text style={styles.qrCaption}>Generating a secure share link…</Text>
-              </>
-            ) : (
-              <Text style={styles.qrCaption}>
-                Couldn't generate a secure share link. Connect to the internet and reopen this
-                screen to try again.
-              </Text>
-            )}
-          </View>
-
-          {/* Access Guard & Test Simulation Card */}
-          <View style={styles.guardCard}>
-            <View style={styles.guardHeader}>
-              <View style={styles.shieldBadge}>
-                <Svg width={13} height={13} viewBox="0 0 24 24" fill="none">
-                  <Path
-                    d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"
-                    stroke="#10b981"
-                    strokeWidth={2.4}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </Svg>
-                <Text style={styles.shieldBadgeText}>Scan Guard Armed</Text>
-              </View>
-              <Text style={styles.guardSub}>Real-Time Security Push</Text>
-            </View>
-
-            <Text style={styles.guardDesc}>
-              Any scan of this QR code immediately triggers a high-priority push notification to your phone with the responder's IP and timestamp.
-            </Text>
-
-            {feedbackMsg && (
-              <View style={styles.feedbackBanner}>
-                <Text style={styles.feedbackText}>{feedbackMsg}</Text>
-              </View>
-            )}
-
-            <View style={styles.guardActions}>
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={handleSimulateScan}
+                onPress={
+                  handleSimulateScan
+                }
                 disabled={isSimulating}
-                style={styles.simulateBtn}
+                className="mt-4 min-h-[44px] items-center justify-center rounded-xl bg-[#EEF3FA]"
               >
                 {isSimulating ? (
-                  <ActivityIndicator size="small" color="#991b1b" />
+                  <ActivityIndicator
+                    size="small"
+                    color="#315B90"
+                  />
                 ) : (
-                  <Text style={styles.simulateBtnText}>🚨 Test First Responder Alert</Text>
+                  <Text className="text-[12px] font-semibold text-[#315B90]">
+                    Test first responder alert
+                  </Text>
                 )}
               </TouchableOpacity>
 
-              {qr.status === 'ready' && !qr.offline && (
+              {qr.status === "ready" &&
+              !qr.offline ? (
                 <TouchableOpacity
                   activeOpacity={0.8}
-                  onPress={handleRevokeActive}
+                  onPress={
+                    handleRevokeActive
+                  }
                   disabled={isRevoking}
-                  style={styles.revokeQrBtn}
+                  className="mt-2 min-h-[44px] items-center justify-center rounded-xl border border-red-200 bg-red-50"
                 >
                   {isRevoking ? (
-                    <ActivityIndicator size="small" color="#f43f5e" />
+                    <ActivityIndicator
+                      size="small"
+                      color="#B42318"
+                    />
                   ) : (
-                    <Text style={styles.revokeQrBtnText}>Revoke Active QR</Text>
+                    <Text className="text-[12px] font-semibold text-red-700">
+                      Revoke active QR
+                    </Text>
                   )}
                 </TouchableOpacity>
-              )}
+              ) : null}
             </View>
-          </View>
-        </ScrollView>
+
+            <Text className="mt-4 text-[10.5px] leading-[15px] text-slate-500">
+              Status is unchanged from setup. This design contains no clinical
+              edits until those actions are connected.
+            </Text>
+
+            <TouchableOpacity
+              activeOpacity={0.86}
+              onPress={confirmReview}
+              className="mt-6 min-h-[48px] items-center justify-center rounded-xl bg-[#082F67]"
+            >
+              <Text className="text-[14px] font-semibold text-white">
+                Confirm review
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.78}
+              onPress={openAssistant}
+              className="mt-3 min-h-[46px] items-center justify-center rounded-xl bg-[#EEF3FA]"
+            >
+              <Text className="text-[13px] font-semibold text-[#315B90]">
+                Update with Assistant
+              </Text>
+            </TouchableOpacity>
+
+            <Text className="mt-3 text-center text-[10.5px] text-slate-400">
+              Status is unchanged from setup. This demo contains no clinical
+              facts.
+            </Text>
+          </ScrollView>
+        ) : null}
+
+        {/* =====================================================
+            EMERGENCY CONTACT EDIT
+        ====================================================== */}
+        {step === "contact" ? (
+          <ScrollView
+            className="flex-1"
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{
+              paddingHorizontal: 16,
+              paddingTop: 8,
+              paddingBottom: 32,
+            }}
+            showsVerticalScrollIndicator={false}
+          >
+            <Header onBack={goBack} />
+
+            <Text className="mt-3 text-[11px] font-semibold text-[#315B90]">
+              Account and safety · design preview
+            </Text>
+
+            <Text className="mt-3 text-[28px] leading-[34px] font-extrabold text-[#082F67]">
+              Add an emergency contact
+            </Text>
+
+            <Text className="mt-1 text-[13px] leading-[19px] text-slate-500">
+              Choose someone you trust and confirm their details with them.
+            </Text>
+
+            <View className="mt-6">
+              <Text className="text-[12px] font-semibold text-[#173B68]">
+                Contact name
+              </Text>
+
+              <TextInput
+                value={contactDraft.name}
+                onChangeText={(name) =>
+                  setContactDraft(
+                    (current) => ({
+                      ...current,
+                      name,
+                    }),
+                  )
+                }
+                placeholder="Enter full name"
+                placeholderTextColor="#94A3B8"
+                className="mt-2 min-h-[46px] rounded-xl border border-slate-200 px-3 text-[14px] text-slate-900"
+              />
+            </View>
+
+            <View className="mt-5">
+              <Text className="text-[12px] font-semibold text-[#173B68]">
+                Relationship
+              </Text>
+
+              <TextInput
+                value={
+                  contactDraft.relationship
+                }
+                onChangeText={(
+                  relationship,
+                ) =>
+                  setContactDraft(
+                    (current) => ({
+                      ...current,
+                      relationship,
+                    }),
+                  )
+                }
+                placeholder="Choose relationship"
+                placeholderTextColor="#94A3B8"
+                className="mt-2 min-h-[46px] rounded-xl border border-slate-200 px-3 text-[14px] text-slate-900"
+              />
+            </View>
+
+            <View className="mt-5">
+              <Text className="text-[12px] font-semibold text-[#173B68]">
+                Phone number
+              </Text>
+
+              <TextInput
+                value={
+                  contactDraft.phone
+                }
+                onChangeText={(phone) =>
+                  setContactDraft(
+                    (current) => ({
+                      ...current,
+                      phone,
+                    }),
+                  )
+                }
+                keyboardType="phone-pad"
+                placeholder="Enter number with country code"
+                placeholderTextColor="#94A3B8"
+                className="mt-2 min-h-[46px] rounded-xl border border-slate-200 px-3 text-[14px] text-slate-900"
+              />
+
+              <Text className="mt-2 text-[10.5px] leading-[15px] text-slate-500">
+                Confirm this number with your contact.
+              </Text>
+            </View>
+
+            <View className="mt-5 rounded-2xl bg-[#EEF3FA] p-4">
+              <Text className="text-[13px] font-bold text-[#173B68]">
+                Review before saving
+              </Text>
+
+              <Text className="mt-2 text-[11.5px] leading-[17px] text-[#536A84]">
+                Include a name, relationship and phone number. Emergency ID
+                continues to show “Not added” until a contact is saved in a
+                connected service.
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              activeOpacity={0.86}
+              disabled={
+                !contactDraft.name.trim() ||
+                !contactDraft.phone.trim()
+              }
+              onPress={saveContactPreview}
+              className={`mt-6 min-h-[48px] items-center justify-center rounded-xl ${
+                contactDraft.name.trim() &&
+                contactDraft.phone.trim()
+                  ? "bg-[#082F67]"
+                  : "bg-slate-200"
+              }`}
+            >
+              <Text
+                className={`text-[14px] font-semibold ${
+                  contactDraft.name.trim() &&
+                  contactDraft.phone.trim()
+                    ? "text-white"
+                    : "text-slate-400"
+                }`}
+              >
+                Save contact
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={goBack}
+              className="mt-2 min-h-[44px] items-center justify-center rounded-xl bg-[#EEF3FA]"
+            >
+              <Text className="text-[13px] font-semibold text-[#315B90]">
+                Cancel
+              </Text>
+            </TouchableOpacity>
+
+            <Text className="mt-3 text-center text-[10.5px] text-slate-400">
+              Empty form · no contact has been added or saved.
+            </Text>
+          </ScrollView>
+        ) : null}
+
+        {/* =====================================================
+            ALLERGY REVIEW
+        ====================================================== */}
+        {step === "allergy" ? (
+          <ScrollView
+            className="flex-1"
+            contentContainerStyle={{
+              paddingHorizontal: 16,
+              paddingTop: 8,
+              paddingBottom: 32,
+            }}
+            showsVerticalScrollIndicator={false}
+          >
+            <Header onBack={goBack} />
+
+            <Text className="mt-3 text-[11px] font-semibold text-[#315B90]">
+              Account and safety · design preview
+            </Text>
+
+            <Text className="mt-3 text-[28px] leading-[34px] font-extrabold text-[#082F67]">
+              Review allergy status
+            </Text>
+
+            <Text className="mt-1 text-[13px] leading-[19px] text-slate-500">
+              Make allergy information a priority before your next care visit.
+            </Text>
+
+            <AllergyWarning
+              allergyText={allergyText}
+              onPress={() => {}}
+            />
+
+            <View className="mt-4 rounded-2xl bg-[#EEF3FA] p-4">
+              <Text className="text-[14px] font-extrabold text-[#082F67]">
+                Current record
+              </Text>
+
+              <View className="mt-4">
+                <Text className="text-[12px] font-semibold text-[#173B68]">
+                  Recorded allergy status
+                </Text>
+
+                <Text className="mt-1 text-[11px] leading-[16px] text-slate-500">
+                  {recordedAllergyStatus} · source unavailable
+                </Text>
+              </View>
+
+              <View className="my-4 h-px bg-[#DCE5F0]" />
+
+              <View>
+                <Text className="text-[12px] font-semibold text-[#173B68]">
+                  Patient-reported information
+                </Text>
+
+                <Text className="mt-1 text-[11px] leading-[16px] text-slate-500">
+                  No entry shown · not care-team verified
+                </Text>
+              </View>
+            </View>
+
+            <View className="mt-4 rounded-2xl bg-[#EEF3FA] p-4">
+              <Text className="text-[14px] font-extrabold text-[#082F67]">
+                What to do next
+              </Text>
+
+              <Text className="mt-3 text-[11.5px] leading-[17px] text-[#536A84]">
+                Ask your care team to record or confirm your allergy status.
+                Tell them about any known allergies or reactions.
+              </Text>
+
+              <Text className="mt-3 text-[11.5px] leading-[17px] text-[#536A84]">
+                Patient-reported information and care-team-confirmed records
+                must stay distinct. This screen does not diagnose or recommend
+                treatment.
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              activeOpacity={0.86}
+              onPress={openAssistant}
+              className="mt-6 min-h-[48px] items-center justify-center rounded-xl bg-[#082F67]"
+            >
+              <Text className="text-[14px] font-semibold text-white">
+                Ask Assistant for app help
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.78}
+              onPress={() =>
+                setStep("review")
+              }
+              className="mt-3 min-h-[46px] items-center justify-center rounded-xl bg-[#EEF3FA]"
+            >
+              <Text className="text-[13px] font-semibold text-[#315B90]">
+                Back to Emergency ID
+              </Text>
+            </TouchableOpacity>
+
+            <Text className="mt-3 text-center text-[10.5px] text-slate-400">
+              Design preview · no action is connected.
+            </Text>
+          </ScrollView>
+        ) : null}
       </SafeAreaView>
     </Modal>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#050d1a',
-  },
-  closeHeader: {
-    alignItems: 'flex-end',
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 8,
-  },
-  closeCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scrollArea: {
-    flex: 1,
-  },
-  scrollInner: {
-    paddingHorizontal: 24,
-    paddingBottom: 40,
-    alignItems: 'center',
-    gap: 20,
-  },
-  idCard: {
-    width: '100%',
-    borderRadius: 22,
-    padding: 22,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.45,
-    shadowRadius: 36,
-    elevation: 8,
-  },
-  badgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 14,
-  },
-  idCardBadgeText: {
-    color: '#fbbf24',
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-  },
-  memberName: {
-    color: '#ffffff',
-    fontSize: 22,
-    fontWeight: '800',
-    marginBottom: 3,
-  },
-  dobText: {
-    color: '#93a5c9',
-    fontSize: 13,
-    marginBottom: 6,
-  },
-  guardianText: {
-    color: '#fbbf24',
-    fontSize: 12.5,
-    fontWeight: '700',
-    marginBottom: 16,
-  },
-  gridTwo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 14,
-  },
-  fieldBlock: {
-    marginBottom: 14,
-  },
-  fieldLabel: {
-    color: '#6b87b3',
-    fontSize: 10.5,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 3,
-    fontWeight: '600',
-  },
-  fieldValue: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    marginVertical: 10,
-  },
-  contactValue: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  qrCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 18,
-    padding: 20,
-    alignItems: 'center',
-    gap: 12,
-    width: '100%',
-    maxWidth: 280,
-  },
-  qrCaption: {
-    fontSize: 12,
-    color: '#64748b',
-    textAlign: 'center',
-  },
-  offlineReadyPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(16, 185, 129, 0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.4)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
-  },
-  offlineReadyText: {
-    color: '#6ee7b7',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  callContactBtn: {
-    marginTop: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: '#2563eb',
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    alignSelf: 'flex-start',
-  },
-  callContactBtnText: {
-    color: '#ffffff',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  guardCard: {
-    backgroundColor: 'rgba(15, 23, 42, 0.75)',
-    borderWidth: 1,
-    borderColor: 'rgba(51, 65, 85, 0.7)',
-    borderRadius: 18,
-    padding: 16,
-    width: '100%',
-    maxWidth: 280,
-    marginTop: 4,
-    gap: 10,
-  },
-  guardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  shieldBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    borderColor: 'rgba(16, 185, 129, 0.4)',
-    borderWidth: 1,
-    paddingHorizontal: 7,
-    paddingVertical: 2.5,
-    borderRadius: 8,
-  },
-  shieldBadgeText: {
-    color: '#34d399',
-    fontSize: 10,
-    fontWeight: '800',
-  },
-  guardSub: {
-    color: '#94a3b8',
-    fontSize: 9.5,
-    fontWeight: '600',
-  },
-  guardDesc: {
-    color: '#cbd5e1',
-    fontSize: 11,
-    lineHeight: 15,
-  },
-  feedbackBanner: {
-    backgroundColor: 'rgba(2, 132, 199, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(2, 132, 199, 0.4)',
-    borderRadius: 8,
-    padding: 8,
-  },
-  feedbackText: {
-    color: '#7dd3fc',
-    fontSize: 10.5,
-    lineHeight: 14,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  guardActions: {
-    gap: 8,
-    marginTop: 2,
-  },
-  simulateBtn: {
-    backgroundColor: '#fff1f2',
-    borderWidth: 1,
-    borderColor: '#fecdd3',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  simulateBtnText: {
-    color: '#9f1239',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  revokeQrBtn: {
-    backgroundColor: 'rgba(244, 63, 94, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(244, 63, 94, 0.35)',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  revokeQrBtnText: {
-    color: '#fb7185',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-});
+export default EmergencyModal;

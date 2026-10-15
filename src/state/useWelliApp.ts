@@ -249,8 +249,8 @@ const initialState: AppState = {
   tab: 'home',
   tabHistory: [],
   activeFamilyId: 'me',
-  familyMembers: [DEFAULT_PRIMARY_USER, DEFAULT_DEPENDENT_USER],
-  isAuthenticated: true,
+  familyMembers: [DEFAULT_PRIMARY_USER],
+  isAuthenticated: false,
   user: null,
   loggedOut: false,
   showWelcomeHome: false,
@@ -387,6 +387,8 @@ export function useWelliApp() {
         // Restore active user session from secure storage
         const savedSession = await authService.getSavedSession();
         if (savedSession?.user && savedSession?.token) {
+          setAuthToken(savedSession.token);
+
           patch((s) => ({
             isAuthenticated: true,
             user: savedSession.user,
@@ -612,23 +614,21 @@ export function useWelliApp() {
             // Keep local primary user
           }
         } else {
-          // Default prototype session active
+          // No saved session: remain unauthenticated.
+          // App.expo.tsx will render the new AuthFlow.
+          setAuthToken(null);
+
           patch({
-            isAuthenticated: true,
-            user: {
-              id: 'usr-chibuike',
-              fullName: 'Chibuike Joshua Nwogha',
-              email: 'c.nwogha@wellirecord.com',
-              phoneNumber: '+234 802 345 6789',
-              bloodType: 'O+',
-              genotype: 'AA',
-              hmoProvider: 'Hygeia HMO',
-              hmoPolicyNumber: 'HYG-90218-A',
-              wrId: 'WR-ABJ-88204',
-            } as any,
+            isAuthenticated: false,
+            user: null,
             loggedOut: false,
             showWelcomeHome: false,
-            familyMembers: [DEFAULT_PRIMARY_USER, DEFAULT_DEPENDENT_USER],
+            familyMembers: [DEFAULT_PRIMARY_USER],
+            recordsList: [],
+            vitalsLogs: [],
+            vitalsSeries: [],
+            tab: 'home',
+            tabHistory: [],
           });
         }
 
@@ -1221,7 +1221,7 @@ export function useWelliApp() {
               patch({
                 isAuthenticated: false,
                 user: null,
-                loggedOut: true,
+                loggedOut: false,
                 showPrivacySecurity: false,
                 familyMembers: [DEFAULT_PRIMARY_USER],
                 recordsList: [],
@@ -1243,7 +1243,7 @@ export function useWelliApp() {
       patch({
         isAuthenticated: false,
         user: null,
-        loggedOut: true,
+        loggedOut: false,
         showPrivacySecurity: false,
         familyMembers: [DEFAULT_PRIMARY_USER],
         recordsList: [],
@@ -1664,10 +1664,12 @@ export function useWelliApp() {
     signInWithDemo: (memberId = 'me') => {
       hapticFeedback.success();
       patch({
+        isAuthenticated: true,
         loggedOut: false,
         showWelcomeHome: false,
         activeFamilyId: memberId,
         tab: 'home',
+        tabHistory: [],
       });
       showToast('Welcome back to WelliRecord');
     },
@@ -1722,6 +1724,8 @@ export function useWelliApp() {
         hmoProvider: userData.insuranceProvider,
         hmoPolicyNumber: userData.insuranceId,
       } : undefined);
+
+      setAuthToken(session.token);
 
       const rawName = session.user.fullName || userData?.name || '';
       const displayName = rawName || session.user.email || session.user.phoneNumber || 'User';
@@ -1832,6 +1836,8 @@ export function useWelliApp() {
           email: details.email,
           fullName: details.fullName,
         });
+
+        setAuthToken(session.token);
 
         const rawName = session.user.fullName || details.fullName || '';
         const initials = rawName
@@ -1987,6 +1993,9 @@ export function useWelliApp() {
     signUpWithData: async (data: SignUpFormData) => {
       hapticFeedback.success();
       const session = await authService.registerUser(data);
+
+      setAuthToken(session.token);
+
       const initials = (session.user.fullName || data.name)
         .split(' ')
         .filter(Boolean)
@@ -2019,9 +2028,12 @@ export function useWelliApp() {
       patch((s) => ({
         familyMembers: [newOwner, ...s.familyMembers.filter((f) => f.id !== 'me')],
         activeFamilyId: 'me',
+        isAuthenticated: true,
+        user: session.user,
         loggedOut: false,
         showWelcomeHome: false,
         tab: 'home',
+        tabHistory: [],
       }));
       showToast(`Welcome to WelliRecord, ${newOwner.name.split(' ')[0]}!`);
     },
@@ -2158,12 +2170,14 @@ export function useWelliApp() {
       patch({
         isAuthenticated: false,
         user: null,
-        loggedOut: true,
+        loggedOut: false,
         showWelcomeHome: false,
         familyMembers: [DEFAULT_PRIMARY_USER],
         recordsList: [],
         vitalsLogs: [],
         vitalsSeries: [],
+        tab: 'home',
+        tabHistory: [],
       });
       showToast('Logged out of vault');
     },
@@ -2173,8 +2187,10 @@ export function useWelliApp() {
         isAuthenticated: false,
         user: null,
         loggedOut: false,
-        showWelcomeHome: true,
+        showWelcomeHome: false,
         welcomeTab: 'signin',
+        tab: 'home',
+        tabHistory: [],
       });
     },
   };

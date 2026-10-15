@@ -1,455 +1,64 @@
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-  Modal,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Path, Circle } from 'react-native-svg';
-import { ModalHeader } from '../components/ModalHeader';
-import { hapticFeedback } from '../utils/haptics';
-import type { WelliApp } from '../state/useWelliApp';
+import React,{useMemo,useState} from "react";
+import { Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import Svg,{Path} from "react-native-svg";
+import { hapticFeedback } from "../utils/haptics";
+import type { WelliApp } from "../state/useWelliApp";
 
-const TIME_SLOTS = [
-  'Morning (09:00 AM – 11:30 AM)',
-  'Afternoon (01:00 PM – 03:30 PM)',
-  'Evening (04:30 PM – 06:30 PM)',
-];
+const TIMES=["09:30 AM","10:30 AM","01:00 PM","03:30 PM"];
+const Back=()=> <Svg width={19} height={19} viewBox="0 0 24 24" fill="none"><Path d="M15 18L9 12L15 6" stroke="#172033" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"/></Svg>;
+const ymd=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+const label=(d:Date)=>d.toLocaleDateString("en-US",{month:"long",year:"numeric"});
+function daysFor(m:Date){const y=m.getFullYear(),mi=m.getMonth(),first=new Date(y,mi,1),start=new Date(y,mi,1-first.getDay());return Array.from({length:42},(_,i)=>{const d=new Date(start);d.setDate(start.getDate()+i);return {date:d,value:ymd(d),n:d.getDate(),inside:d.getMonth()===mi}})}
 
-function toYmd(d: Date) {
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${m}-${day}`;
-}
+export function BookAppointmentModal({app}:{app:WelliApp}){
+  const {state,actions,facilities,family}=app;
+  const [memberId,setMemberId]=useState(state.activeFamilyId||"me");
+  const [reason,setReason]=useState("");
+  const [month,setMonth]=useState(()=>new Date());
+  if(!state.showBookAppointment) return null;
 
-/** Today, tomorrow, then the next three days, computed from the device date. */
-function buildQuickDates() {
-  const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  return [0, 1, 2, 3, 4].map((offset) => {
-    const d = new Date();
-    d.setDate(d.getDate() + offset);
-    return {
-      label: offset === 0 ? 'Today' : offset === 1 ? 'Tomorrow' : names[d.getDay()],
-      value: toYmd(d),
-    };
-  });
-}
+  const ext=state.externalBookingFacility;
+  const facility=ext?null:facilities.find(f=>f.id===state.bookingFacilityId);
+  if(!ext&&!facility) return null;
 
-export function BookAppointmentModal({ app }: { app: WelliApp }) {
-  const { state, actions, facilities, family } = app;
-  const [selectedMemberId, setSelectedMemberId] = useState<string>(state.activeFamilyId || 'me');
-  const [visitReason, setVisitReason] = useState<string>('');
-  const quickDates = React.useMemo(buildQuickDates, [state.showBookAppointment]);
+  const name=ext?.name||facility?.name||"Demo Community Clinic";
+  const address=ext?.address||(facility as any)?.address||"";
+  const specialty=(facility as any)?.specialty||"Primary care";
+  const days=useMemo(()=>daysFor(month),[month]);
+  const patient=family.find(f=>f.id===memberId)||family[0];
+  const disabled=!state.bookingDate||!state.bookingTimeSlot||!!state.bookingSubmitting;
 
-  if (!state.showBookAppointment) return null;
+  return <Modal visible={state.showBookAppointment} animationType="slide" transparent={false} onRequestClose={actions.closeBookAppointment}>
+    <SafeAreaView className="flex-1 bg-white">
+      <ScrollView className="flex-1" contentContainerStyle={{paddingHorizontal:16,paddingTop:8,paddingBottom:32}} showsVerticalScrollIndicator={false}>
+        <View className="min-h-[44px] flex-row items-center justify-between"><TouchableOpacity onPress={actions.closeBookAppointment} className="h-9 w-9 items-center justify-center rounded-full bg-slate-50"><Back/></TouchableOpacity><Text className="text-[12px] font-semibold text-slate-800">WelliRecord<Text className="text-[7px]">™</Text></Text><View className="h-9 w-9"/></View>
 
-  const externalFacility = state.externalBookingFacility;
-  const facility = externalFacility
-    ? null
-    : facilities.find((f) => f.id === state.bookingFacilityId);
+        <Text className="mt-3 text-[11px] font-semibold text-[#315B90]">{name}</Text>
+        <Text className="mt-3 text-[28px] leading-[34px] font-extrabold text-[#082F67]">Plan a demo visit</Text>
+        <Text className="mt-1 text-[13px] leading-[19px] text-slate-500">Appointment request · date and time are illustrative until the facility confirms.</Text>
 
-  if (!externalFacility && !facility) return null;
+        <View className="mt-6 rounded-2xl bg-[#EEF3FA] p-4"><Text className="text-[14px] font-bold text-[#173B68]">{name}</Text><Text className="mt-1 text-[11.5px] leading-[17px] text-[#536A84]">{specialty}{address?` · ${address}`:""}</Text></View>
 
-  const displayName = externalFacility?.name || facility?.name || 'Facility';
-  const displayAddress = externalFacility?.address || facility?.address || '';
-  const displayEmoji = externalFacility ? '🔬' : facility?.emoji || '🏥';
-  const displayLead = externalFacility
-    ? 'Diagnostic Center / Lab Visit'
-    : `${facility?.leadName} · ${facility?.leadTitle}`;
-  const displaySpecialty = externalFacility
-    ? `Diagnostic Testing & Pathology · ${displayAddress}`
-    : `${facility?.specialty} · ${displayAddress}`;
+        {family.length>1?<View className="mt-5"><Text className="text-[12px] font-semibold text-[#173B68]">Visit for</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-2"><View className="flex-row gap-2 pr-4">{family.map(m=>{const on=m.id===memberId;return <TouchableOpacity key={m.id} onPress={()=>setMemberId(m.id)} className={`rounded-full border px-4 py-3 ${on?"border-[#315B90] bg-[#EEF3FA]":"border-slate-200 bg-white"}`}><Text className={`text-[12px] font-semibold ${on?"text-[#173B68]":"text-slate-600"}`}>{m.id==="me"?"Myself":m.name.split(" ")[0]}</Text></TouchableOpacity>})}</View></ScrollView></View>:null}
 
-  const activePatient = family.find((f) => f.id === selectedMemberId) ?? family[0];
-  const disabled = !state.bookingDate || !state.bookingTimeSlot || Boolean(state.bookingSubmitting);
-
-  const handleConfirm = () => {
-    hapticFeedback.success();
-    actions.confirmBooking({ familyMemberId: selectedMemberId, reason: visitReason });
-  };
-
-  return (
-    <Modal
-      visible={state.showBookAppointment}
-      animationType="slide"
-      transparent={false}
-      onRequestClose={actions.closeBookAppointment}
-    >
-      <SafeAreaView style={styles.container}>
-        <ModalHeader
-          title="Book Care Visit"
-          onClose={actions.closeBookAppointment}
-        />
-
-        <ScrollView
-          style={styles.scrollArea}
-          contentContainerStyle={styles.scrollInner}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Facility Summary Card */}
-          <View style={styles.facilityHeaderCard}>
-            <View style={styles.facilityEmojiBox}>
-              <Text style={{ fontSize: 22 }}>{displayEmoji}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={styles.facilityName}>{displayName}</Text>
-                {externalFacility && (
-                  <View style={{ backgroundColor: '#D1FAE5', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#065F46' }}>External Lab</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={styles.leadText}>{displayLead}</Text>
-              <Text style={styles.specialtyText}>{displaySpecialty}</Text>
-            </View>
-          </View>
-
-          {/* Patient / Family Member Selector */}
-          <Text style={styles.sectionLabel}>BOOKING APPOINTMENT FOR</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.memberScroll}>
-            {family.map((m) => {
-              const isSelected = m.id === selectedMemberId;
-              return (
-                <TouchableOpacity
-                  key={m.id}
-                  activeOpacity={0.7}
-                  onPress={() => {
-                    hapticFeedback.selection();
-                    setSelectedMemberId(m.id);
-                  }}
-                  style={[styles.memberChip, isSelected && styles.memberChipActive]}
-                >
-                  <Text style={[styles.memberChipText, isSelected && styles.memberChipTextActive]}>
-                    {m.id === 'me' ? 'Myself' : m.name.split(' ')[0]} {m.relationship ? `(${m.relationship})` : ''}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-
-          {/* Insurance on file. Coverage is confirmed by the facility, not here. */}
-          {Boolean(activePatient?.insuranceProvider) && (
-            <View style={styles.hmoPreAuthBanner}>
-              <Text style={{ fontSize: 16 }}>🛡️</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.hmoTitle}>Insurance on file</Text>
-                <Text style={styles.hmoSub}>
-                  {activePatient.insuranceProvider}
-                  {activePatient.insuranceId ? ` · Policy ID: ${activePatient.insuranceId}` : ''}. The facility
-                  confirms coverage when it accepts your request.
-                </Text>
-              </View>
-            </View>
-          )}
-
-          {/* Date Picker */}
-          <Text style={styles.sectionLabel}>SELECT DATE</Text>
-          <View style={styles.quickDatesRow}>
-            {quickDates.map((qd) => {
-              const isSelected = state.bookingDate === qd.value;
-              return (
-                <TouchableOpacity
-                  key={qd.value}
-                  activeOpacity={0.7}
-                  onPress={() => {
-                    hapticFeedback.selection();
-                    actions.setBookingDate(qd.value);
-                  }}
-                  style={[styles.dateChip, isSelected && styles.dateChipActive]}
-                >
-                  <Text style={[styles.dateChipLabel, isSelected && styles.dateChipLabelActive]}>
-                    {qd.label}
-                  </Text>
-                  <Text style={[styles.dateChipValue, isSelected && styles.dateChipValueActive]}>
-                    {qd.value.split('-').slice(1).join('/')}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <TextInput
-            value={state.bookingDate}
-            onChangeText={actions.setBookingDate}
-            placeholder="Or enter custom date: YYYY-MM-DD"
-            placeholderTextColor="#94a3b8"
-            style={styles.customDateInput}
-          />
-
-          {/* Time Slot Selector */}
-          <Text style={styles.sectionLabel}>SELECT TIME WINDOW</Text>
-          <View style={styles.slotsList}>
-            {TIME_SLOTS.map((slot) => {
-              const selected = state.bookingTimeSlot === slot;
-              return (
-                <TouchableOpacity
-                  key={slot}
-                  activeOpacity={0.7}
-                  onPress={() => {
-                    hapticFeedback.selection();
-                    actions.setBookingTimeSlot(slot);
-                  }}
-                  style={[
-                    styles.slotCard,
-                    {
-                      borderColor: selected ? '#041E42' : '#e2e8f0',
-                      backgroundColor: selected ? '#f0f9ff' : '#ffffff',
-                    },
-                  ]}
-                >
-                  <Text style={[styles.slotText, selected && styles.slotTextActive]}>{slot}</Text>
-                  {selected && (
-                    <Svg width={18} height={18} viewBox="0 0 20 20">
-                      <Circle cx="10" cy="10" r="9" fill="#041E42" />
-                      <Path
-                        d="M6 10l3 3 5-6"
-                        stroke="#ffffff"
-                        strokeWidth={2}
-                        fill="none"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </Svg>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          {/* Reason for Visit */}
-          <Text style={styles.sectionLabel}>REASON FOR VISIT (OPTIONAL)</Text>
-          <TextInput
-            value={visitReason}
-            onChangeText={setVisitReason}
-            placeholder="e.g. Routine checkup, fever, medication refill, test review"
-            placeholderTextColor="#94a3b8"
-            style={styles.reasonInput}
-          />
-        </ScrollView>
-
-        <View style={styles.footer}>
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={handleConfirm}
-            disabled={disabled}
-            style={[
-              styles.requestBtn,
-              { backgroundColor: disabled ? '#cbd5e1' : '#041E42' },
-            ]}
-          >
-            <Text
-              style={[
-                styles.requestBtnText,
-                { color: disabled ? '#64748b' : '#ffffff' },
-              ]}
-            >
-              {state.bookingSubmitting ? 'Sending…' : 'Send appointment request ›'}
-            </Text>
-          </TouchableOpacity>
+        <View className="mt-6 rounded-2xl border border-slate-200 p-4">
+          <View className="flex-row items-center justify-between"><TouchableOpacity onPress={()=>setMonth(x=>new Date(x.getFullYear(),x.getMonth()-1,1))} className="h-9 w-9 items-center justify-center rounded-full bg-slate-50"><Text className="text-[20px] text-[#315B90]">‹</Text></TouchableOpacity><Text className="text-[15px] font-extrabold text-[#082F67]">{label(month)}</Text><TouchableOpacity onPress={()=>setMonth(x=>new Date(x.getFullYear(),x.getMonth()+1,1))} className="h-9 w-9 items-center justify-center rounded-full bg-slate-50"><Text className="text-[20px] text-[#315B90]">›</Text></TouchableOpacity></View>
+          <View className="mt-4 flex-row">{["S","M","T","W","T","F","S"].map((x,i)=><View key={`${x}${i}`} className="flex-1 items-center"><Text className="text-[10.5px] font-semibold text-slate-400">{x}</Text></View>)}</View>
+          <View className="mt-2 flex-row flex-wrap">{days.map(d=>{const on=state.bookingDate===d.value;return <View key={d.value} style={{width:"14.2857%"}}><TouchableOpacity onPress={()=>{hapticFeedback.selection();actions.setBookingDate(d.value)}} className={`mx-auto my-1 h-9 w-9 items-center justify-center rounded-full ${on?"bg-[#082F67]":""}`}><Text className={`text-[12px] font-semibold ${on?"text-white":d.inside?"text-[#173B68]":"text-slate-300"}`}>{d.n}</Text></TouchableOpacity></View>})}</View>
         </View>
-      </SafeAreaView>
-    </Modal>
-  );
-}
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-  },
-  scrollArea: {
-    flex: 1,
-  },
-  scrollInner: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 32,
-  },
-  facilityHeaderCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    marginBottom: 20,
-  },
-  facilityEmojiBox: {
-    width: 46,
-    height: 46,
-    borderRadius: 14,
-    backgroundColor: '#f1f5f9',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  facilityName: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#0f172a',
-  },
-  leadText: {
-    fontSize: 12.5,
-    color: '#475569',
-    marginTop: 2,
-  },
-  specialtyText: {
-    fontSize: 11.5,
-    color: '#64748b',
-    marginTop: 2,
-  },
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#64748b',
-    letterSpacing: 0.6,
-    marginBottom: 8,
-  },
-  memberScroll: {
-    flexDirection: 'row',
-    marginBottom: 16,
-  },
-  memberChip: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 999,
-    paddingVertical: 7,
-    paddingHorizontal: 14,
-    marginRight: 8,
-  },
-  memberChipActive: {
-    backgroundColor: '#ecfdf5',
-    borderColor: '#10b981',
-  },
-  memberChipText: {
-    fontSize: 12.5,
-    fontWeight: '600',
-    color: '#475569',
-  },
-  memberChipTextActive: {
-    color: '#059669',
-    fontWeight: '700',
-  },
-  hmoPreAuthBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#f0fdf4',
-    borderRadius: 14,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#bbf7d0',
-    marginBottom: 20,
-  },
-  hmoTitle: {
-    fontSize: 12.5,
-    fontWeight: '800',
-    color: '#166534',
-  },
-  hmoSub: {
-    fontSize: 11.5,
-    color: '#15803d',
-    marginTop: 1,
-  },
-  quickDatesRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 8,
-  },
-  dateChip: {
-    flex: 1,
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#e2e8f0',
-  },
-  dateChipActive: {
-    borderColor: '#0284c7',
-    backgroundColor: '#f0f9ff',
-  },
-  dateChipLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#475569',
-  },
-  dateChipLabelActive: {
-    color: '#0284c7',
-  },
-  dateChipValue: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#0f172a',
-    marginTop: 2,
-  },
-  dateChipValueActive: {
-    color: '#0284c7',
-  },
-  customDateInput: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    fontSize: 13,
-    color: '#0f172a',
-    marginBottom: 20,
-  },
-  slotsList: {
-    gap: 8,
-    marginBottom: 20,
-  },
-  slotCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 13,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    borderWidth: 1.5,
-  },
-  slotText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#334155',
-  },
-  slotTextActive: {
-    color: '#0f172a',
-    fontWeight: '700',
-  },
-  reasonInput: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    fontSize: 13,
-    color: '#0f172a',
-    marginBottom: 10,
-  },
-  footer: {
-    padding: 16,
-    backgroundColor: '#ffffff',
-    borderTopWidth: 1,
-    borderTopColor: '#e2e8f0',
-  },
-  requestBtn: {
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  requestBtnText: {
-    fontSize: 15,
-    fontWeight: '800',
-  },
-});
+        <Text className="mt-6 text-[16px] font-extrabold text-[#082F67]">Time</Text>
+        <View className="mt-3 flex-row flex-wrap gap-2">{TIMES.map(slot=>{const on=state.bookingTimeSlot===slot;return <TouchableOpacity key={slot} onPress={()=>{hapticFeedback.selection();actions.setBookingTimeSlot(slot)}} className={`rounded-xl border px-4 py-3 ${on?"border-[#315B90] bg-[#EEF3FA]":"border-slate-200 bg-white"}`}><Text className={`text-[12px] font-semibold ${on?"text-[#173B68]":"text-slate-600"}`}>{slot}</Text></TouchableOpacity>})}</View>
+
+        <Text className="mt-6 text-[12px] font-semibold text-[#173B68]">Note for the care team</Text>
+        <TextInput value={reason} onChangeText={setReason} placeholder="What would you like to discuss?" placeholderTextColor="#94A3B8" multiline textAlignVertical="top" className="mt-2 min-h-[92px] rounded-2xl border border-slate-200 p-4 text-[14px] leading-[20px] text-slate-900"/>
+
+        {patient?.insuranceProvider?<View className="mt-4 rounded-2xl border border-[#D7E2F1] bg-[#F3F6FB] p-4"><Text className="text-[13px] font-bold text-[#173B68]">Insurance on file</Text><Text className="mt-2 text-[11.5px] leading-[17px] text-[#536A84]">{patient.insuranceProvider}. Coverage is confirmed by the facility, not this screen.</Text></View>:null}
+
+        <TouchableOpacity disabled={disabled} onPress={()=>{hapticFeedback.success();actions.confirmBooking({familyMemberId:memberId,reason})}} className={`mt-6 min-h-[48px] items-center justify-center rounded-xl ${disabled?"bg-slate-200":"bg-[#082F67]"}`}><Text className={`text-[14px] font-semibold ${disabled?"text-slate-400":"text-white"}`}>{state.bookingSubmitting?"Sending…":"Check demo booking"}</Text></TouchableOpacity>
+        <TouchableOpacity onPress={actions.closeBookAppointment} className="mt-2 min-h-[44px] items-center justify-center"><Text className="text-[13px] font-semibold text-slate-500">Cancel</Text></TouchableOpacity>
+      </ScrollView>
+    </SafeAreaView>
+  </Modal>
+}

@@ -1,768 +1,931 @@
 import React, { useState } from 'react';
 import {
-  View,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Switch,
   Text,
   TouchableOpacity,
-  ScrollView,
-  Switch,
-  StyleSheet,
+  View,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Path } from 'react-native-svg';
-import { useTheme } from '../theme/ThemeContext';
+import Svg, { Circle, Path, Rect } from 'react-native-svg';
+
 import { Avatar } from '../components/Avatar';
+import { LogoMark } from '../components/Logo';
 import { hapticFeedback } from '../utils/haptics';
 import type { WelliApp } from '../state/useWelliApp';
 
-interface SettingsItem {
-  id: string;
-  emoji: string;
-  emojiBg: string;
-  title: string;
-  subtitle: string;
-  action?: () => void;
-  isSwitch?: boolean;
-  switchValue?: boolean;
-  onSwitchChange?: (val: boolean) => void;
-  badge?: string;
-}
+const COLORS = {
+  navy: '#082F67',
+  navyDark: '#06285A',
+  navyMid: '#244A7D',
 
-export function ProfileScreen({ app }: { app: WelliApp }) {
-  const theme = useTheme();
+  white: '#FFFFFF',
+  background: '#F7F9FC',
+
+  text: '#102D56',
+  muted: '#68788C',
+  subtle: '#91A0B2',
+
+  border: '#E4E9F0',
+  softBlue: '#EEF3FA',
+
+  green: '#19A463',
+};
+
+type RowIcon =
+  | 'person'
+  | 'contact'
+  | 'emergency'
+  | 'health'
+  | 'membership'
+  | 'language'
+  | 'verify'
+  | 'password'
+  | 'privacy';
+
+export function ProfileScreen({
+  app,
+}: {
+  app: WelliApp;
+}) {
   const { state, actions, family } = app;
-  const owner = family.find((f) => f.role === 'owner') ?? family[0];
 
-  // Collapsible settings groups: Account open by default, others collapsed
-  const [expandedGroups, setExpandedGroups] = useState<{ [key: string]: boolean }>({
-    account: true,
-    security: false,
-    app: false,
-  });
+  const owner =
+    family.find((member) => member.role === 'owner') ??
+    family[0];
 
-  const toggleGroup = (key: 'account' | 'security' | 'app') => {
-    hapticFeedback.selection();
-    setExpandedGroups((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }));
-  };
+  const [notificationsEnabled, setNotificationsEnabled] =
+    useState(true);
 
-  const accountItems: SettingsItem[] = [
-    {
-      id: 'personal_info',
-      emoji: '👤',
-      emojiBg: '#eff6ff',
-      title: 'Personal Information',
-      subtitle: 'Demographics, blood type & vitals',
-      action: actions.openPersonalInfo,
-    },
-    {
-      id: 'family_access',
-      emoji: '👪',
-      emojiBg: '#f0fdf4',
-      title: 'Family & Caregivers',
-      subtitle: 'Manage dependent access & child records',
-      action: actions.openFamilyAccess,
-    },
-    {
-      id: 'linked_accounts',
-      emoji: '🔗',
-      emojiBg: '#f5f3ff',
-      title: 'Linked Healthcare Accounts',
-      subtitle: 'Hospitals, HMO portals & lab networks',
-      action: actions.openLinkedAccounts,
-    },
-    {
-      id: 'billing_payments',
-      emoji: '💳',
-      emojiBg: '#fffbeb',
-      title: 'Billing & HMO Copays',
-      subtitle: 'Claims, invoices & payment history',
-      action: actions.openBilling,
-    },
-    {
-      id: 'recent_activity',
-      emoji: '📋',
-      emojiBg: '#f1f5f9',
-      title: 'Audit Trail & Activity',
-      subtitle: 'Recent vault access & sharing events',
-      action: actions.openActivity,
-    },
-  ];
+  if (!owner) {
+    return null;
+  }
 
-  const securityItems: SettingsItem[] = [
-    {
-      id: 'face_id',
-      emoji: '🔒',
-      emojiBg: '#fef2f2',
-      title: 'Face ID / Biometrics',
-      subtitle: 'Require biometric scan on launch',
-      isSwitch: true,
-      switchValue: state.faceIdEnabled,
-      onSwitchChange: actions.toggleFaceId,
-    },
-    {
-      id: 'privacy_security',
-      emoji: '🛡️',
-      emojiBg: '#ecfdf5',
-      title: 'Privacy & Smart Consent',
-      subtitle: 'Hospital permissions & time-locks',
-      action: actions.openPrivacySecurity,
-    },
-    {
-      id: 'vault_export',
-      emoji: '📦',
-      emojiBg: '#f0fdfa',
-      title: 'Export Encrypted Backup',
-      subtitle: 'Download password-protected vault archive',
-      action: actions.openVaultExport,
-    },
-    {
-      id: 'proxy_log',
-      emoji: '📜',
-      emojiBg: '#f8fafc',
-      title: 'Proxy Access Log',
-      subtitle: 'Audit trail of authorized caregiver actions',
-      action: actions.openProxyLog,
-    },
-  ];
+  const ownerName =
+    owner.name || 'WelliRecord Patient';
 
-  const appItems: SettingsItem[] = [
-    {
-      id: 'dark_mode',
-      emoji: '🌙',
-      emojiBg: '#f1f5f9',
-      title: 'Dark Appearance',
-      subtitle: 'Toggle dark interface styling',
-      isSwitch: true,
-      switchValue: state.darkMode,
-      onSwitchChange: actions.toggleDarkMode,
-    },
-    {
-      id: 'notifications',
-      emoji: '🔔',
-      emojiBg: '#fff7ed',
-      title: 'Notifications & Alerts',
-      subtitle: 'Appointment reminders & refill alerts',
-      action: actions.openNotificationSettings,
-    },
-    {
-      id: 'vitals_sync',
-      emoji: '⌚',
-      emojiBg: '#fdf2f8',
-      title: 'Apple Health & Wearables',
-      subtitle: 'Apple Health connected · Fitbit available',
-      action: actions.openNotificationSettings,
-      badge: 'Connected',
-    },
-    {
-      id: 'language',
-      emoji: '🌐',
-      emojiBg: '#eff6ff',
-      title: `Language (${state.language})`,
-      subtitle: 'System language & localized medical terms',
-      action: actions.openLanguage,
-    },
-    {
-      id: 'welcome_tour',
-      emoji: '✨',
-      emojiBg: '#faf5ff',
-      title: 'Replay Welcome Tour',
-      subtitle: 'Interactive overview of WelliRecord',
-      action: actions.openOnboarding,
-    },
-    {
-      id: 'about',
-      emoji: '🏥',
-      emojiBg: '#f0fdf4',
-      title: 'About WelliRecord',
-      subtitle: 'Version 1.0.0 · HEFAMAA & NDPR compliant',
-      action: () => actions.openWelcomeHome('about'),
-    },
-  ];
+  const recordId =
+    owner.wrId || 'WR-DEMO-001';
 
-  const renderGroup = (
-    key: 'account' | 'security' | 'app',
-    title: string,
-    subtitle: string,
-    icon: string,
-    items: SettingsItem[]
+  const handleNotificationToggle = (
+    value: boolean,
   ) => {
-    const isExpanded = Boolean(expandedGroups[key]);
+    hapticFeedback.selection();
+    setNotificationsEnabled(value);
 
-    return (
-      <View
-        style={[
-          styles.groupCard,
-          { backgroundColor: theme.surface, borderColor: theme.border },
-        ]}
-      >
-        {/* Group Header Toggle */}
-        <TouchableOpacity
-          activeOpacity={0.7}
-          onPress={() => toggleGroup(key)}
-          style={styles.groupHeader}
-          accessibilityRole="button"
-          accessibilityLabel={`${title}. ${isExpanded ? 'Expanded' : 'Collapsed'}. Tap to toggle.`}
-        >
-          <View style={styles.groupHeaderLeft}>
-            <Text style={{ fontSize: 18 }}>{icon}</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.groupTitle, { color: theme.text }]}>
-                {title}
-              </Text>
-              <Text style={[styles.groupSub, { color: theme.muted }]}>
-                {subtitle}
-              </Text>
-            </View>
-          </View>
-
-          <View
-            style={[
-              styles.expandBadge,
-              { backgroundColor: isExpanded ? '#041E42' : theme.surface2 },
-            ]}
-          >
-            <Svg width={12} height={12} viewBox="0 0 20 20">
-              <Path
-                d={isExpanded ? 'M5 12l5-5 5 5' : 'M5 8l5 5 5-5'}
-                stroke={isExpanded ? '#ffffff' : theme.muted}
-                strokeWidth={2.2}
-                fill="none"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </Svg>
-          </View>
-        </TouchableOpacity>
-
-        {/* Group Items */}
-        {isExpanded && (
-          <View style={[styles.groupItemList, { borderTopColor: theme.border }]}>
-            {items.map((item, idx) => {
-              const isLast = idx === items.length - 1;
-
-              if (item.isSwitch) {
-                return (
-                  <View
-                    key={item.id}
-                    style={[
-                      styles.itemRow,
-                      { borderBottomColor: theme.border, borderBottomWidth: isLast ? 0 : 1 },
-                    ]}
-                  >
-                    <View style={[styles.itemEmojiBox, { backgroundColor: item.emojiBg }]}>
-                      <Text style={{ fontSize: 16 }}>{item.emoji}</Text>
-                    </View>
-                    <View style={styles.itemInfo}>
-                      <Text style={[styles.itemTitle, { color: theme.text }]}>
-                        {item.title}
-                      </Text>
-                      <Text style={[styles.itemSub, { color: theme.muted }]}>
-                        {item.subtitle}
-                      </Text>
-                    </View>
-                    <Switch
-                      value={item.switchValue}
-                      onValueChange={item.onSwitchChange}
-                      trackColor={{ false: '#cbd5e1', true: '#0EA5E9' }}
-                      thumbColor="#ffffff"
-                      ios_backgroundColor="#cbd5e1"
-                    />
-                  </View>
-                );
-              }
-
-              return (
-                <TouchableOpacity
-                  key={item.id}
-                  activeOpacity={0.7}
-                  onPress={item.action}
-                  style={[
-                    styles.itemRow,
-                    { borderBottomColor: theme.border, borderBottomWidth: isLast ? 0 : 1 },
-                  ]}
-                >
-                  <View style={[styles.itemEmojiBox, { backgroundColor: item.emojiBg }]}>
-                    <Text style={{ fontSize: 16 }}>{item.emoji}</Text>
-                  </View>
-                  <View style={styles.itemInfo}>
-                    <Text style={[styles.itemTitle, { color: theme.text }]}>
-                      {item.title}
-                    </Text>
-                    <Text style={[styles.itemSub, { color: theme.muted }]}>
-                      {item.subtitle}
-                    </Text>
-                  </View>
-                  {item.badge ? (
-                    <View style={styles.itemBadge}>
-                      <Text style={styles.itemBadgeText}>{item.badge}</Text>
-                    </View>
-                  ) : (
-                    <Svg width={14} height={14} viewBox="0 0 20 20">
-                      <Path
-                        d="M7 4l6 6-6 6"
-                        stroke={theme.mutedLight}
-                        strokeWidth={2}
-                        fill="none"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </Svg>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        )}
-      </View>
+    actions.showToast(
+      value
+        ? 'In-app notifications enabled'
+        : 'In-app notifications disabled',
     );
   };
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: theme.bg }}
-      contentContainerStyle={styles.scrollContent}
-      showsVerticalScrollIndicator={false}
-      alwaysBounceVertical={true}
-      keyboardShouldPersistTaps="handled"
-    >
-      {/* Profile Header: Tapping opens full personal profile */}
-      <TouchableOpacity
-        activeOpacity={0.75}
-        onPress={() => {
-          hapticFeedback.selection();
-          actions.openPersonalInfo();
-        }}
-        style={[
-          styles.profileHeaderCard,
-          { backgroundColor: theme.surface, borderColor: theme.border },
-        ]}
-        accessibilityRole="button"
-        accessibilityLabel={`Profile for ${owner.name}. Tap to view full personal profile.`}
+    <View style={styles.screen}>
+      <StatusBar
+        barStyle="dark-content"
+        backgroundColor="#FFFFFF"
+      />
+
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
       >
-        {state.tabHistory.length > 0 && (
+        {/* =========================
+            TOP HEADER
+        ========================== */}
+        <View style={styles.headerTop}>
           <TouchableOpacity
             activeOpacity={0.7}
-            onPress={actions.goBackTab}
-            style={[
-              styles.backBtn,
-              { backgroundColor: theme.surface2, borderColor: theme.border },
-            ]}
-            accessibilityLabel="Go back to previous page"
+            onPress={
+              state.tabHistory.length > 0
+                ? actions.goBackTab
+                : () => actions.setTab('home')
+            }
+            style={styles.backButton}
           >
-            <Svg width={14} height={14} viewBox="0 0 20 20">
+            <Svg
+              width={28}
+              height={28}
+              viewBox="0 0 24 24"
+              fill="none"
+            >
               <Path
-                d="M12 4l-6 6 6 6"
-                stroke={theme.text}
-                strokeWidth={2}
-                fill="none"
+                d="M15 18L9 12L15 6"
+                stroke="#172033"
+                strokeWidth={1.7}
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
             </Svg>
           </TouchableOpacity>
-        )}
 
-        <Avatar member={owner} size={54} fontSize={19} />
+          <Text style={styles.headerBrand}>
+            WelliRecord
+            <Text style={styles.tm}>™</Text>
+          </Text>
 
-        <View style={styles.profileText}>
-          <View style={styles.ownerNameRow}>
-            <Text
-              style={[styles.ownerName, { color: theme.text }]}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-            >
-              {owner.name}
-            </Text>
-            <Svg width={14} height={14} viewBox="0 0 20 20" style={{ marginLeft: 4, flexShrink: 0 }}>
-              <Path
-                d="M7 4l6 6-6 6"
-                stroke={theme.mutedLight}
-                strokeWidth={2}
-                fill="none"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </Svg>
-          </View>
-
-          <View style={styles.memberMetaRow}>
-            {owner.wrId ? (
-              <Text style={styles.memberIdText}>
-                ID: {owner.wrId}
-              </Text>
-            ) : null}
-            <Text style={styles.profileViewHint}>
-              Tap to view full profile ›
-            </Text>
-          </View>
+          <View style={styles.headerSpacer} />
         </View>
-      </TouchableOpacity>
 
-      {/* Emergency ID Card: Life-Critical Treatment (Exclusive Dark/Crimson Pattern) */}
-      <TouchableOpacity
-        activeOpacity={0.88}
-        onPress={() => {
-          hapticFeedback.medium();
-          actions.openEmergency();
-        }}
-        style={styles.emergencyCardOuter}
-        accessibilityRole="button"
-        accessibilityLabel="Emergency Medical ID Card. Tap to view life-critical details."
-      >
-        <LinearGradient
-          colors={['#090d16', '#172554']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.emergencyCard}
-        >
-          {/* Top Tag Row */}
-          <View style={styles.emergencyTopRow}>
-            <View style={styles.emergencyBadge}>
-              <View style={styles.emergencyDotPulse} />
-              <Text style={styles.emergencyBadgeText}>LIFE-CRITICAL · FIRST RESPONDER</Text>
-            </View>
-            <Text style={styles.emergencyLockedText}>🔒 Lock-Screen Ready</Text>
-          </View>
+        {/* =========================
+            HERO
+        ========================== */}
+        <View style={styles.hero}>
+          <View style={styles.heroBrandRow}>
+            <LogoMark
+              size={27}
+              shieldColor="#FFFFFF"
+              markColor={COLORS.navy}
+              strokeColor="#FFFFFF"
+            />
 
-          {/* Main Card Content */}
-          <View style={styles.emergencyMainRow}>
-            <View style={styles.emergencyIconBox}>
-              <Text style={{ fontSize: 24 }}>🚨</Text>
-            </View>
-            <View style={styles.emergencyTextContent}>
-              <Text style={styles.emergencyTitle}>Emergency Medical ID</Text>
-              <Text style={styles.emergencySub}>
-                Blood Type {owner.bloodType || 'O+'} · Allergies ({owner.allergies?.length || 0}) · ICE Contacts
+            <View>
+              <Text style={styles.heroBrand}>
+                WelliRecord
+                <Text style={styles.heroTm}>™</Text>
+              </Text>
+
+              <Text style={styles.heroTagline}>
+                One patient. One trusted record.
+                Accessible when it matters.
               </Text>
             </View>
           </View>
 
-          {/* Bottom Action Footer */}
-          <View style={styles.emergencyBottomRow}>
-            <Text style={styles.emergencyHint}>
-              Accessible to paramedics and ERs during critical trauma
+          <Text style={styles.heroTitle}>
+            Your profile
+          </Text>
+
+          <Text style={styles.heroSubtitle}>
+            Your details, your preferences, your account.
+          </Text>
+        </View>
+
+        {/* =========================
+            IDENTITY CARD
+        ========================== */}
+        <TouchableOpacity
+          activeOpacity={0.82}
+          onPress={actions.openPersonalInfo}
+          style={styles.identityCard}
+        >
+          <Avatar
+            member={owner}
+            size={34}
+            fontSize={12}
+          />
+
+          <View style={styles.identityText}>
+            <Text style={styles.identityName}>
+              {ownerName}
             </Text>
-            <View style={styles.emergencyActionBtn}>
-              <Text style={styles.emergencyActionBtnText}>View Card ›</Text>
-            </View>
+
+            <Text style={styles.identityId}>
+              Demo ID · {recordId}
+            </Text>
+
+            <Text style={styles.identityHint}>
+              Your record identity · update all profile details
+            </Text>
           </View>
-        </LinearGradient>
-      </TouchableOpacity>
 
-      {/* Settings Header */}
-      <View style={styles.sectionHeaderRow}>
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>
-          Settings & Preferences
+          <Chevron light />
+        </TouchableOpacity>
+
+        {/* =========================
+            PERSONAL DETAILS
+        ========================== */}
+        <SectionCard title="Personal details">
+          <SettingsRow
+            icon="person"
+            title="Legal & preferred name, DOB"
+            subtitle="Review identity information"
+            onPress={actions.openPersonalInfo}
+          />
+
+          <Divider />
+
+          <SettingsRow
+            icon="contact"
+            title="Email, phone & address"
+            subtitle="Residential address is optional"
+            onPress={actions.openPersonalInfo}
+          />
+
+          <Divider />
+
+          <SettingsRow
+            icon="emergency"
+            title="Emergency contact"
+            subtitle="Not added"
+            onPress={actions.openPersonalInfo}
+          />
+
+          <Divider />
+
+          <SettingsRow
+            icon="health"
+            title="Health history"
+            subtitle="Allergies, conditions, medicines & surgeries"
+            onPress={actions.openPersonalInfo}
+          />
+
+          <Divider />
+
+          <SettingsRow
+            icon="membership"
+            title="HMO / provider & membership"
+            subtitle="Optional · not added"
+            onPress={actions.openBilling}
+          />
+        </SectionCard>
+
+        {/* =========================
+            PREFERENCES
+        ========================== */}
+        <SectionCard title="Preferences">
+          <SettingsRow
+            icon="language"
+            title="Language"
+            subtitle="English · interface preference"
+            onPress={() => {
+              hapticFeedback.selection();
+              actions.showToast(
+                'Language preferences will open here',
+              );
+            }}
+          />
+
+          <Divider />
+
+          <View style={styles.switchRow}>
+            <View style={styles.rowIcon}>
+              <NotificationIcon />
+            </View>
+
+            <View style={styles.rowText}>
+              <Text style={styles.rowTitle}>
+                In-app notifications
+              </Text>
+
+              <Text style={styles.rowSubtitle}>
+                General app updates
+              </Text>
+
+              <Text style={styles.rowSupporting}>
+                This preference does not control calls,
+                medication or appointment alerts.
+              </Text>
+            </View>
+
+            <Switch
+              value={notificationsEnabled}
+              onValueChange={handleNotificationToggle}
+              trackColor={{
+                false: '#CBD5E1',
+                true: COLORS.green,
+              }}
+              thumbColor="#FFFFFF"
+              ios_backgroundColor="#CBD5E1"
+              style={styles.switch}
+            />
+          </View>
+        </SectionCard>
+
+        {/* =========================
+            ACCOUNT & PRIVACY
+        ========================== */}
+        <SectionCard title="Account & privacy">
+          <SettingsRow
+            icon="verify"
+            title="Email & phone verification"
+            subtitle="No verification connected in this demo"
+            onPress={actions.openPersonalInfo}
+          />
+
+          <Divider />
+
+          <SettingsRow
+            icon="password"
+            title="Password & sessions"
+            subtitle="Manage password and signed-in devices"
+            onPress={actions.openPrivacySecurity}
+          />
+
+          <Divider />
+
+          <SettingsRow
+            icon="privacy"
+            title="Privacy Policy & Terms"
+            subtitle="Understand how your information is handled"
+            onPress={actions.openPrivacySecurity}
+          />
+        </SectionCard>
+
+        {/* =========================
+            SIGN OUT
+        ========================== */}
+        <TouchableOpacity
+          activeOpacity={0.75}
+          onPress={() => {
+            hapticFeedback.light();
+            actions.logOut();
+          }}
+          style={styles.signOutButton}
+        >
+          <Text style={styles.signOutText}>
+            Sign out
+          </Text>
+        </TouchableOpacity>
+
+        <Text style={styles.demoFooter}>
+          Illustrative demo · no connected clinical data
         </Text>
-        <Text style={[styles.sectionSubtitle, { color: theme.mutedLight }]}>
-          3 Groups
-        </Text>
-      </View>
-
-      {/* Group 1: Account */}
-      {renderGroup(
-        'account',
-        'Account & Family',
-        'Personal details, caregivers, billing · 5 items',
-        '👤',
-        accountItems
-      )}
-
-      {/* Group 2: Security */}
-      {renderGroup(
-        'security',
-        'Security & Vault',
-        'Face ID lock, smart consent, backups · 4 items',
-        '🔐',
-        securityItems
-      )}
-
-      {/* Group 3: App */}
-      {renderGroup(
-        'app',
-        'App & Preferences',
-        'Appearance, notifications, health sync · 6 items',
-        '⚙️',
-        appItems
-      )}
-
-      {/* Log Out Button */}
-      <TouchableOpacity
-        activeOpacity={0.7}
-        onPress={() => {
-          hapticFeedback.light();
-          actions.logOut();
-        }}
-        style={[
-          styles.logoutBtn,
-          { backgroundColor: theme.surface, borderColor: theme.border },
-        ]}
-      >
-        <Text style={styles.logoutText}>Log Out</Text>
-      </TouchableOpacity>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
+/* =========================================================
+   SECTION
+========================================================= */
+
+function SectionCard({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>
+        {title}
+      </Text>
+
+      <View style={styles.sectionCard}>
+        {children}
+      </View>
+    </View>
+  );
+}
+
+/* =========================================================
+   SETTINGS ROW
+========================================================= */
+
+function SettingsRow({
+  icon,
+  title,
+  subtitle,
+  onPress,
+}: {
+  icon: RowIcon;
+  title: string;
+  subtitle: string;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      activeOpacity={0.72}
+      onPress={() => {
+        hapticFeedback.selection();
+        onPress();
+      }}
+      style={styles.row}
+    >
+      <View style={styles.rowIcon}>
+        <RowIconView type={icon} />
+      </View>
+
+      <View style={styles.rowText}>
+        <Text style={styles.rowTitle}>
+          {title}
+        </Text>
+
+        <Text style={styles.rowSubtitle}>
+          {subtitle}
+        </Text>
+      </View>
+
+      <Chevron />
+    </TouchableOpacity>
+  );
+}
+
+function Divider() {
+  return (
+    <View style={styles.divider} />
+  );
+}
+
+/* =========================================================
+   ICONS
+========================================================= */
+
+function RowIconView({
+  type,
+}: {
+  type: RowIcon;
+}) {
+  const stroke = COLORS.navy;
+
+  if (type === 'person') {
+    return (
+      <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+        <Circle
+          cx={12}
+          cy={8}
+          r={3}
+          stroke={stroke}
+          strokeWidth={1.5}
+        />
+
+        <Path
+          d="M6 19C6.4 15.8 8.4 14 12 14C15.6 14 17.6 15.8 18 19"
+          stroke={stroke}
+          strokeWidth={1.5}
+          strokeLinecap="round"
+        />
+      </Svg>
+    );
+  }
+
+  if (type === 'contact') {
+    return (
+      <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+        <Path
+          d="M4 6H20V18H4V6Z"
+          stroke={stroke}
+          strokeWidth={1.5}
+          strokeLinejoin="round"
+        />
+
+        <Path
+          d="M5 8L12 13L19 8"
+          stroke={stroke}
+          strokeWidth={1.5}
+          strokeLinecap="round"
+        />
+      </Svg>
+    );
+  }
+
+  if (type === 'emergency') {
+    return (
+      <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+        <Path
+          d="M12 3L19 6V11C19 15.4 16.2 19 12 21C7.8 19 5 15.4 5 11V6L12 3Z"
+          stroke={stroke}
+          strokeWidth={1.5}
+          strokeLinejoin="round"
+        />
+
+        <Path
+          d="M12 8V15M8.5 11.5H15.5"
+          stroke={stroke}
+          strokeWidth={1.5}
+          strokeLinecap="round"
+        />
+      </Svg>
+    );
+  }
+
+  if (type === 'health') {
+    return (
+      <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+        <Path
+          d="M12 20S5 16.3 5 10.3C5 7.8 6.7 6 9 6C10.4 6 11.3 6.8 12 7.8C12.7 6.8 13.6 6 15 6C17.3 6 19 7.8 19 10.3C19 16.3 12 20 12 20Z"
+          stroke={stroke}
+          strokeWidth={1.5}
+          strokeLinejoin="round"
+        />
+      </Svg>
+    );
+  }
+
+  if (type === 'membership') {
+    return (
+      <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+        <Rect
+          x={4}
+          y={6}
+          width={16}
+          height={12}
+          rx={2}
+          stroke={stroke}
+          strokeWidth={1.5}
+        />
+
+        <Path
+          d="M4 10H20"
+          stroke={stroke}
+          strokeWidth={1.5}
+        />
+      </Svg>
+    );
+  }
+
+  if (type === 'language') {
+    return (
+      <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+        <Circle
+          cx={12}
+          cy={12}
+          r={8}
+          stroke={stroke}
+          strokeWidth={1.5}
+        />
+
+        <Path
+          d="M4 12H20M12 4C14 6.2 15 8.8 15 12C15 15.2 14 17.8 12 20M12 4C10 6.2 9 8.8 9 12C9 15.2 10 17.8 12 20"
+          stroke={stroke}
+          strokeWidth={1.3}
+        />
+      </Svg>
+    );
+  }
+
+  if (type === 'verify') {
+    return (
+      <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+        <Circle
+          cx={12}
+          cy={12}
+          r={8}
+          stroke={stroke}
+          strokeWidth={1.5}
+        />
+
+        <Path
+          d="M8.5 12L11 14.5L15.5 9.5"
+          stroke={stroke}
+          strokeWidth={1.5}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </Svg>
+    );
+  }
+
+  if (type === 'password') {
+    return (
+      <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+        <Path
+          d="M7 10V8C7 5.2 9.2 3 12 3C14.8 3 17 5.2 17 8V10"
+          stroke={stroke}
+          strokeWidth={1.5}
+          strokeLinecap="round"
+        />
+
+        <Rect
+          x={5}
+          y={10}
+          width={14}
+          height={10}
+          rx={2}
+          stroke={stroke}
+          strokeWidth={1.5}
+        />
+      </Svg>
+    );
+  }
+
+  return (
+    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 3L19 6V11C19 15.4 16.2 19 12 21C7.8 19 5 15.4 5 11V6L12 3Z"
+        stroke={stroke}
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+function NotificationIcon() {
+  return (
+    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M18 9C18 5.7 15.3 3 12 3C8.7 3 6 5.7 6 9C6 15 4 17 4 17H20C20 17 18 15 18 9Z"
+        stroke={COLORS.navy}
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+      />
+
+      <Path
+        d="M10 20H14"
+        stroke={COLORS.navy}
+        strokeWidth={1.5}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+
+function Chevron({
+  light = false,
+}: {
+  light?: boolean;
+}) {
+  return (
+    <Svg width={28} height={28} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M9 6L15 12L9 18"
+        stroke={
+          light
+            ? '#AFC4DF'
+            : '#8EA5C0'
+        }
+        strokeWidth={1.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+/* =========================================================
+   STYLES
+========================================================= */
+
 const styles = StyleSheet.create({
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 120,
+  screen: {
+    flex: 1,
+    backgroundColor: COLORS.background,
   },
-  profileHeaderCard: {
+
+  scroll: {
+    flex: 1,
+  },
+
+  content: {
+    paddingBottom: 22,
+  },
+
+  headerTop: {
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    padding: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-    marginBottom: 16,
+    justifyContent: 'space-between',
+
+    backgroundColor: '#FFFFFF',
+
+    paddingHorizontal: 18,
   },
-  backBtn: {
-    width: 32,
-    height: 32,
+
+  backButton: {
+    width: 41,
+    height: 41,
+
     borderRadius: 16,
-    borderWidth: 1,
+
     alignItems: 'center',
     justifyContent: 'center',
+
+    backgroundColor: '#F7F8FA',
   },
-  profileText: {
-    flex: 1,
-  },
-  ownerNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 2,
-  },
-  ownerName: {
-    fontSize: 17,
-    fontWeight: '800',
-    flex: 1,
-  },
-  memberMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flexWrap: 'wrap',
-  },
-  memberIdText: {
-    fontSize: 12,
-    color: '#0284c7',
-    fontWeight: '700',
-  },
-  profileViewHint: {
-    fontSize: 12,
-    color: '#0ea5e9',
+
+  headerBrand: {
+    color: '#111827',
+    fontSize: 16,
     fontWeight: '600',
   },
-  emergencyCardOuter: {
-    marginBottom: 20,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: 'rgba(239, 68, 68, 0.4)',
-    shadowColor: '#dc2626',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    elevation: 5,
-    overflow: 'hidden',
+
+  tm: {
+    fontSize: 18,
   },
-  emergencyCard: {
-    padding: 14,
+
+  headerSpacer: {
+    width: 31,
   },
-  emergencyTopRow: {
+
+  hero: {
+    backgroundColor: COLORS.navy,
+
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 16,
+  },
+
+  heroBrandRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+
+    gap: 7,
+
     marginBottom: 10,
   },
-  emergencyBadge: {
-    backgroundColor: 'rgba(239, 68, 68, 0.2)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.4)',
+
+  heroBrand: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
   },
-  emergencyDotPulse: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#ef4444',
+
+  heroTm: {
+    fontSize: 18,
   },
-  emergencyBadgeText: {
-    color: '#fca5a5',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  emergencyLockedText: {
-    color: '#94a3b8',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  emergencyMainRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 12,
-  },
-  emergencyIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.3)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emergencyTextContent: {
-    flex: 1,
-  },
-  emergencyTitle: {
+
+  heroTagline: {
     color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '800',
-    marginBottom: 2,
-  },
-  emergencySub: {
-    color: '#cbd5e1',
     fontSize: 12,
-    lineHeight: 16,
+    marginTop: 1,
   },
-  emergencyBottomRow: {
+
+  heroTitle: {
+    color: '#FFFFFF',
+    fontSize: 26,
+    lineHeight: 24,
+    fontWeight: '900',
+
+    marginBottom: 3,
+  },
+
+  heroSubtitle: {
+    color: '#BECDE0',
+    fontSize: 14,
+  },
+
+  identityCard: {
+    marginHorizontal: 14,
+    marginTop: 9,
+    marginBottom: 10,
+
+    backgroundColor: COLORS.navy,
+
+    borderRadius: 10,
+
+    paddingHorizontal: 11,
+    paddingVertical: 10,
+
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
-    gap: 10,
   },
-  emergencyHint: {
-    color: '#94a3b8',
-    fontSize: 11,
+
+  identityText: {
     flex: 1,
+    marginLeft: 8,
   },
-  emergencyActionBtn: {
-    backgroundColor: '#ef4444',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 6,
-  },
-  emergencyActionBtnText: {
-    color: '#ffffff',
-    fontSize: 11.5,
-    fontWeight: '700',
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  sectionSubtitle: {
-    fontSize: 11.5,
-    fontWeight: '600',
-  },
-  groupCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    marginBottom: 12,
-    overflow: 'hidden',
-  },
-  groupHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 14,
-  },
-  groupHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-    marginRight: 8,
-  },
-  groupTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-  groupSub: {
-    fontSize: 11.5,
-  },
-  expandBadge: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  groupItemList: {
-    borderTopWidth: 1,
-  },
-  itemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    gap: 12,
-  },
-  itemEmojiBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  itemInfo: {
-    flex: 1,
-  },
-  itemTitle: {
-    fontSize: 13.5,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  itemSub: {
-    fontSize: 11,
-    lineHeight: 15,
-  },
-  itemBadge: {
-    backgroundColor: '#ecfdf5',
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  itemBadgeText: {
-    color: '#059669',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  logoutBtn: {
-    marginTop: 12,
-    borderWidth: 1,
-    borderRadius: 14,
-    alignItems: 'center',
-    paddingVertical: 13,
-  },
-  logoutText: {
-    color: '#dc2626',
+
+  identityName: {
+    color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
+  },
+
+  identityId: {
+    color: '#B5C7DE',
+    fontSize: 12,
+    marginTop: 2,
+  },
+
+  identityHint: {
+    color: '#8FA7C5',
+    fontSize: 12,
+    marginTop: 5,
+  },
+
+  section: {
+    marginHorizontal: 14,
+    marginBottom: 9,
+  },
+
+  sectionTitle: {
+    color: COLORS.navy,
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+
+  sectionCard: {
+    backgroundColor: '#FFFFFF',
+
+    borderRadius: 9,
+
+    shadowColor: '#12213A',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+
+    overflow: 'hidden',
+  },
+
+  row: {
+    minHeight: 36,
+
+    flexDirection: 'row',
+    alignItems: 'center',
+
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+  },
+
+  rowIcon: {
+    width: 47,
+    height: 47,
+
+    borderRadius: 7,
+
+    backgroundColor: COLORS.softBlue,
+
+    alignItems: 'center',
+    justifyContent: 'center',
+
+    marginRight: 8,
+  },
+
+  rowText: {
+    flex: 1,
+  },
+
+  rowTitle: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+
+  rowSubtitle: {
+    color: COLORS.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 2,
+  },
+
+  rowSupporting: {
+    color: COLORS.subtle,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 3,
+    maxWidth: 195,
+  },
+
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: COLORS.border,
+    marginLeft: 44,
+  },
+
+  switchRow: {
+    minHeight: 62,
+
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+
+    paddingHorizontal: 9,
+    paddingVertical: 8,
+  },
+
+  switch: {
+    transform: [
+      { scaleX: 0.75 },
+      { scaleY: 0.75 },
+    ],
+    marginTop: -3,
+  },
+
+  signOutButton: {
+    marginHorizontal: 14,
+
+    height: 37,
+
+    backgroundColor: '#FFFFFF',
+
+    borderRadius: 8,
+
+    alignItems: 'center',
+    justifyContent: 'center',
+
+    marginTop: 2,
+
+    shadowColor: '#12213A',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+
+  signOutText: {
+    color: COLORS.navy,
+    fontSize: 16,
+    fontWeight: '500',
+  },
+
+  demoFooter: {
+    color: '#747D88',
+    fontSize: 12,
+    textAlign: 'center',
+
+    marginTop: 9,
   },
 });

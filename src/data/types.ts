@@ -240,7 +240,13 @@ export interface Notification {
   time: string;
   read?: boolean;
   actionLabel?: string;
-  targetTab?: 'home' | 'records' | 'share' | 'care' | 'profile';
+ targetTab?:
+  | 'home'
+  | 'records'
+  | 'share'
+  | 'care'
+  | 'chat'
+  | 'profile';
   targetModal?: 'proxyLog' | 'activity' | 'billing' | 'family' | 'linkedAccounts' | 'emergency';
   targetId?: string;
 }
@@ -279,7 +285,13 @@ export interface Theme {
   darkMode?: boolean;
 }
 
-export type Tab = 'home' | 'records' | 'share' | 'care' | 'profile';
+export type Tab =
+  | 'home'
+  | 'records'
+  | 'share'
+  | 'care'
+  | 'chat'
+  | 'profile';
 export type ShareMethod = 'search' | 'bridge';
 export type ShareExpiry = '1h' | '24h' | '7d' | '30d' | 'custom';
 export type WelcomeTab = 'about' | 'signin' | 'signup' | 'faq';

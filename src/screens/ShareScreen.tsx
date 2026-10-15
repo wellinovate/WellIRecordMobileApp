@@ -1,571 +1,237 @@
-import React from 'react';
+import React, { useState } from "react";
 import {
-  View,
+  ScrollView,
+  StatusBar,
+  Switch,
   Text,
   TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-  Alert,
-} from 'react-native';
-import Svg, { Path, Circle } from 'react-native-svg';
-import { useTheme } from '../theme/ThemeContext';
-import { hapticFeedback } from '../utils/haptics';
-import type { WelliApp } from '../state/useWelliApp';
+  View,
+} from "react-native";
+import Svg, { Path, Rect } from "react-native-svg";
 
-export function ShareScreen({ app }: { app: WelliApp }) {
-  const theme = useTheme();
-  const { state, actions, family } = app;
+import { LogoMark } from "../components/Logo";
+import type { WelliApp } from "../state/useWelliApp";
 
-  const activeSharesView = state.activeShares.map((sh) => {
-    const owner = family.find((f) => f.id === sh.ownerId) ?? family[0];
-    return {
-      ...sh,
-      ownerLabel: owner.id === 'me' ? null : `For ${owner.name.split(' ')[0]}`,
-    };
-  });
+type AccessDuration = "15m" | "1h" | "24h";
 
-  const handleCopyLink = (sh: any) => {
-    hapticFeedback.selection();
-    const pin = sh.id ? sh.id.replace(/\D/g, '').slice(-6) || '849201' : '849201';
-    actions.showToast(`WelliBridge link & PIN (${pin}) copied to clipboard`);
-  };
-
-  const handleRevoke = (id: string, name: string) => {
-    hapticFeedback.warning();
-    Alert.alert(
-      'Revoke Clinical Access?',
-      `Are you sure you want to immediately revoke access for ${name}? They will no longer be able to view or download these records.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Revoke Immediately',
-          style: 'destructive',
-          onPress: () => actions.revokeShare(id),
-        },
-      ]
-    );
-  };
-
+function BackIcon() {
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: theme.bg }}
-      contentContainerStyle={styles.scrollContent}
-      showsVerticalScrollIndicator={false}
-    >
-      {/* Header */}
-      <View style={styles.headerRow}>
-        {state.tabHistory.length > 0 && (
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={actions.goBackTab}
-            style={[
-              styles.backBtn,
-              { backgroundColor: theme.surface, borderColor: theme.border },
-            ]}
-            accessibilityLabel="Go back to previous page"
-          >
-            <Svg width={14} height={14} viewBox="0 0 20 20">
-              <Path
-                d="M12 4l-6 6 6 6"
-                stroke={theme.text}
-                strokeWidth={2}
-                fill="none"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </Svg>
-          </TouchableOpacity>
-        )}
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.title, { color: theme.text }]}>Share & Consent</Text>
-          <Text style={[styles.subtitle, { color: theme.muted }]}>
-            Time-bound encrypted access controlled entirely by you (NDPR Certified).
-          </Text>
-        </View>
-      </View>
-
-      {/* Action Buttons Row */}
-      <View style={styles.actionButtonsRow}>
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => actions.openShareFlow()}
-          style={[styles.primaryActionBtn, { backgroundColor: '#041E42' }]}
-        >
-          <Svg width={18} height={18} viewBox="0 0 20 20">
-            <Path
-              d="M10 3v14M3 10h14"
-              stroke="#ffffff"
-              strokeWidth={2}
-              strokeLinecap="round"
-            />
-          </Svg>
-          <Text style={styles.primaryActionText}>Share Records</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={actions.openSmartConsent}
-          style={[
-            styles.secondaryActionBtn,
-            {
-              backgroundColor: theme.darkMode
-                ? 'rgba(16, 185, 129, 0.12)'
-                : '#ECFDF5',
-              borderColor: theme.darkMode
-                ? 'rgba(16, 185, 129, 0.3)'
-                : '#A7F3D0',
-            },
-          ]}
-        >
-          <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-            <Path
-              d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"
-              stroke="#059669"
-              strokeWidth={1.8}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <Path
-              d="M9 12l2 2 4-4"
-              stroke="#059669"
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </Svg>
-          <Text style={styles.secondaryActionText}>Smart Consent</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Info Banner */}
-      <View
-        style={[
-          styles.ndprBanner,
-          {
-            backgroundColor: theme.darkMode
-              ? 'rgba(14, 165, 233, 0.08)'
-              : '#F0F9FF',
-            borderColor: theme.darkMode
-              ? 'rgba(14, 165, 233, 0.25)'
-              : '#BAE6FD',
-          },
-        ]}
-      >
-        <Text style={{ fontSize: 16 }}>🔒</Text>
-        <Text style={[styles.ndprText, { color: theme.darkMode ? '#7dd3fc' : '#0369A1' }]}>
-          Every share generates an auto-expiring encryption key. Doctors cannot retain permanent copies without your explicit renewal.
-        </Text>
-      </View>
-
-      {/* Active Shares Header */}
-      <View style={styles.sectionHeaderRow}>
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>Active Shared Grants</Text>
-        <View style={styles.countBadge}>
-          <Text style={styles.countBadgeText}>{activeSharesView.length}</Text>
-        </View>
-      </View>
-
-      {/* Empty State */}
-      {activeSharesView.length === 0 && (
-        <View
-          style={[
-            styles.emptyCard,
-            { backgroundColor: theme.surface, borderColor: theme.border },
-          ]}
-        >
-          <View
-            style={[
-              styles.emptyIconCircle,
-              { backgroundColor: theme.darkMode ? 'rgba(255,255,255,0.06)' : '#F1F5F9' },
-            ]}
-          >
-            <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
-              <Circle cx="18" cy="5" r="3" stroke={theme.mutedLight} strokeWidth={1.8} />
-              <Circle cx="6" cy="12" r="3" stroke={theme.mutedLight} strokeWidth={1.8} />
-              <Circle cx="18" cy="19" r="3" stroke={theme.mutedLight} strokeWidth={1.8} />
-              <Path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98" stroke={theme.mutedLight} strokeWidth={1.8} />
-            </Svg>
-          </View>
-          <Text style={[styles.emptyTitle, { color: theme.text }]}>No active shares</Text>
-          <Text style={[styles.emptySub, { color: theme.mutedLight }]}>
-            When you share records with a clinic or doctor via WelliBridge or Smart Consent, they will appear here with live auto-expiry tracking.
-          </Text>
-        </View>
-      )}
-
-      {/* Active Shares List */}
-      <View style={styles.sharesList}>
-        {activeSharesView.map((sh) => {
-          const pin = sh.id ? sh.id.replace(/\D/g, '').slice(-6) || '849201' : '849201';
-          return (
-            <View
-              key={sh.id}
-              style={[
-                styles.shareCard,
-                { backgroundColor: theme.surface, borderColor: theme.border },
-              ]}
-            >
-              {/* Card Top Row */}
-              <View style={styles.cardTopRow}>
-                <View style={[styles.initialsBadge, { backgroundColor: '#041E42' }]}>
-                  <Text style={styles.initialsText}>{sh.initials}</Text>
-                </View>
-
-                <View style={styles.cardHeaderInfo}>
-                  <Text
-                    style={[styles.doctorName, { color: theme.text }]}
-                    numberOfLines={1}
-                  >
-                    {sh.doctorName}
-                  </Text>
-                  <Text style={[styles.scopeText, { color: theme.muted }]}>
-                    {sh.scopeLabel ?? `${sh.recordCount} records`}
-                  </Text>
-                </View>
-
-                {/* Status Pill */}
-                <View style={styles.activePill}>
-                  <View style={styles.activeDot} />
-                  <Text style={styles.activePillText}>Active</Text>
-                </View>
-              </View>
-
-              {/* Expiry & PIN Meta Box */}
-              <View
-                style={[
-                  styles.metaBox,
-                  {
-                    backgroundColor: theme.darkMode
-                      ? 'rgba(255,255,255,0.04)'
-                      : '#F8FAFC',
-                    borderColor: theme.border,
-                  },
-                ]}
-              >
-                <View style={styles.metaItem}>
-                  <Text style={[styles.metaLabel, { color: theme.mutedLight }]}>EXPIRES</Text>
-                  <Text style={[styles.metaValue, { color: '#E11D48' }]}>
-                    ⏳ {sh.expiresLabel}
-                  </Text>
-                </View>
-
-                <View style={styles.metaDivider} />
-
-                <View style={styles.metaItem}>
-                  <Text style={[styles.metaLabel, { color: theme.mutedLight }]}>BRIDGE PIN</Text>
-                  <Text style={[styles.metaValue, { color: '#0EA5E9' }]}>
-                    🔑 {pin.slice(0, 3)}-{pin.slice(3)}
-                  </Text>
-                </View>
-
-                {sh.writeAccess && (
-                  <>
-                    <View style={styles.metaDivider} />
-                    <View style={styles.metaItem}>
-                      <Text style={[styles.metaLabel, { color: theme.mutedLight }]}>ACCESS</Text>
-                      <Text style={[styles.metaValue, { color: '#059669' }]}>
-                        ✍️ Write Allowed
-                      </Text>
-                    </View>
-                  </>
-                )}
-              </View>
-
-              {sh.purpose ? (
-                <Text style={[styles.purposeText, { color: theme.muted }]}>
-                  Purpose: "{sh.purpose}"
-                </Text>
-              ) : null}
-
-              {/* Bottom Actions */}
-              <View style={styles.cardActionRow}>
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => handleCopyLink(sh)}
-                  style={[
-                    styles.cardActionBtn,
-                    {
-                      backgroundColor: theme.darkMode
-                        ? 'rgba(14, 165, 233, 0.12)'
-                        : '#F0F9FF',
-                      borderColor: theme.darkMode
-                        ? 'rgba(14, 165, 233, 0.3)'
-                        : '#BAE6FD',
-                    },
-                  ]}
-                >
-                  <Text style={[styles.cardActionText, { color: '#0284C7' }]}>
-                    Copy Bridge Link
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => handleRevoke(sh.id, sh.doctorName)}
-                  style={[
-                    styles.cardActionBtn,
-                    {
-                      backgroundColor: theme.darkMode
-                        ? 'rgba(244, 63, 94, 0.12)'
-                        : '#FFF1F2',
-                      borderColor: theme.darkMode
-                        ? 'rgba(244, 63, 94, 0.3)'
-                        : '#FECDD3',
-                    },
-                  ]}
-                >
-                  <Text style={[styles.cardActionText, { color: '#E11D48' }]}>
-                    Revoke
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          );
-        })}
-      </View>
-    </ScrollView>
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M15 18L9 12L15 6"
+        stroke="#172033"
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
   );
 }
 
-const styles = StyleSheet.create({
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 40,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    marginBottom: 16,
-  },
-  backBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '800',
-    marginBottom: 4,
-    letterSpacing: -0.3,
-  },
-  subtitle: {
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  actionButtonsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 14,
-  },
-  primaryActionBtn: {
-    flex: 1.2,
-    borderRadius: 14,
-    paddingVertical: 13,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  primaryActionText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  secondaryActionBtn: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingVertical: 13,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  secondaryActionText: {
-    color: '#059669',
-    fontSize: 13.5,
-    fontWeight: '700',
-  },
-  ndprBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 20,
-  },
-  ndprText: {
-    flex: 1,
-    fontSize: 11.5,
-    lineHeight: 16,
-    fontWeight: '500',
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  countBadge: {
-    backgroundColor: '#041E42',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-  },
-  countBadgeText: {
-    color: '#ffffff',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  emptyCard: {
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingVertical: 36,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-  },
-  emptyIconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  emptyTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  emptySub: {
-    fontSize: 12.5,
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-  sharesList: {
-    gap: 12,
-  },
-  shareCard: {
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 14,
-  },
-  cardTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 10,
-  },
-  initialsBadge: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  initialsText: {
-    color: '#ffffff',
-    fontWeight: '800',
-    fontSize: 13.5,
-  },
-  cardHeaderInfo: {
-    flex: 1,
-  },
-  doctorName: {
-    fontSize: 14.5,
-    fontWeight: '700',
-  },
-  scopeText: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  activePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(16, 185, 129, 0.12)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
-  },
-  activeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#10B981',
-  },
-  activePillText: {
-    color: '#059669',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  metaBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    borderRadius: 10,
-    borderWidth: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 8,
-    marginBottom: 10,
-  },
-  metaItem: {
-    alignItems: 'center',
-  },
-  metaLabel: {
-    fontSize: 9.5,
-    fontWeight: '700',
-    letterSpacing: 0.4,
-    marginBottom: 2,
-  },
-  metaValue: {
-    fontSize: 11.5,
-    fontWeight: '700',
-  },
-  metaDivider: {
-    width: 1,
-    height: 20,
-    backgroundColor: 'rgba(150,150,150,0.2)',
-  },
-  purposeText: {
-    fontSize: 12,
-    fontStyle: 'italic',
-    marginBottom: 10,
-  },
-  cardActionRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 2,
-  },
-  cardActionBtn: {
-    flex: 1,
-    paddingVertical: 7,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cardActionText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-});
+function QrPlaceholder() {
+  return (
+    <View className="h-[108px] w-[108px] items-center justify-center rounded-xl border border-slate-200 bg-white">
+      <Svg width={74} height={74} viewBox="0 0 74 74" fill="none">
+        <Rect x="2" y="2" width="22" height="22" rx="2" stroke="#315B90" strokeWidth="3" />
+        <Rect x="50" y="2" width="22" height="22" rx="2" stroke="#315B90" strokeWidth="3" />
+        <Rect x="2" y="50" width="22" height="22" rx="2" stroke="#315B90" strokeWidth="3" />
+        <Path d="M31 4H40V13H31V4ZM31 18H45V27H31V18ZM50 31H72V40H50V31ZM31 34H40V49H31V34ZM45 45H55V55H45V45ZM59 47H72V60H59V47ZM31 59H43V72H31V59ZM50 62H57V72H50V62Z" fill="#315B90" />
+      </Svg>
+    </View>
+  );
+}
+
+export function ShareScreen({ app }: { app: WelliApp }) {
+  const { state, actions } = app;
+  const [shareDocuments, setShareDocuments] = useState(true);
+  const [shareEmergencyId, setShareEmergencyId] = useState(false);
+  const [duration, setDuration] = useState<AccessDuration>("1h");
+
+  return (
+    <View className="flex-1 bg-white">
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+
+      <ScrollView
+        className="flex-1"
+        contentContainerClassName="px-4 pb-8 pt-2"
+        showsVerticalScrollIndicator={false}
+      >
+        <View className="min-h-[44px] flex-row items-center justify-between">
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={
+              state.tabHistory.length > 0
+                ? actions.goBackTab
+                : () => actions.setTab("home")
+            }
+            className="h-9 w-9 items-center justify-center rounded-full bg-slate-50"
+          >
+            <BackIcon />
+          </TouchableOpacity>
+
+          <Text className="text-[12px] font-semibold text-slate-800">
+            WelliRecord<Text className="text-[7px]">™</Text>
+          </Text>
+
+          <View className="h-9 w-9" />
+        </View>
+
+        <View className="mt-2 flex-row items-center gap-2">
+          <LogoMark
+            size={20}
+            shieldColor="#082F67"
+            markColor="#FFFFFF"
+            strokeColor="#082F67"
+          />
+          <Text className="text-[11px] font-semibold text-[#315B90]">
+            WelliBridge · Share
+          </Text>
+        </View>
+
+        <Text className="mt-3 text-[28px] leading-[34px] font-extrabold text-[#082F67]">
+          Share on your terms
+        </Text>
+
+        <Text className="mt-1 text-[13px] leading-[19px] text-slate-500">
+          Give a provider access only to what you choose, for a limited time.
+        </Text>
+
+        <View className="mt-6">
+          <Text className="text-[18px] font-extrabold text-[#082F67]">
+            Choose what to share
+          </Text>
+
+          <View className="mt-3 rounded-2xl border border-slate-200 bg-white">
+            <View className="flex-row items-center px-4 py-4">
+              <View className="flex-1 pr-4">
+                <Text className="text-[14px] font-semibold text-[#173B68]">
+                  Patient-uploaded documents
+                </Text>
+                <Text className="mt-1 text-[11.5px] leading-[16px] text-slate-500">
+                  Your reports, scans and uploaded files.
+                </Text>
+              </View>
+
+              <Switch
+                value={shareDocuments}
+                onValueChange={setShareDocuments}
+                trackColor={{ false: "#D9E0E9", true: "#315B90" }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+
+            <View className="h-px bg-slate-100" />
+
+            <View className="flex-row items-center px-4 py-4">
+              <View className="flex-1 pr-4">
+                <Text className="text-[14px] font-semibold text-[#173B68]">
+                  Emergency Medical ID
+                </Text>
+                <Text className="mt-1 text-[11.5px] leading-[16px] text-slate-500">
+                  Allergy status and emergency-safe details.
+                </Text>
+              </View>
+
+              <Switch
+                value={shareEmergencyId}
+                onValueChange={setShareEmergencyId}
+                trackColor={{ false: "#D9E0E9", true: "#315B90" }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+          </View>
+
+          <View className="mt-3 rounded-xl bg-[#EEF3FA] p-3">
+            <Text className="text-[11.5px] leading-[16px] text-[#536A84]">
+              We help you understand what each share includes. You can review
+              everything before granting access.
+            </Text>
+          </View>
+        </View>
+
+        <View className="mt-6">
+          <Text className="text-[18px] font-extrabold text-[#082F67]">
+            Access duration
+          </Text>
+
+          <View className="mt-3 flex-row rounded-xl border border-slate-200 bg-slate-50 p-1">
+            {[
+              ["15m", "15 mins"],
+              ["1h", "1 hour"],
+              ["24h", "24 hours"],
+            ].map(([value, label]) => {
+              const active = duration === value;
+
+              return (
+                <TouchableOpacity
+                  key={value}
+                  activeOpacity={0.8}
+                  onPress={() => setDuration(value as AccessDuration)}
+                  className={`flex-1 items-center rounded-lg py-3 ${
+                    active ? "bg-[#082F67]" : ""
+                  }`}
+                >
+                  <Text
+                    className={`text-[12px] font-semibold ${
+                      active ? "text-white" : "text-[#315B90]"
+                    }`}
+                  >
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <Text className="mt-2 text-[11px] leading-[16px] text-slate-500">
+            Choose the shortest access period that works for this visit.
+          </Text>
+        </View>
+
+        <View className="mt-6 rounded-2xl border border-slate-200 bg-[#F8FAFD] p-4">
+          <Text className="text-[16px] font-extrabold text-[#082F67]">
+            Get secure access link
+          </Text>
+
+          <View className="mt-4 flex-row items-center gap-4">
+            <QrPlaceholder />
+
+            <View className="flex-1">
+              <Text className="text-[13px] font-semibold text-[#173B68]">
+                Scan or share securely
+              </Text>
+              <Text className="mt-2 text-[11.5px] leading-[17px] text-slate-500">
+                A provider can use the secure link after you confirm the final
+                consent screen.
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View className="mt-4 rounded-2xl border border-[#D7E2F1] bg-[#EEF3FA] p-4">
+          <Text className="text-[14px] font-bold text-[#173B68]">
+            Connect this visit
+          </Text>
+          <Text className="mt-1 text-[11.5px] leading-[17px] text-[#536A84]">
+            Only the information you select will be included in the consent
+            summary.
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          activeOpacity={0.86}
+          onPress={() => actions.openShareFlow()}
+          className="mt-5 min-h-[48px] items-center justify-center rounded-xl bg-[#082F67]"
+        >
+          <Text className="text-[14px] font-semibold text-white">
+            Choose recipient to continue
+          </Text>
+        </TouchableOpacity>
+
+        <Text className="mt-3 text-center text-[10.5px] text-slate-400">
+          Illustrative sharing UI · backend authorization comes later
+        </Text>
+      </ScrollView>
+    </View>
+  );
+}

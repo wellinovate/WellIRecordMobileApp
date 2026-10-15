@@ -1,131 +1,216 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  View,
+  ActivityIndicator,
+  ScrollView,
   Text,
   TouchableOpacity,
-  ScrollView,
-  Modal,
-  StyleSheet,
-  ActivityIndicator,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { chatbotService, type ChatOption } from '../services/chatbotService';
+  View,
+} from "react-native";
+import Svg, { Path } from "react-native-svg";
+
+import { chatbotService, type ChatOption } from "../services/chatbotService";
+import type { WelliApp } from "../state/useWelliApp";
 
 type ChatEntry = {
-  from: 'bot' | 'user';
+  from: "bot" | "user";
   text: string;
   options?: ChatOption[];
 };
 
-interface ChatScreenProps {
-  visible: boolean;
-  onClose: () => void;
+function BackIcon() {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M15 18L9 12L15 6"
+        stroke="#172033"
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
 }
 
-export default function ChatScreen({ visible, onClose }: ChatScreenProps) {
+export default function ChatScreen({ app }: { app: WelliApp }) {
+  const { state, actions } = app;
   const [messages, setMessages] = useState<ChatEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
-  const openChat = React.useCallback(async () => {
+  const openChat = useCallback(async () => {
     setLoading(true);
+
     try {
-      const res = await chatbotService.open();
-      setMessages([{ from: 'bot', text: res.message, options: res.options }]);
+      const response = await chatbotService.open();
+
+      setMessages([
+        {
+          from: "bot",
+          text: response.message,
+          options: response.options,
+        },
+      ]);
     } catch {
-      setMessages([{ from: 'bot', text: 'Could not connect. Try again shortly.' }]);
+      setMessages([
+        {
+          from: "bot",
+          text: "Could not connect to the Assistant. Try again shortly.",
+        },
+      ]);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    if (visible && messages.length === 0) {
-      const t = setTimeout(() => {
-        void openChat();
-      }, 0);
-      return () => clearTimeout(t);
+    if (messages.length === 0) {
+      void openChat();
     }
-  }, [visible, messages.length, openChat]);
+  }, [messages.length, openChat]);
 
-  async function selectOption(option: ChatOption) {
-    setMessages((prev) => [...prev, { from: 'user', text: option.label }]);
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+  }, [messages, loading]);
+
+  const selectOption = async (option: ChatOption) => {
+    setMessages((current) => [
+      ...current,
+      { from: "user", text: option.label },
+    ]);
+
     setLoading(true);
+
     try {
-      const res = await chatbotService.respond({ intentKey: option.nextIntentKey });
-      setMessages((prev) => [...prev, { from: 'bot', text: res.message, options: res.options }]);
+      const response = await chatbotService.respond({
+        intentKey: option.nextIntentKey,
+      });
+
+      setMessages((current) => [
+        ...current,
+        {
+          from: "bot",
+          text: response.message,
+          options: response.options,
+        },
+      ]);
     } catch {
-      setMessages((prev) => [...prev, { from: 'bot', text: 'Something went wrong. Try again.' }]);
+      setMessages((current) => [
+        ...current,
+        {
+          from: "bot",
+          text: "Something went wrong. Try again.",
+        },
+      ]);
     } finally {
       setLoading(false);
-      requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
     }
-  }
+  };
+
+  const goBack = () => {
+    if (state.tabHistory.length > 0) {
+      actions.goBackTab();
+      return;
+    }
+
+    actions.setTab("home");
+  };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>WelliRecord Assistant</Text>
-          <TouchableOpacity onPress={onClose} activeOpacity={0.7} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Text style={styles.closeText}>Close</Text>
+    <View className="flex-1 bg-white">
+      <ScrollView
+        ref={scrollRef}
+        className="flex-1"
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingTop: 8,
+          paddingBottom: 28,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View className="min-h-[44px] flex-row items-center justify-between">
+          <TouchableOpacity
+            activeOpacity={0.72}
+            onPress={goBack}
+            className="h-9 w-9 items-center justify-center rounded-full bg-slate-50"
+          >
+            <BackIcon />
           </TouchableOpacity>
+
+          <Text className="text-[12px] font-semibold text-slate-800">
+            WelliRecord<Text className="text-[7px]">™</Text>
+          </Text>
+
+          <View className="h-9 w-9" />
         </View>
 
-        <ScrollView ref={scrollRef} style={styles.messages} contentContainerStyle={styles.messagesContent}>
-          {messages.map((entry, i) => (
-            <View key={i} style={[styles.bubble, entry.from === 'bot' ? styles.botBubble : styles.userBubble]}>
-              <Text style={entry.from === 'bot' ? styles.botText : styles.userText}>{entry.text}</Text>
-              {entry.options && entry.options.length > 0 && (
-                <View style={styles.optionsRow}>
-                  {entry.options.map((opt) => (
+        <Text className="mt-3 text-[11px] font-semibold text-[#315B90]">
+          WelliRecord · Assistant
+        </Text>
+
+        <Text className="mt-3 text-[28px] leading-[34px] font-extrabold text-[#082F67]">
+          Health record assistant
+        </Text>
+
+        <Text className="mt-1 text-[13px] leading-[19px] text-slate-500">
+          Get help using WelliRecord, understanding app tasks, and finding the
+          right place to manage your information.
+        </Text>
+
+        <View className="mt-5 rounded-2xl bg-[#EEF3FA] p-4">
+          <Text className="text-[12px] leading-[18px] text-[#536A84]">
+            The Assistant can help with app tasks and record navigation. It
+            does not replace a healthcare professional or emergency service.
+          </Text>
+        </View>
+
+        <View className="mt-5 gap-3">
+          {messages.map((entry, index) => (
+            <View
+              key={`${entry.from}-${index}`}
+              className={`max-w-[88%] rounded-2xl px-4 py-3 ${
+                entry.from === "bot"
+                  ? "self-start bg-[#F1F4F8]"
+                  : "self-end bg-[#082F67]"
+              }`}
+            >
+              <Text
+                className={`text-[13px] leading-[19px] ${
+                  entry.from === "bot"
+                    ? "text-[#173B68]"
+                    : "text-white"
+                }`}
+              >
+                {entry.text}
+              </Text>
+
+              {entry.options?.length ? (
+                <View className="mt-3 gap-2">
+                  {entry.options.map((option) => (
                     <TouchableOpacity
-                      key={opt.nextIntentKey}
-                      style={styles.optionButton}
-                      onPress={() => selectOption(opt)}
-                      activeOpacity={0.7}
+                      key={option.nextIntentKey}
+                      activeOpacity={0.78}
+                      onPress={() => void selectOption(option)}
+                      className="min-h-[44px] justify-center rounded-xl border border-[#B9CAE0] bg-white px-3"
                     >
-                      <Text style={styles.optionText}>{opt.label}</Text>
+                      <Text className="text-[12px] font-semibold text-[#315B90]">
+                        {option.label}
+                      </Text>
                     </TouchableOpacity>
                   ))}
                 </View>
-              )}
+              ) : null}
             </View>
           ))}
-          {loading && <ActivityIndicator style={{ marginTop: 8 }} color="#0a7" />}
-        </ScrollView>
-      </SafeAreaView>
-    </Modal>
+
+          {loading ? (
+            <View className="self-start rounded-2xl bg-[#F1F4F8] px-4 py-3">
+              <ActivityIndicator size="small" color="#315B90" />
+            </View>
+          ) : null}
+        </View>
+      </ScrollView>
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  headerTitle: { fontSize: 16, fontWeight: '600', color: '#0B2545' },
-  closeText: { color: '#0a7', fontSize: 14, fontWeight: '600' },
-  messages: { flex: 1 },
-  messagesContent: { padding: 16, gap: 12 },
-  bubble: { maxWidth: '85%', padding: 12, borderRadius: 12 },
-  botBubble: { backgroundColor: '#f2f2f2', alignSelf: 'flex-start' },
-  userBubble: { backgroundColor: '#0a7', alignSelf: 'flex-end' },
-  botText: { color: '#111', fontSize: 14, lineHeight: 20 },
-  userText: { color: '#fff', fontSize: 14, lineHeight: 20 },
-  optionsRow: { marginTop: 8, gap: 8 },
-  optionButton: {
-    borderWidth: 1,
-    borderColor: '#0a7',
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: '#f6fffa',
-  },
-  optionText: { color: '#0a7', fontSize: 13, fontWeight: '500' },
-});

@@ -1,5 +1,11 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Platform,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TabIcon } from './TabIcons';
 import { hapticFeedback } from '../utils/haptics';
@@ -8,9 +14,9 @@ import type { Tab } from '../data/types';
 const TAB_ORDER: { key: Tab; label: string }[] = [
   { key: 'home', label: 'Home' },
   { key: 'records', label: 'Records' },
-  { key: 'share', label: 'Share' },
   { key: 'care', label: 'Care' },
-  { key: 'profile', label: 'Profile' },
+  { key: 'chat', label: 'Assistant' },
+  { key: 'profile', label: 'You' },
 ];
 
 interface TabBarProps {
@@ -18,90 +24,149 @@ interface TabBarProps {
   onSelect: (tab: Tab) => void;
 }
 
-export function TabBar({ active, onSelect }: TabBarProps) {
+export function TabBar({
+  active,
+  onSelect,
+}: TabBarProps) {
   const insets = useSafeAreaInsets();
-  const bottomPadding = Math.max(insets.bottom, Platform.OS === 'ios' ? 14 : 10);
+
+  const bottomPadding = Math.max(
+    insets.bottom,
+    Platform.OS === 'ios' ? 8 : 6,
+  );
 
   return (
     <View
       style={[
-        styles.container,
+        styles.outer,
         {
-          backgroundColor: '#FFFFFF',
-          borderTopColor: '#E4DFD1',
           paddingBottom: bottomPadding,
         },
       ]}
     >
-      {TAB_ORDER.map(({ key, label }) => {
-        const isCurrent = active === key;
-        const color = isCurrent ? '#0B2545' : '#9AA3AF';
+      <View style={styles.container}>
+        {TAB_ORDER.map(({ key, label }) => {
+          const isCurrent = active === key;
 
-        return (
-          <TouchableOpacity
-            key={key}
-            activeOpacity={0.7}
-            onPress={() => {
-              if (active !== key) {
-                hapticFeedback.selection();
-              }
-              onSelect(key);
-            }}
-            style={styles.tabButton}
-          >
-            <View style={styles.iconWrap}>
-              <TabIcon tab={key} color={color} weight={isCurrent ? 2.2 : 1.7} />
-              {isCurrent && <View style={styles.activeIndicator} />}
-            </View>
-            <Text
-              style={[
-                styles.tabLabel,
-                {
-                  color,
-                  fontWeight: isCurrent ? '700' : '600',
-                },
-              ]}
+          const color = isCurrent
+            ? '#082F67'
+            : '#111827';
+
+          return (
+            <TouchableOpacity
+              key={key}
+              activeOpacity={0.72}
+              accessibilityRole="button"
+              accessibilityState={{
+                selected: isCurrent,
+              }}
+              accessibilityLabel={label}
+              onPress={() => {
+                if (active !== key) {
+                  hapticFeedback.selection();
+                  onSelect(key);
+                }
+              }}
+              style={styles.tabButton}
             >
-              {label}
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
+              <View
+                style={[
+                  styles.iconContainer,
+                  isCurrent &&
+                    styles.iconContainerActive,
+                ]}
+              >
+                <TabIcon
+                  tab={key}
+                  color={color}
+                  weight={
+                    isCurrent ? 2 : 1.6
+                  }
+                />
+              </View>
+
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.tabLabel,
+                  isCurrent &&
+                    styles.tabLabelActive,
+                ]}
+              >
+                {label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  outer: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingTop: 5,
+  },
+
   container: {
+    minHeight: 56,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingTop: 10,
-    borderTopWidth: 1,
-    zIndex: 30,
+    justifyContent: 'space-between',
+
+    backgroundColor: '#FFFFFF',
+
+    borderWidth: 1,
+    borderColor: '#E4E9F0',
+
+    borderRadius: 24,
+
+    paddingHorizontal: 5,
+    paddingVertical: 4,
+
+    shadowColor: '#0B2545',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 5,
   },
+
   tabButton: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    paddingVertical: 2,
+    minHeight: 48,
   },
-  iconWrap: {
-    position: 'relative',
+
+  iconContainer: {
+    width: 36,
+    height: 28,
+    borderRadius: 14,
+
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 24,
+
+    marginBottom: 1,
   },
-  activeIndicator: {
-    position: 'absolute',
-    bottom: -6,
-    width: 16,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: '#3E7CBF',
+
+  iconContainerActive: {
+    backgroundColor: '#DCE5F2',
   },
+
   tabLabel: {
-    fontSize: 10.5,
+    color: '#161B22',
+    fontSize: 7,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+
+  tabLabelActive: {
+    color: '#082F67',
+    fontWeight: '700',
   },
 });

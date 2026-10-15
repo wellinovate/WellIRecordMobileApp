@@ -1,8 +1,14 @@
-import { registerRootComponent, requireOptionalNativeModule } from 'expo';
-import App from './src/App';
+import {
+  registerRootComponent,
+  requireOptionalNativeModule,
+} from 'expo';
+
+import App from './src/App.expo';
 
 try {
-  const DevMenuPreferences = requireOptionalNativeModule('DevMenuPreferences');
+  const DevMenuPreferences =
+    requireOptionalNativeModule('DevMenuPreferences');
+
   DevMenuPreferences?.setPreferencesAsync?.({
     showFloatingActionButton: false,
   });
