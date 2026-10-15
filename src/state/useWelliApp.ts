@@ -675,6 +675,227 @@ export function useWelliApp() {
     toastTimer.current = setTimeout(() => patch({ toast: null }), 2200);
   };
 
+  type AuthProfileSeed = {
+    name?: string;
+    email?: string;
+    phone?: string;
+    dob?: string;
+    gender?: string;
+    bloodType?: string;
+    genotype?: string;
+    insuranceProvider?: string;
+    insuranceId?: string;
+    allergies?: string;
+    conditions?: string;
+    address?: string;
+    avatarUrl?: string;
+  };
+
+  const ownerFromAuthSession = (
+    session: AuthSession,
+    profile?: AuthProfileSeed,
+  ): FamilyMember => {
+    const rawName = (session.user.fullName || profile?.name || '').trim();
+    const displayName =
+      rawName ||
+      session.user.email ||
+      profile?.email ||
+      session.user.phoneNumber ||
+      profile?.phone ||
+      'User';
+
+    const initials = rawName
+      ? rawName
+          .split(' ')
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((part) => part[0])
+          .join('')
+          .toUpperCase()
+      : displayName.slice(0, 2).toUpperCase();
+
+    return {
+      id: 'me',
+      name: displayName,
+      initials: initials || 'U',
+      role: 'owner',
+      dob: session.user.dateOfBirth || profile?.dob || '',
+      gender: profile?.gender || '',
+      bloodType: session.user.bloodType || profile?.bloodType || '',
+      genotype: session.user.genotype || profile?.genotype || '',
+      height: '',
+      weight: '',
+      allergies: profile?.allergies || '',
+      conditions: profile?.conditions || '',
+      contact:
+        formatEmergencyContact(session.user) ||
+        session.user.phoneNumber ||
+        profile?.phone ||
+        '',
+      emergencyContacts: (session.user as any).emergencyContacts || [],
+      email: session.user.email || profile?.email || '',
+      phone: session.user.phoneNumber || profile?.phone || '',
+      address: profile?.address || '',
+      insuranceProvider:
+        session.user.hmoProvider || profile?.insuranceProvider || '',
+      insuranceId:
+        session.user.hmoPolicyNumber || profile?.insuranceId || '',
+      wrId: session.user.wrId || session.user.memberId || '',
+      memberId: session.user.wrId || session.user.memberId || '',
+      avatarUrl: profile?.avatarUrl,
+    };
+  };
+
+  const refreshAuthenticatedProfile = () => {
+    profileService.fetchMyProfile().then((liveProfile) => {
+      if (!liveProfile) return;
+
+      const serverName = liveProfile.fullName || liveProfile.name || '';
+      const serverDob = liveProfile.dateOfBirth
+        ? String(liveProfile.dateOfBirth).split('T')[0]
+        : liveProfile.dob || '';
+      const dynamicInitials = serverName
+        ? serverName
+            .split(' ')
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((part: string) => part[0])
+            .join('')
+            .toUpperCase()
+        : '';
+
+      patch((s) => ({
+        familyMembers: s.familyMembers.map((member) =>
+          member.id === 'me'
+            ? {
+                ...member,
+                name: serverName || member.name,
+                initials: dynamicInitials || member.initials,
+                dob: serverDob || member.dob,
+                gender: liveProfile.gender || member.gender,
+                bloodType: liveProfile.bloodType || member.bloodType,
+                genotype: liveProfile.genotype || member.genotype,
+                email: liveProfile.email || member.email,
+                phone:
+                  liveProfile.phone ||
+                  liveProfile.phoneNumber ||
+                  member.phone,
+                insuranceProvider:
+                  liveProfile.hmoProvider ||
+                  liveProfile.insuranceProvider ||
+                  member.insuranceProvider ||
+                  '',
+                insuranceId:
+                  liveProfile.hmoPolicyNumber ||
+                  liveProfile.policyNumber ||
+                  member.insuranceId ||
+                  '',
+                wrId:
+                  liveProfile.wrId ||
+                  liveProfile.memberId ||
+                  member.wrId ||
+                  '',
+                memberId:
+                  liveProfile.wrId ||
+                  liveProfile.memberId ||
+                  member.memberId ||
+                  '',
+                allergies:
+                  liveProfile.allergies !== undefined
+                    ? liveProfile.allergies
+                    : member.allergies,
+                conditions:
+                  liveProfile.conditions !== undefined
+                    ? liveProfile.conditions
+                    : member.conditions,
+                address: liveProfile.address || member.address,
+                contact:
+                  formatEmergencyContact(liveProfile) || member.contact,
+                emergencyContacts:
+                  liveProfile.emergencyContacts ||
+                  member.emergencyContacts ||
+                  [],
+              }
+            : member,
+        ),
+      }));
+    }).catch(() => {});
+  };
+
+  const refreshAuthenticatedFamily = () => {
+    familyService.fetchFamilyMembers().then((remoteFamily) => {
+      if (!Array.isArray(remoteFamily) || remoteFamily.length === 0) return;
+
+      patch((s) => ({
+        familyMembers: [
+          s.familyMembers.find((member) => member.id === 'me') || s.familyMembers[0],
+          ...remoteFamily.map((member: any) => ({
+            id: member.id || member._id,
+            name: member.fullName || member.name,
+            initials: member.initials,
+            role: 'dependent' as const,
+            relationship: member.relationship || 'Dependent',
+            dob: member.dateOfBirth || member.dob || '',
+            gender: member.gender || '',
+            bloodType: member.bloodType || '',
+            genotype: member.genotype || '',
+            height: member.height || '',
+            weight: member.weight || '',
+            allergies: member.allergies || '',
+            conditions: member.conditions || '',
+            contact: formatEmergencyContact(member) || member.contact || '',
+            emergencyContacts: member.emergencyContacts || [],
+            email: member.email || '',
+            phone: member.phone || '',
+            address: member.address || '',
+            insuranceProvider: member.insuranceProvider || '',
+            insuranceId: member.insuranceId || '',
+          })),
+        ],
+      }));
+    }).catch(() => {});
+  };
+
+  const commitAuthenticatedSession = async (
+    session: AuthSession,
+    profile?: AuthProfileSeed,
+    mode: 'login' | 'signup' = 'login',
+  ) => {
+    if (!session?.token) {
+      throw new Error('Authentication completed without a valid session token.');
+    }
+
+    await authService.saveSession(session);
+
+    const owner = ownerFromAuthSession(session, profile);
+
+    patch((s) => ({
+      familyMembers: [owner, ...s.familyMembers.filter((member) => member.id !== 'me')],
+      activeFamilyId: 'me',
+      isAuthenticated: true,
+      user: session.user,
+      loggedOut: false,
+      showWelcomeHome: false,
+      showPersonalInfo: false,
+      personalInfoEditMode: false,
+      personalInfoDraft: null,
+      tab: 'home',
+      tabHistory: [],
+    }));
+
+    refreshAuthenticatedProfile();
+    refreshAuthenticatedFamily();
+
+    const firstName = owner.name.split(' ')[0] || 'there';
+    showToast(
+      mode === 'signup'
+        ? `Welcome to WelliRecord, ${firstName}!`
+        : `Welcome back, ${firstName}!`,
+    );
+
+    return session;
+  };
+
   const actions = {
     showToast: (msg: string) => showToast(msg),
     setTab: (tab: Tab) => {
@@ -1681,15 +1902,24 @@ export function useWelliApp() {
       mode: 'login' | 'signup' = 'signup'
     ) => {
       hapticFeedback.light();
-      const res = await authService.sendAuthOtp(identifier, explicitChannel, fullName, mode);
-      
-      // Dispatch in-app security notification (confirms dispatch without revealing code)
+      const res = await authService.sendAuthOtp(
+        identifier,
+        explicitChannel,
+        fullName,
+        mode,
+      );
+
+      const minutes = Math.max(
+        1,
+        Math.ceil((res?.expiresInSeconds || 300) / 60),
+      );
+
       const securityNotif: Notification = {
         id: `sec_${Date.now()}`,
         emoji: '🔐',
         tint: '#0284c7',
         title: 'WelliRecord Security Alert',
-        desc: `A 6-digit authorization code was dispatched to ${identifier}. Valid for 5 minutes.`,
+        desc: `A 6-digit authorization code was dispatched to ${identifier}. Valid for about ${minutes} minute${minutes === 1 ? '' : 's'}.`,
         time: 'Just now',
       };
 
@@ -1700,6 +1930,135 @@ export function useWelliApp() {
       return res;
     },
 
+    verifyOtpOnly: async (
+      identifier: string,
+      code: string,
+      challengeToken?: string,
+    ) => {
+      hapticFeedback.success();
+      return authService.verifyOtpOnly(identifier, code, challengeToken);
+    },
+
+    preparePasswordSignIn: async (
+      identifier: string,
+      password?: string,
+    ) => {
+      hapticFeedback.light();
+
+      const trimmed = identifier.trim();
+      const session = await authService.loginWithPassword(
+        trimmed,
+        password,
+        { persist: false },
+      );
+
+      const serverChannel = String(session.channel || '').toLowerCase();
+      const channel: 'email' | 'phone' =
+        serverChannel === 'sms' || serverChannel === 'phone'
+          ? 'phone'
+          : serverChannel === 'email'
+          ? 'email'
+          : trimmed.includes('@')
+          ? 'email'
+          : 'phone';
+
+      const otpIdentifier =
+        channel === 'email'
+          ? session.user.email || (trimmed.includes('@') ? trimmed : '')
+          : session.user.phoneNumber || (!trimmed.includes('@') ? trimmed : '');
+
+      if (!otpIdentifier) {
+        throw new Error(
+          channel === 'email'
+            ? 'No verified email address is available for this account.'
+            : 'No verified phone number is available for this account.',
+        );
+      }
+
+      // Some backends dispatch the second factor during /auth/login and return
+      // requiresOtp/challengeToken. If they did not, dispatch the login OTP here.
+      if (!session.requiresOtp) {
+        await actions.sendAuthOtp(
+          otpIdentifier,
+          channel,
+          session.user.fullName,
+          'login',
+        );
+      } else {
+        showToast(`Verification code sent to ${otpIdentifier}`);
+      }
+
+      return {
+        session,
+        identifier: otpIdentifier,
+        channel,
+      };
+    },
+
+    verifyPendingAuthOtp: async (
+      identifier: string,
+      code: string,
+      pendingSession?: AuthSession | null,
+    ) => {
+      hapticFeedback.success();
+
+      const verified = await authService.verifyAuthOtp(
+        identifier,
+        code,
+        undefined,
+        {
+          persist: false,
+          challengeToken: pendingSession?.challengeToken,
+        },
+      );
+
+      if (verified.token) {
+        return {
+          ...pendingSession,
+          ...verified,
+          user: {
+            ...(pendingSession?.user || {}),
+            ...verified.user,
+          },
+        } as AuthSession;
+      }
+
+      if (pendingSession?.token) {
+        return pendingSession;
+      }
+
+      throw new Error(
+        'The verification code was accepted, but no authenticated session was returned.',
+      );
+    },
+
+    prepareSignUpWithData: async (data: SignUpFormData) => {
+      hapticFeedback.success();
+      return authService.registerUser(data, { persist: false });
+    },
+
+    completeAuthSession: async (
+      session: AuthSession,
+      options?: {
+        mode?: 'login' | 'signup';
+        profile?: AuthProfileSeed;
+      },
+    ) =>
+      commitAuthenticatedSession(
+        session,
+        options?.profile,
+        options?.mode || 'login',
+      ),
+
+    // Legacy helper retained for screens that still call it. It now starts the
+    // password + OTP flow instead of marking the app authenticated immediately.
+    signInWithCredentials: async (
+      identifier: string,
+      password?: string,
+    ) => actions.preparePasswordSignIn(identifier, password),
+
+    // Legacy OTP helper retained for compatibility. New AuthFlow uses
+    // verifyPendingAuthOtp so it can show SuccessfulLoginScreen before commit.
     verifyAuthOtp: async (
       identifier: string,
       code: string,
@@ -1714,122 +2073,46 @@ export function useWelliApp() {
         insuranceId?: string;
       }
     ) => {
-      hapticFeedback.success();
-      const session = await authService.verifyAuthOtp(identifier, code, userData ? {
-        fullName: userData.name,
-        email: userData.email,
-        phoneNumber: userData.phone,
-        bloodType: userData.bloodType,
-        genotype: userData.genotype,
-        hmoProvider: userData.insuranceProvider,
-        hmoPolicyNumber: userData.insuranceId,
-      } : undefined);
-
-      setAuthToken(session.token);
-
-      const rawName = session.user.fullName || userData?.name || '';
-      const displayName = rawName || session.user.email || session.user.phoneNumber || 'User';
-      const initials = rawName
-        ? rawName
-            .split(' ')
-            .filter(Boolean)
-            .slice(0, 2)
-            .map((p) => p[0])
-            .join('')
-            .toUpperCase()
-        : 'U';
-
-      const needsProfileCompletion = !session.user.fullName || !session.user.dateOfBirth;
-
-      const newOwner: FamilyMember = {
-        id: 'me',
-        name: rawName,
-        initials,
-        role: 'owner',
-        dob: session.user.dateOfBirth || userData?.dob || '',
-        gender: '',
-        bloodType: session.user.bloodType || userData?.bloodType || '',
-        genotype: session.user.genotype || userData?.genotype || '',
-        height: '',
-        weight: '',
-        allergies: '',
-        conditions: '',
-        contact: formatEmergencyContact(session.user) || userData?.phone || '',
-        emergencyContacts: (session.user as any).emergencyContacts || [],
-        email: session.user.email || userData?.email || '',
-        phone: session.user.phoneNumber || userData?.phone || '',
-        address: '',
-        insuranceProvider: session.user.hmoProvider || userData?.insuranceProvider || '',
-        insuranceId: session.user.hmoPolicyNumber || userData?.insuranceId || '',
-        wrId: session.user.wrId || session.user.memberId || '',
-        memberId: session.user.wrId || session.user.memberId || '',
-      };
-
-      patch((s) => ({
-        familyMembers: [newOwner, ...s.familyMembers.filter((f) => f.id !== 'me')],
-        activeFamilyId: 'me',
-        isAuthenticated: true,
-        user: session.user,
-        loggedOut: false,
-        showWelcomeHome: false,
-        tab: 'home',
-        ...(needsProfileCompletion
+      const session = await authService.verifyAuthOtp(
+        identifier,
+        code,
+        userData
           ? {
-              showPersonalInfo: true,
-              personalInfoEditMode: true,
-              personalInfoDraft: { ...newOwner },
+              fullName: userData.name,
+              email: userData.email,
+              phoneNumber: userData.phone,
+              dateOfBirth: userData.dob,
+              bloodType: userData.bloodType,
+              genotype: userData.genotype,
+              hmoProvider: userData.insuranceProvider,
+              hmoPolicyNumber: userData.insuranceId,
             }
-          : {}),
-      }));
+          : undefined,
+        { persist: false },
+      );
 
-      if (needsProfileCompletion) {
-        showToast('Please complete your profile details');
-      } else {
-        showToast(`Welcome back, ${displayName.split(' ')[0]}!`);
-      }
-
-      // Fetch dependents in background
-      familyService.fetchFamilyMembers().then((remoteFamily) => {
-        if (Array.isArray(remoteFamily) && remoteFamily.length > 0) {
-          patch((s) => ({
-            familyMembers: [
-              s.familyMembers[0],
-              ...remoteFamily.map((m: any) => ({
-                id: m.id || m._id,
-                name: m.fullName || m.name,
-                initials: m.initials,
-                role: 'dependent' as const,
-                relationship: m.relationship || 'Dependent',
-                dob: m.dateOfBirth || m.dob || '',
-                gender: m.gender || '',
-                bloodType: m.bloodType || '',
-                genotype: m.genotype || '',
-                height: m.height || '',
-                weight: m.weight || '',
-                allergies: m.allergies || '',
-                conditions: m.conditions || '',
-                contact: formatEmergencyContact(m) || m.contact || '',
-                emergencyContacts: m.emergencyContacts || [],
-                email: m.email || '',
-                phone: m.phone || '',
-                address: m.address || '',
-                insuranceProvider: m.insuranceProvider || '',
-                insuranceId: m.insuranceId || '',
-              })),
-            ],
-          }));
-        }
-      }).catch(() => {});
-
-      return session;
+      return commitAuthenticatedSession(
+        session,
+        userData,
+        'login',
+      );
     },
 
-    signInWithClerk: async (details?: { provider: 'google' | 'apple'; fullName?: string; email?: string; avatar?: string }) => {
+    signInWithClerk: async (details?: {
+      provider: 'google' | 'apple';
+      fullName?: string;
+      email?: string;
+      avatar?: string;
+    }) => {
       if (!details?.email) {
-        showToast('Could not complete sign-in — no email returned. Please try again.');
+        showToast(
+          'Could not complete sign-in — no email returned. Please try again.',
+        );
         return;
       }
+
       hapticFeedback.success();
+
       try {
         const session = await authService.verifySocialAuth({
           provider: details.provider,
@@ -1837,205 +2120,26 @@ export function useWelliApp() {
           fullName: details.fullName,
         });
 
-        setAuthToken(session.token);
-
-        const rawName = session.user.fullName || details.fullName || '';
-        const initials = rawName
-          ? rawName.split(' ').filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase()
-          : 'U';
-        const needsProfileCompletion = !session.user.dateOfBirth;
-
-        const newOwner: FamilyMember = {
-          id: 'me',
-          name: rawName,
-          initials,
-          role: 'owner',
-          dob: session.user.dateOfBirth || '',
-          gender: '',
-          bloodType: session.user.bloodType || '',
-          genotype: session.user.genotype || '',
-          height: '',
-          weight: '',
-          allergies: '',
-          conditions: '',
-          contact: '',
-          emergencyContacts: [],
-          email: session.user.email || details.email,
-          phone: session.user.phoneNumber || '',
-          address: '',
-          insuranceProvider: session.user.hmoProvider || '',
-          insuranceId: session.user.hmoPolicyNumber || '',
-          wrId: session.user.wrId || session.user.memberId || '',
-          memberId: session.user.wrId || session.user.memberId || '',
-          avatarUrl: details.avatar,
-        };
-
-        const providerLabel = details.provider === 'google' ? 'Google' : 'Apple';
-        const securityNotif: Notification = {
-          id: `clerk_auth_${Date.now()}`,
-          emoji: '🔐',
-          tint: '#0284c7',
-          title: `Authenticated with ${providerLabel}`,
-          desc: `Signed in to WelliRecord vault via verified ${providerLabel} account.`,
-          time: 'Just now',
-        };
-
-        patch((s) => ({
-          isAuthenticated: true,
-          user: session.user,
-          loggedOut: false,
-          showWelcomeHome: false,
-          showOnboarding: false,
-          tab: 'home',
-          activeFamilyId: 'me',
-          familyMembers: [newOwner, ...s.familyMembers.filter((f) => f.id !== 'me')],
-          notifications: [securityNotif, ...s.notifications],
-          ...(needsProfileCompletion
-            ? { showPersonalInfo: true, personalInfoEditMode: true, personalInfoDraft: { ...newOwner } }
-            : {}),
-        }));
-
-        showToast(needsProfileCompletion
-          ? `Welcome to WelliRecord, ${rawName.split(' ')[0] || 'there'}! Please complete your profile.`
-          : `Welcome back, ${rawName.split(' ')[0] || 'there'}!`);
-
-        // Fetch dependents in background, same as every other sign-in path
-        familyService.fetchFamilyMembers().then((remoteFamily) => {
-          if (Array.isArray(remoteFamily) && remoteFamily.length > 0) {
-            patch((s) => ({
-              familyMembers: [s.familyMembers[0], ...remoteFamily.map((m: any) => ({
-                id: m.id || m._id, name: m.fullName || m.name, initials: m.initials,
-                role: 'dependent' as const, relationship: m.relationship || 'Dependent',
-                dob: m.dateOfBirth || m.dob || '', gender: m.gender || '', bloodType: m.bloodType || '',
-                genotype: m.genotype || '', height: m.height || '', weight: m.weight || '',
-                allergies: m.allergies || '', conditions: m.conditions || '',
-                contact: formatEmergencyContact(m) || m.contact || '', emergencyContacts: m.emergencyContacts || [],
-                email: m.email || '', phone: m.phone || '', address: m.address || '',
-                insuranceProvider: m.insuranceProvider || '', insuranceId: m.insuranceId || '',
-              }))],
-            }));
-          }
-        }).catch(() => {});
+        await commitAuthenticatedSession(
+          session,
+          {
+            name: details.fullName,
+            email: details.email,
+            avatarUrl: details.avatar,
+          },
+          'login',
+        );
       } catch (err: any) {
         showToast(err?.message || 'Sign-in failed. Please try again.');
+        throw err;
       }
     },
 
-    signInWithCredentials: async (identifier: string, password?: string) => {
-      hapticFeedback.success();
-      const trimmed = identifier.trim();
-      const session = await authService.loginWithPassword(trimmed, password);
-      
-      patch((s) => ({
-        isAuthenticated: true,
-        user: session.user,
-        loggedOut: false,
-        showWelcomeHome: false,
-        activeFamilyId: 'me',
-        tab: 'home',
-        familyMembers: s.familyMembers.map((f) =>
-          f.id === 'me'
-            ? {
-                ...f,
-                name: session.user.fullName || f.name,
-                email: session.user.email || f.email,
-                phone: session.user.phoneNumber || f.phone,
-                bloodType: session.user.bloodType || f.bloodType,
-                genotype: session.user.genotype || f.genotype,
-                insuranceProvider: session.user.hmoProvider || f.insuranceProvider || '',
-                insuranceId: session.user.hmoPolicyNumber || '',
-                wrId: session.user.wrId || session.user.memberId || f.wrId || '',
-                memberId: session.user.wrId || session.user.memberId || f.memberId || '',
-                contact: formatEmergencyContact(session.user) || f.contact,
-                emergencyContacts: (session.user as any).emergencyContacts || f.emergencyContacts || [],
-              }
-            : f
-        ),
-      }));
-
-      // Fetch dependents in background
-      familyService.fetchFamilyMembers().then((remoteFamily) => {
-        if (Array.isArray(remoteFamily) && remoteFamily.length > 0) {
-          patch((s) => ({
-            familyMembers: [
-              s.familyMembers[0],
-              ...remoteFamily.map((m: any) => ({
-                id: m.id || m._id,
-                name: m.fullName || m.name,
-                initials: m.initials,
-                role: 'dependent' as const,
-                relationship: m.relationship || 'Dependent',
-                dob: m.dateOfBirth || m.dob || '',
-                gender: m.gender || '',
-                bloodType: m.bloodType || '',
-                genotype: m.genotype || '',
-                height: m.height || '',
-                weight: m.weight || '',
-                allergies: m.allergies || '',
-                conditions: m.conditions || '',
-                contact: formatEmergencyContact(m) || m.contact || '',
-                emergencyContacts: m.emergencyContacts || [],
-                email: m.email || '',
-                phone: m.phone || '',
-                address: m.address || '',
-                insuranceProvider: m.insuranceProvider || '',
-                insuranceId: m.insuranceId || '',
-              })),
-            ],
-          }));
-        }
-      }).catch(() => {});
-
-      const userFirst = (session.user.fullName || 'User').split(' ')[0];
-      showToast(`Welcome back, ${userFirst}!`);
-    },
-
+    // Kept for older callers. The active Figma AuthFlow performs email/phone
+    // verification before calling prepareSignUpWithData + completeAuthSession.
     signUpWithData: async (data: SignUpFormData) => {
-      hapticFeedback.success();
-      const session = await authService.registerUser(data);
-
-      setAuthToken(session.token);
-
-      const initials = (session.user.fullName || data.name)
-        .split(' ')
-        .filter(Boolean)
-        .slice(0, 2)
-        .map((p) => p[0])
-        .join('')
-        .toUpperCase() || 'U';
-
-      const newOwner: FamilyMember = {
-        id: 'me',
-        name: session.user.fullName || data.name.trim() || 'New User',
-        initials,
-        role: 'owner',
-        dob: data.dob || '1990-01-01',
-        gender: '—',
-        bloodType: session.user.bloodType || data.bloodType || 'O+',
-        genotype: session.user.genotype || data.genotype || 'AA',
-        height: '—',
-        weight: '—',
-        allergies: 'None reported',
-        conditions: 'None reported',
-        contact: session.user.phoneNumber || data.phone || '+234 800 000 0000',
-        email: session.user.email || data.email || 'user@example.com',
-        phone: session.user.phoneNumber || data.phone || '+234 800 000 0000',
-        address: 'Lagos, Nigeria',
-        insuranceProvider: session.user.hmoProvider || data.insuranceProvider || 'Private Self-Pay',
-        insuranceId: session.user.hmoPolicyNumber || data.insuranceId || `WELLI-${Math.floor(100000 + Math.random() * 900000)}`,
-      };
-
-      patch((s) => ({
-        familyMembers: [newOwner, ...s.familyMembers.filter((f) => f.id !== 'me')],
-        activeFamilyId: 'me',
-        isAuthenticated: true,
-        user: session.user,
-        loggedOut: false,
-        showWelcomeHome: false,
-        tab: 'home',
-        tabHistory: [],
-      }));
-      showToast(`Welcome to WelliRecord, ${newOwner.name.split(' ')[0]}!`);
+      const session = await authService.registerUser(data, { persist: false });
+      return commitAuthenticatedSession(session, data as any, 'signup');
     },
 
     addRecord: (rec: Omit<HealthRecord, 'id'>) => {
@@ -2214,3 +2318,5 @@ export function useWelliApp() {
 }
 
 export type WelliApp = ReturnType<typeof useWelliApp>;
+
+

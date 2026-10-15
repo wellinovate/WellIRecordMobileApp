@@ -1,44 +1,47 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState } from 'react';
 
-import type { WelliApp } from "../../state/useWelliApp";
+import type { WelliApp } from '../../state/useWelliApp';
+import type { AuthSession } from '../../services/authService';
 
-import { CreateAccountScreen } from "./screens/CreateAccountScreen";
-import { CreateNewPasswordScreen } from "./screens/CreateNewPasswordScreen";
-import { EmailVerificationScreen } from "./screens/EmailVerificationScreen";
-import { ForgotPasswordScreen } from "./screens/ForgotPasswordScreen";
-import { GuidedProfileScreen } from "./screens/GuidedProfileScreen";
-import { OtpVerificationScreen } from "./screens/OtpVerificationScreen";
-import { PasswordResetSuccessScreen } from "./screens/PasswordResetSuccessScreen";
-import { PhoneNumberScreen } from "./screens/PhoneNumberScreen";
-import { RecoveryEmailSentScreen } from "./screens/RecoveryEmailSentScreen";
-import { SuccessfulLoginScreen } from "./screens/SuccessfulLoginScreen";
-import { WelcomeBackScreen } from "./screens/WelcomeBackScreen";
+import { CreateAccountScreen } from './screens/CreateAccountScreen';
+import { CreateNewPasswordScreen } from './screens/CreateNewPasswordScreen';
+import { EmailVerificationScreen } from './screens/EmailVerificationScreen';
+import { ForgotPasswordScreen } from './screens/ForgotPasswordScreen';
+import { GuidedProfileScreen } from './screens/GuidedProfileScreen';
+import { OtpVerificationScreen } from './screens/OtpVerificationScreen';
+import { PasswordResetSuccessScreen } from './screens/PasswordResetSuccessScreen';
+import { PhoneNumberScreen } from './screens/PhoneNumberScreen';
+import { RecoveryEmailSentScreen } from './screens/RecoveryEmailSentScreen';
+import { SuccessfulLoginScreen } from './screens/SuccessfulLoginScreen';
+import { WelcomeBackScreen } from './screens/WelcomeBackScreen';
 
 type Props = {
   app: WelliApp;
 };
 
 type AuthStep =
-  | "welcome-back"
-  | "create-account"
-  | "email-verification"
-  | "guided-profile"
-  | "phone-number"
-  | "otp-verification"
-  | "successful-login"
-  | "forgot-password"
-  | "recovery-email-sent"
-  | "create-new-password"
-  | "password-reset-success";
+  | 'welcome-back'
+  | 'create-account'
+  | 'email-verification'
+  | 'guided-profile'
+  | 'phone-number'
+  | 'otp-verification'
+  | 'successful-login'
+  | 'forgot-password'
+  | 'recovery-email-sent'
+  | 'create-new-password'
+  | 'password-reset-success';
 
+type AuthIntent = 'signup' | 'password-login' | 'phone-login';
+type VerificationChannel = 'email' | 'phone';
 type LooseRecord = Record<string, any>;
 
 function getErrorMessage(error: unknown, fallback: string): string {
   if (
-    typeof error === "object" &&
+    typeof error === 'object' &&
     error !== null &&
-    "message" in error &&
-    typeof (error as { message?: unknown }).message === "string"
+    'message' in error &&
+    typeof (error as { message?: unknown }).message === 'string'
   ) {
     return (error as { message: string }).message;
   }
@@ -47,22 +50,24 @@ function getErrorMessage(error: unknown, fallback: string): string {
 }
 
 export function AuthFlow({ app }: Props) {
-  const [step, setStep] = useState<AuthStep>("welcome-back");
+  const [step, setStep] = useState<AuthStep>('welcome-back');
+  const [intent, setIntent] = useState<AuthIntent>('password-login');
 
   const [accountData, setAccountData] = useState<LooseRecord>({});
   const [profileData, setProfileData] = useState<LooseRecord>({});
-  const [email, setEmail] = useState("");
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [recoveryEmail, setRecoveryEmail] = useState("");
-  const [newPassword, setNewPassword] = useState("");
+  const [email, setEmail] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [recoveryEmail, setRecoveryEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+
+  const [verificationIdentifier, setVerificationIdentifier] = useState('');
+  const [pendingSession, setPendingSession] =
+    useState<AuthSession | null>(null);
 
   const fullName = useMemo(() => {
-    const fromAccount = [
-      accountData.firstName,
-      accountData.lastName,
-    ]
+    const fromAccount = [accountData.firstName, accountData.lastName]
       .filter(Boolean)
-      .join(" ")
+      .join(' ')
       .trim();
 
     return (
@@ -70,299 +75,356 @@ export function AuthFlow({ app }: Props) {
       accountData.name ||
       profileData.name ||
       profileData.fullName ||
-      ""
+      pendingSession?.user.fullName ||
+      ''
     );
-  }, [accountData, profileData]);
+  }, [accountData, pendingSession, profileData]);
 
   const firstName = useMemo(() => {
+    const sessionName = pendingSession?.user.fullName?.trim();
+    if (sessionName) return sessionName.split(/\s+/)[0] || '';
+
     if (accountData.firstName) {
       return String(accountData.firstName);
     }
 
     if (fullName) {
-      return fullName.split(" ")[0] || "";
+      return fullName.split(/\s+/)[0] || '';
     }
 
-    return "";
-  }, [accountData, fullName]);
+    return '';
+  }, [accountData, fullName, pendingSession]);
 
   const showAuthError = (error: unknown, fallback: string) => {
     app.actions.showToast(getErrorMessage(error, fallback));
   };
 
-  const sendEmailOtpBestEffort = async (
-    targetEmail: string,
-    mode: "login" | "signup" = "signup",
-  ) => {
-    try {
-      await app.actions.sendAuthOtp(
-        targetEmail,
-        "email",
-        fullName || undefined,
-        mode,
-      );
-    } catch (error) {
-      /*
-       * UI routing is currently the priority.
-       * Keep the new flow navigable even while backend OTP integration
-       * is being completed.
-       */
-      showAuthError(
-        error,
-        "Could not send the verification email yet.",
-      );
-    }
+  const registrationData = () => ({
+    ...accountData,
+    ...profileData,
+    name: profileData.name || profileData.fullName || fullName,
+    email: email || accountData.email || profileData.email || '',
+    phone:
+      phoneNumber ||
+      profileData.phone ||
+      profileData.phoneNumber ||
+      accountData.phone ||
+      '',
+    password: accountData.password || newPassword || '',
+    dob: profileData.dob || profileData.dateOfBirth || accountData.dob || '',
+    bloodType: profileData.bloodType || accountData.bloodType || '',
+    genotype: profileData.genotype || accountData.genotype || '',
+    insuranceProvider:
+      profileData.insuranceProvider ||
+      profileData.hmoProvider ||
+      accountData.insuranceProvider ||
+      '',
+    insuranceId:
+      profileData.insuranceId ||
+      profileData.hmoPolicyNumber ||
+      accountData.insuranceId ||
+      '',
+  });
+
+  const resetToWelcome = () => {
+    setIntent('password-login');
+    setPendingSession(null);
+    setVerificationIdentifier('');
+    setStep('welcome-back');
   };
 
-  const sendPhoneOtpBestEffort = async (
-    targetPhone: string,
-  ) => {
-    try {
-      await app.actions.sendAuthOtp(
-        targetPhone,
-        "phone",
-        fullName || undefined,
-        "signup",
-      );
-    } catch (error) {
-      showAuthError(
-        error,
-        "Could not send the verification code yet.",
-      );
-    }
-  };
+  const routePreparedLogin = (prepared: {
+    session: AuthSession;
+    identifier: string;
+    channel: VerificationChannel;
+  }) => {
+    setIntent('password-login');
+    setPendingSession(prepared.session);
+    setVerificationIdentifier(prepared.identifier);
 
-  const completeAccountCreation = async () => {
-    const merged = {
-      ...accountData,
-      ...profileData,
-      name:
-        profileData.name ||
-        profileData.fullName ||
-        fullName,
-      email:
-        email ||
-        accountData.email ||
-        profileData.email ||
-        "",
-      phone:
-        phoneNumber ||
-        profileData.phone ||
-        profileData.phoneNumber ||
-        accountData.phone ||
-        "",
-      password:
-        accountData.password ||
-        newPassword ||
-        "",
-      dob:
-        profileData.dob ||
-        profileData.dateOfBirth ||
-        accountData.dob ||
-        "",
-      bloodType:
-        profileData.bloodType ||
-        accountData.bloodType ||
-        "",
-      genotype:
-        profileData.genotype ||
-        accountData.genotype ||
-        "",
-      insuranceProvider:
-        profileData.insuranceProvider ||
-        profileData.hmoProvider ||
-        accountData.insuranceProvider ||
-        "",
-      insuranceId:
-        profileData.insuranceId ||
-        profileData.hmoPolicyNumber ||
-        accountData.insuranceId ||
-        "",
-    };
-
-    try {
-      await app.actions.signUpWithData(merged as any);
-    } catch (error) {
-      showAuthError(
-        error,
-        "Could not create your account. Please try again.",
-      );
+    if (prepared.channel === 'email') {
+      setEmail(prepared.identifier);
+      setStep('email-verification');
+    } else {
+      setPhoneNumber(prepared.identifier);
+      setStep('otp-verification');
     }
   };
 
   switch (step) {
-    case "create-account":
+    case 'create-account':
       return (
         <CreateAccountScreen
-          onBack={() => setStep("welcome-back")}
-          onSignIn={() => setStep("welcome-back")}
+          onBack={resetToWelcome}
+          onSignIn={resetToWelcome}
           onContinue={async (data: any) => {
-            const nextEmail = String(data?.email ?? "").trim();
+            const nextEmail = String(data?.email ?? '')
+              .trim()
+              .toLowerCase();
 
+            setIntent('signup');
             setAccountData(data ?? {});
             setEmail(nextEmail);
+            setVerificationIdentifier(nextEmail);
+                    setPendingSession(null);
 
-            /*
-             * Trigger the existing OTP action, but do not block UI routing
-             * while backend verification is being finalized.
-             */
-            void sendEmailOtpBestEffort(nextEmail, "signup");
-
-            setStep("email-verification");
+            try {
+              await app.actions.sendAuthOtp(
+                nextEmail,
+                'email',
+                [data?.firstName, data?.lastName].filter(Boolean).join(' ') ||
+                  data?.name ||
+                  undefined,
+                'signup',
+              );
+              setStep('email-verification');
+            } catch (error) {
+              showAuthError(
+                error,
+                'Could not send the verification email. Please try again.',
+              );
+              throw error;
+            }
           }}
         />
       );
 
-    case "email-verification":
+    case 'email-verification': {
+      const isSignup = intent === 'signup';
+      const targetEmail = isSignup ? email : verificationIdentifier;
+
       return (
         <EmailVerificationScreen
-          email={email}
-          onBack={() => setStep("create-account")}
-          onUseDifferentEmail={() => setStep("create-account")}
-          onResend={() =>
-            sendEmailOtpBestEffort(email, "signup")
-          }
-          onVerify={async (_code: string) => {
-            /*
-             * The visual flow continues to profile setup here.
-             * Final account creation happens when the user enters the vault.
-             */
-            setStep("guided-profile");
+          email={targetEmail}
+          purpose={isSignup ? 'signup' : 'login'}
+          onBack={() => {
+            if (isSignup) {
+              setStep('create-account');
+            } else {
+              resetToWelcome();
+            }
+          }}
+          onUseDifferentEmail={() => {
+            if (isSignup) {
+              setStep('create-account');
+            } else {
+              resetToWelcome();
+            }
+          }}
+          onResend={async () => {
+            await app.actions.sendAuthOtp(
+              targetEmail,
+              'email',
+              isSignup ? fullName || undefined : pendingSession?.user.fullName,
+              isSignup ? 'signup' : 'login',
+            );
+          }}
+          onVerify={async (code: string) => {
+            if (isSignup) {
+              await app.actions.verifyOtpOnly(targetEmail, code);
+              setStep('guided-profile');
+              return;
+            }
+
+            const verifiedSession = await app.actions.verifyPendingAuthOtp(
+              targetEmail,
+              code,
+              pendingSession,
+            );
+
+            setPendingSession(verifiedSession);
+            setStep('successful-login');
           }}
         />
       );
+    }
 
-    case "guided-profile": {
-      /*
-       * Cast only this component because its full callback prop signatures
-       * were not included in the terminal output. Runtime export is known
-       * to be a named function export.
-       */
+    case 'guided-profile': {
       const GuidedProfile =
         GuidedProfileScreen as React.ComponentType<any>;
 
       return (
         <GuidedProfile
-          onBack={() => setStep("email-verification")}
+          onBack={() => setStep('email-verification')}
           onReviewAllergies={() =>
             app.actions.showToast(
-              "Allergy review will be connected to the profile editor.",
+              'Allergy review will be connected to the profile editor.',
             )
           }
           onIdentityAndContact={() =>
             app.actions.showToast(
-              "Identity and contact details are part of this guided profile.",
+              'Identity and contact details are part of this guided profile.',
             )
           }
           onHealthAndCover={() =>
             app.actions.showToast(
-              "Health and cover details are part of this guided profile.",
+              'Health and cover details are part of this guided profile.',
             )
           }
           onPreferences={() =>
             app.actions.showToast(
-              "Preferences will be saved with your profile.",
+              'Preferences will be saved with your profile.',
             )
           }
           onSaveAndContinue={(data: any) => {
-            if (data && typeof data === "object") {
+            if (data && typeof data === 'object') {
               setProfileData(data);
             }
 
-            setStep("phone-number");
+            setIntent('signup');
+            setStep('phone-number');
           }}
         />
       );
     }
 
-    case "phone-number": {
+    case 'phone-number': {
       const PhoneNumber =
         PhoneNumberScreen as React.ComponentType<any>;
+      const isSignup = intent === 'signup';
 
       return (
         <PhoneNumber
-          onBack={() => setStep("guided-profile")}
+          purpose={isSignup ? 'signup' : 'login'}
+          onBack={() => {
+            if (isSignup) {
+              setStep('guided-profile');
+            } else {
+              resetToWelcome();
+            }
+          }}
           onSendCode={async (value: string) => {
-            const phone = String(value ?? "").trim();
+            const phone = String(value ?? '').trim();
+
+            await app.actions.sendAuthOtp(
+              phone,
+              'phone',
+              isSignup ? fullName || undefined : undefined,
+              isSignup ? 'signup' : 'login',
+            );
 
             setPhoneNumber(phone);
-            void sendPhoneOtpBestEffort(phone);
-            setStep("otp-verification");
+            setVerificationIdentifier(phone);
+            setStep('otp-verification');
           }}
-          onVerifyExistingCode={(value?: string) => {
-            if (value) {
-              setPhoneNumber(String(value));
-            }
-
-            setStep("otp-verification");
+          onVerifyExistingCode={(value: string) => {
+            const phone = String(value ?? '').trim();
+            setPhoneNumber(phone);
+            setVerificationIdentifier(phone);
+            setStep('otp-verification');
           }}
         />
       );
     }
 
-    case "otp-verification": {
+    case 'otp-verification': {
       const OtpVerification =
         OtpVerificationScreen as React.ComponentType<any>;
+      const isSignup = intent === 'signup';
+      const targetPhone = verificationIdentifier || phoneNumber;
 
       return (
         <OtpVerification
-          phoneNumber={phoneNumber}
-          onBack={() => setStep("phone-number")}
-          onChangePhoneNumber={() =>
-            setStep("phone-number")
-          }
+          phoneNumber={targetPhone}
+          purpose={isSignup ? 'signup' : 'login'}
+          onBack={() => {
+            if (intent === 'password-login') {
+              resetToWelcome();
+            } else {
+              setStep('phone-number');
+            }
+          }}
+          onChangePhoneNumber={() => {
+            if (intent === 'password-login') {
+              resetToWelcome();
+            } else {
+              setStep('phone-number');
+            }
+          }}
           onResend={() =>
-            sendPhoneOtpBestEffort(phoneNumber)
+            app.actions.sendAuthOtp(
+              targetPhone,
+              'phone',
+              isSignup ? fullName || undefined : pendingSession?.user.fullName,
+              isSignup ? 'signup' : 'login',
+            )
           }
-          onVerify={async (_code: string) => {
-            setStep("successful-login");
+          onVerify={async (code: string) => {
+            if (isSignup) {
+              await app.actions.verifyOtpOnly(targetPhone, code);
+
+              const preparedSession =
+                await app.actions.prepareSignUpWithData(
+                  registrationData() as any,
+                );
+
+              setPendingSession(preparedSession);
+              setStep('successful-login');
+              return;
+            }
+
+            const verifiedSession = await app.actions.verifyPendingAuthOtp(
+              targetPhone,
+              code,
+              pendingSession,
+            );
+
+            setPendingSession(verifiedSession);
+            setStep('successful-login');
           }}
         />
       );
     }
 
-    case "successful-login":
+    case 'successful-login':
       return (
         <SuccessfulLoginScreen
           firstName={firstName}
-          onEnterVault={() => {
-            void completeAccountCreation();
+          onEnterVault={async () => {
+            if (!pendingSession) {
+              throw new Error(
+                'Your verified session is missing. Please sign in again.',
+              );
+            }
+
+            await app.actions.completeAuthSession(pendingSession, {
+              mode: intent === 'signup' ? 'signup' : 'login',
+              profile:
+                intent === 'signup'
+                  ? (registrationData() as any)
+                  : undefined,
+            });
           }}
         />
       );
 
-    case "forgot-password":
+    case 'forgot-password':
       return (
         <ForgotPasswordScreen
-          onBack={() => setStep("welcome-back")}
-          onSendResetInstructions={async (
-            targetEmail: string,
-          ) => {
+          onBack={resetToWelcome}
+          onSendResetInstructions={async (targetEmail: string) => {
             const value = targetEmail.trim();
 
             setRecoveryEmail(value);
 
-            /*
-             * There is no dedicated password-reset action in useWelliApp
-             * yet. Keep the new recovery UI routed without inventing a
-             * backend mutation.
-             */
+            // No password-reset API exists in the supplied authService yet.
+            // Keep this route explicit instead of pretending a reset occurred.
             app.actions.showToast(
               `Recovery instructions requested for ${value}`,
             );
 
-            setStep("recovery-email-sent");
+            setStep('recovery-email-sent');
           }}
         />
       );
 
-    case "recovery-email-sent":
+    case 'recovery-email-sent':
       return (
         <RecoveryEmailSentScreen
           email={recoveryEmail}
-          onBack={() => setStep("forgot-password")}
-          onChangeEmail={() => setStep("forgot-password")}
-          onBackToSignIn={() => setStep("welcome-back")}
+          onBack={() => setStep('forgot-password')}
+          onChangeEmail={() => setStep('forgot-password')}
+          onBackToSignIn={resetToWelcome}
           onResend={async () => {
             app.actions.showToast(
               `Recovery instructions requested again for ${recoveryEmail}`,
@@ -371,29 +433,27 @@ export function AuthFlow({ app }: Props) {
         />
       );
 
-    case "create-new-password":
+    case 'create-new-password':
       return (
         <CreateNewPasswordScreen
-          onBack={() => setStep("recovery-email-sent")}
-          onBackToSignIn={() => setStep("welcome-back")}
+          onBack={() => setStep('recovery-email-sent')}
+          onBackToSignIn={resetToWelcome}
           onSavePassword={async (password: string) => {
             setNewPassword(password);
-            setStep("password-reset-success");
+            setStep('password-reset-success');
           }}
         />
       );
 
-    case "password-reset-success":
+    case 'password-reset-success':
       return (
         <PasswordResetSuccessScreen
-          onBack={() => setStep("welcome-back")}
-          onSignInWithNewPassword={() =>
-            setStep("welcome-back")
-          }
+          onBack={resetToWelcome}
+          onSignInWithNewPassword={resetToWelcome}
         />
       );
 
-    case "welcome-back":
+    case 'welcome-back':
     default: {
       const WelcomeBack =
         WelcomeBackScreen as React.ComponentType<any>;
@@ -405,15 +465,19 @@ export function AuthFlow({ app }: Props) {
             password: string,
           ) => {
             try {
-              await app.actions.signInWithCredentials(
-                identifier,
-                password,
-              );
+              const prepared =
+                await app.actions.preparePasswordSignIn(
+                  identifier,
+                  password,
+                );
+
+              routePreparedLogin(prepared);
             } catch (error) {
               showAuthError(
                 error,
-                "Sign-in failed. Please check your details.",
+                'Sign-in failed. Please check your details.',
               );
+              throw error;
             }
           }}
           onForgotPassword={(typedEmail?: string) => {
@@ -421,12 +485,19 @@ export function AuthFlow({ app }: Props) {
               setRecoveryEmail(typedEmail.trim());
             }
 
-            setStep("forgot-password");
+            setStep('forgot-password');
           }}
-          onPhoneSignIn={() => setStep("phone-number")}
-          onCreateAccount={() =>
-            setStep("create-account")
-          }
+          onPhoneSignIn={() => {
+            setIntent('phone-login');
+            setPendingSession(null);
+            setVerificationIdentifier('');
+            setStep('phone-number');
+          }}
+          onCreateAccount={() => {
+            setIntent('signup');
+            setPendingSession(null);
+            setStep('create-account');
+          }}
         />
       );
     }

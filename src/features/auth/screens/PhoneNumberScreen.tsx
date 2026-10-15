@@ -14,16 +14,18 @@ import Svg, { Path } from 'react-native-svg';
 import { LogoMark } from '../../../components/Logo';
 
 type Props = {
+  purpose?: 'signup' | 'login';
   onBack?: () => void;
 
   onSendCode: (
     phoneNumber: string,
   ) => Promise<void> | void;
 
-  onVerifyExistingCode?: () => void;
+  onVerifyExistingCode?: (phoneNumber: string) => void;
 };
 
 export function PhoneNumberScreen({
+  purpose = 'login',
   onBack,
   onSendCode,
   onVerifyExistingCode,
@@ -58,6 +60,23 @@ export function PhoneNumberScreen({
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleVerifyExistingCode = () => {
+    const normalized = phone.replace(/\s+/g, '').trim();
+
+    if (!normalized) {
+      setError('Enter your phone number first.');
+      return;
+    }
+
+    if (normalized.length < 10) {
+      setError('Enter a valid phone number.');
+      return;
+    }
+
+    setError(null);
+    onVerifyExistingCode?.(normalized);
   };
 
   return (
@@ -114,12 +133,13 @@ export function PhoneNumberScreen({
 
         <View style={styles.body}>
           <Text style={styles.title}>
-            Phone sign-in
+            {purpose === 'signup' ? 'Verify your phone number' : 'Phone sign-in'}
           </Text>
 
           <Text style={styles.subtitle}>
-            We'll send a one-time verification code to your registered phone
-            number to confirm your identity.
+            {purpose === 'signup'
+              ? "We'll send a one-time verification code to confirm this phone number for your account."
+              : "We'll send a one-time verification code to your registered phone number to confirm your identity."}
           </Text>
 
           {error && (
@@ -185,7 +205,7 @@ export function PhoneNumberScreen({
 
           <TouchableOpacity
             activeOpacity={0.7}
-            onPress={onVerifyExistingCode}
+            onPress={handleVerifyExistingCode}
             style={styles.verifyExistingButton}
           >
             <Text style={styles.verifyExistingText}>
@@ -226,8 +246,9 @@ export function PhoneNumberScreen({
           </View>
 
           <Text style={styles.note}>
-            Phone sign-in uses your registered mobile number and requires a
-            valid authentication plan.
+            {purpose === 'signup'
+              ? 'This number will be used for account security and recovery.'
+              : 'Use the mobile number registered to your WelliRecord account.'}
           </Text>
 
           <View style={styles.footerBrand}>
@@ -495,3 +516,5 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
 });
+
+

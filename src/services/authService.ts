@@ -1,6 +1,6 @@
 /**
  * WelliRecord Authentication Service
- * Manages user sessions, registration, and Nigerian SMS OTP dispatch (Termii / Twilio).
+ * Manages user sessions, registration, and Nigerian SMS/email OTP dispatch.
  */
 
 import { CONFIG } from './config';
@@ -40,47 +40,86 @@ export interface SendOtpResponse {
   expiresInSeconds: number;
 }
 
-/**
- * Normalizes backend response envelopes ({ success: true, data: { ... } } vs flat { token, user })
- */
-function unwrapAuthSession(rawResponse: any, fallbackUser?: Partial<AuthSession['user']>): AuthSession {
-  const payload = (rawResponse && typeof rawResponse === 'object' && 'data' in rawResponse && rawResponse.data)
-    ? rawResponse.data
-    : rawResponse;
+export interface AuthRequestOptions {
+  /**
+   * Pending auth screens use persist=false so a verified backend response does
+   * not enter the app before the user reaches the final success screen.
+   */
+  persist?: boolean;
+  challengeToken?: string;
+}
 
-  const token = payload?.token || payload?.accessToken || payload?.jwt || rawResponse?.token || '';
+/**
+ * Normalizes backend response envelopes ({ success: true, data: { ... } })
+ * and flat responses ({ token, user }).
+ */
+function unwrapAuthSession(
+  rawResponse: any,
+  fallbackUser?: Partial<AuthSession['user']>,
+): AuthSession {
+  const payload =
+    rawResponse &&
+    typeof rawResponse === 'object' &&
+    'data' in rawResponse &&
+    rawResponse.data
+      ? rawResponse.data
+      : rawResponse;
+
+  const token =
+    payload?.token ||
+    payload?.accessToken ||
+    payload?.jwt ||
+    rawResponse?.token ||
+    '';
+
   const userObj = payload?.user || payload || fallbackUser || { id: 'me' };
 
   return {
     token,
     requiresOtp: Boolean(payload?.requiresOtp || rawResponse?.requiresOtp),
-    challengeToken: payload?.challengeToken || rawResponse?.challengeToken,
+    challengeToken:
+      payload?.challengeToken || rawResponse?.challengeToken,
     channel: payload?.channel || rawResponse?.channel,
     user: {
       id: userObj?.id || userObj?._id || fallbackUser?.id || 'me',
-      fullName: userObj?.fullName || userObj?.name || fallbackUser?.fullName,
-      phoneNumber: userObj?.phoneNumber || userObj?.phone || fallbackUser?.phoneNumber,
+      fullName:
+        userObj?.fullName || userObj?.name || fallbackUser?.fullName,
+      phoneNumber:
+        userObj?.phoneNumber ||
+        userObj?.phone ||
+        fallbackUser?.phoneNumber,
       email: userObj?.email || fallbackUser?.email,
-      dateOfBirth: userObj?.dateOfBirth || userObj?.dob || fallbackUser?.dateOfBirth,
-      memberId: userObj?.wrId || userObj?.memberId || fallbackUser?.memberId,
+      dateOfBirth:
+        userObj?.dateOfBirth || userObj?.dob || fallbackUser?.dateOfBirth,
+      memberId:
+        userObj?.wrId || userObj?.memberId || fallbackUser?.memberId,
       wrId: userObj?.wrId || userObj?.memberId || fallbackUser?.wrId,
       bloodType: userObj?.bloodType || fallbackUser?.bloodType,
       genotype: userObj?.genotype || fallbackUser?.genotype,
-      hmoProvider: userObj?.hmoProvider || userObj?.insuranceProvider || fallbackUser?.hmoProvider,
-      hmoPolicyNumber: userObj?.hmoPolicyNumber || userObj?.policyNumber || fallbackUser?.hmoPolicyNumber,
+      hmoProvider:
+        userObj?.hmoProvider ||
+        userObj?.insuranceProvider ||
+        fallbackUser?.hmoProvider,
+      hmoPolicyNumber:
+        userObj?.hmoPolicyNumber ||
+        userObj?.policyNumber ||
+        fallbackUser?.hmoPolicyNumber,
       contact: userObj?.contact || fallbackUser?.contact,
-      emergencyContact: userObj?.emergencyContact || fallbackUser?.emergencyContact,
-      emergencyContacts: userObj?.emergencyContacts || fallbackUser?.emergencyContacts,
+      emergencyContact:
+        userObj?.emergencyContact || fallbackUser?.emergencyContact,
+      emergencyContacts:
+        userObj?.emergencyContacts || fallbackUser?.emergencyContacts,
     },
   };
 }
 
 export const authService = {
-  /**
-   * Dispatches a 6-digit verification code to a Nigerian phone number via Termii SMS Gateway
-   */
-  async sendPhoneOtp(phoneNumber: string, mode: 'login' | 'signup' = 'signup'): Promise<SendOtpResponse> {
+  async sendPhoneOtp(
+    phoneNumber: string,
+    mode: 'login' | 'signup' = 'signup',
+  ): Promise<SendOtpResponse> {
     const normalized = normalizeNigerianPhone(phoneNumber);
+
     if (CONFIG.demoMode) {
       await new Promise((res) => setTimeout(res, 400));
       return {
@@ -97,58 +136,80 @@ export const authService = {
     });
   },
 
-  /**
-   * Verifies the 6-digit OTP and initiates a secure session
-   */
-  async verifyPhoneOtp(phoneNumber: string, code: string, userData?: Partial<AuthSession['user']>): Promise<AuthSession> {
+  async verifyPhoneOtp(
+    phoneNumber: string,
+    code: string,
+    userData?: Partial<AuthSession['user']>,
+    options: AuthRequestOptions = {},
+  ): Promise<AuthSession> {
     const normalized = normalizeNigerianPhone(phoneNumber);
+
     if (CONFIG.demoMode) {
       await new Promise((res) => setTimeout(res, 400));
+
       const session: AuthSession = {
         token: `jwt_welli_demo_${Date.now()}`,
         user: {
           id: 'me',
           fullName: userData?.fullName || 'Amara Nwosu',
-          phoneNumber: normalized || phoneNumber || '+2348053355504',
+          phoneNumber:
+            normalized || phoneNumber || '+2348053355504',
           email: userData?.email || 'amara.nwosu@gmail.com',
           bloodType: userData?.bloodType || 'O+',
           genotype: userData?.genotype || 'AA',
           hmoProvider: userData?.hmoProvider || 'Hygeia HMO',
-          hmoPolicyNumber: userData?.hmoPolicyNumber || 'HYG-992014-LAG',
+          hmoPolicyNumber:
+            userData?.hmoPolicyNumber || 'HYG-992014-LAG',
           dateOfBirth: userData?.dateOfBirth,
         },
       };
-      await this.saveSession(session);
+
+      if (options.persist !== false) {
+        await this.saveSession(session);
+      }
+
       return session;
     }
 
     const raw = await apiClient.post<any>('/auth/otp/verify', {
       phoneNumber: normalized || phoneNumber,
       code,
-      ...(userData ? {
-        fullName: userData.fullName,
-        email: userData.email,
-        dateOfBirth: userData.dateOfBirth,
-        bloodType: userData.bloodType,
-        genotype: userData.genotype,
-        hmoProvider: userData.hmoProvider,
-        hmoPolicyNumber: userData.hmoPolicyNumber,
-      } : {}),
+      ...(options.challengeToken
+        ? { challengeToken: options.challengeToken }
+        : {}),
+      ...(userData
+        ? {
+            fullName: userData.fullName,
+            email: userData.email,
+            dateOfBirth: userData.dateOfBirth,
+            bloodType: userData.bloodType,
+            genotype: userData.genotype,
+            hmoProvider: userData.hmoProvider,
+            hmoPolicyNumber: userData.hmoPolicyNumber,
+          }
+        : {}),
     });
+
     const session = unwrapAuthSession(raw, {
       fullName: userData?.fullName,
       phoneNumber: normalized || phoneNumber,
       ...userData,
     });
-    await this.saveSession(session);
+
+    if (options.persist !== false && session.token) {
+      await this.saveSession(session);
+    }
+
     return session;
   },
 
-  /**
-   * Dispatches a 6-digit verification code to email
-   */
-  async sendEmailOtp(email: string, fullName?: string, mode: 'login' | 'signup' = 'signup'): Promise<SendOtpResponse> {
+  async sendEmailOtp(
+    email: string,
+    fullName?: string,
+    mode: 'login' | 'signup' = 'signup',
+  ): Promise<SendOtpResponse> {
     const cleanEmail = email.trim().toLowerCase();
+
     if (CONFIG.demoMode) {
       await new Promise((res) => setTimeout(res, 400));
       return {
@@ -165,119 +226,185 @@ export const authService = {
     });
   },
 
-  /**
-   * Verifies the 6-digit email OTP and initiates a secure session
-   */
-  async verifyEmailOtp(email: string, code: string, userData?: Partial<AuthSession['user']>): Promise<AuthSession> {
+  async verifyEmailOtp(
+    email: string,
+    code: string,
+    userData?: Partial<AuthSession['user']>,
+    options: AuthRequestOptions = {},
+  ): Promise<AuthSession> {
     const cleanEmail = email.trim().toLowerCase();
+
     if (CONFIG.demoMode) {
       await new Promise((res) => setTimeout(res, 400));
+
       const session: AuthSession = {
         token: `jwt_welli_demo_${Date.now()}`,
         user: {
           id: 'me',
           fullName: userData?.fullName || 'Amara Nwosu',
-          phoneNumber: userData?.phoneNumber || '+2348053355504',
+          phoneNumber:
+            userData?.phoneNumber || '+2348053355504',
           email: cleanEmail,
           bloodType: userData?.bloodType || 'O+',
           genotype: userData?.genotype || 'AA',
           hmoProvider: userData?.hmoProvider || 'Hygeia HMO',
-          hmoPolicyNumber: userData?.hmoPolicyNumber || 'HYG-992014-LAG',
+          hmoPolicyNumber:
+            userData?.hmoPolicyNumber || 'HYG-992014-LAG',
           dateOfBirth: userData?.dateOfBirth,
         },
       };
-      await this.saveSession(session);
+
+      if (options.persist !== false) {
+        await this.saveSession(session);
+      }
+
       return session;
     }
 
     const raw = await apiClient.post<any>('/auth/otp/verify', {
       email: cleanEmail,
       code,
-      ...(userData ? {
-        fullName: userData.fullName,
-        email: cleanEmail,
-        dateOfBirth: userData.dateOfBirth,
-        bloodType: userData.bloodType,
-        genotype: userData.genotype,
-        hmoProvider: userData.hmoProvider,
-        hmoPolicyNumber: userData.hmoPolicyNumber,
-      } : {}),
+      ...(options.challengeToken
+        ? { challengeToken: options.challengeToken }
+        : {}),
+      ...(userData
+        ? {
+            fullName: userData.fullName,
+            email: cleanEmail,
+            dateOfBirth: userData.dateOfBirth,
+            bloodType: userData.bloodType,
+            genotype: userData.genotype,
+            hmoProvider: userData.hmoProvider,
+            hmoPolicyNumber: userData.hmoPolicyNumber,
+          }
+        : {}),
     });
+
     const session = unwrapAuthSession(raw, {
       fullName: userData?.fullName,
       email: cleanEmail,
       ...userData,
     });
-    await this.saveSession(session);
+
+    if (options.persist !== false && session.token) {
+      await this.saveSession(session);
+    }
+
     return session;
   },
 
-  /**
-   * Unified Send OTP helper for Phone or Email
-   */
-  async sendAuthOtp(identifier: string, explicitChannel?: 'phone' | 'email', fullName?: string, mode: 'login' | 'signup' = 'signup'): Promise<SendOtpResponse> {
-    const isEmail = explicitChannel ? explicitChannel === 'email' : identifier.includes('@');
+  async sendAuthOtp(
+    identifier: string,
+    explicitChannel?: 'phone' | 'email',
+    fullName?: string,
+    mode: 'login' | 'signup' = 'signup',
+  ): Promise<SendOtpResponse> {
+    const isEmail = explicitChannel
+      ? explicitChannel === 'email'
+      : identifier.includes('@');
+
     if (isEmail) {
       return this.sendEmailOtp(identifier.trim(), fullName, mode);
     }
+
     return this.sendPhoneOtp(identifier.trim(), mode);
   },
 
-  /**
-   * Unified Verify OTP helper for Phone or Email
-   */
-  async verifyAuthOtp(identifier: string, code: string, userData?: Partial<AuthSession['user']>): Promise<AuthSession> {
+  async verifyAuthOtp(
+    identifier: string,
+    code: string,
+    userData?: Partial<AuthSession['user']>,
+    options: AuthRequestOptions = {},
+  ): Promise<AuthSession> {
     const isEmail = identifier.includes('@');
-    let session: AuthSession;
-    if (isEmail) {
-      session = await this.verifyEmailOtp(identifier.trim(), code, userData);
-    } else {
-      session = await this.verifyPhoneOtp(identifier.trim(), code, userData);
-    }
+
+    const session = isEmail
+      ? await this.verifyEmailOtp(
+          identifier.trim(),
+          code,
+          userData,
+          options,
+        )
+      : await this.verifyPhoneOtp(
+          identifier.trim(),
+          code,
+          userData,
+          options,
+        );
+
     if (userData?.fullName && session?.user) {
       session.user.fullName = userData.fullName;
     }
-    await this.saveSession(session);
+
     return session;
   },
 
   /**
-   * Verifies an OTP code without altering the logged in session user details
+   * Validates a code without persisting or switching the app's active session.
+   * Used for pre-registration email/phone verification.
    */
-  async verifyOtpOnly(identifier: string, code: string): Promise<{ success: boolean; message?: string }> {
+  async verifyOtpOnly(
+    identifier: string,
+    code: string,
+    challengeToken?: string,
+  ): Promise<{ success: boolean; message?: string }> {
     if (CONFIG.demoMode) {
       await new Promise((res) => setTimeout(res, 300));
       return { success: true };
     }
+
     const isEmail = identifier.includes('@');
-    const normalized = isEmail ? identifier.trim().toLowerCase() : normalizeNigerianPhone(identifier);
+    const normalized = isEmail
+      ? identifier.trim().toLowerCase()
+      : normalizeNigerianPhone(identifier);
+
     const res = await apiClient.post<any>('/auth/otp/verify', {
-      ...(isEmail ? { email: normalized } : { phoneNumber: normalized }),
+      ...(isEmail
+        ? { email: normalized }
+        : { phoneNumber: normalized }),
       code,
+      ...(challengeToken ? { challengeToken } : {}),
     });
+
+    if (res?.success === false) {
+      throw new Error(res?.message || 'The verification code is invalid.');
+    }
+
     return { success: true, message: res?.message };
   },
 
   /**
-   * Signs in user with Email/Phone and Password
+   * Validates email/phone + password. persist=false is used while the OTP
+   * challenge is still pending so App.expo remains inside AuthFlow.
    */
-  async loginWithPassword(identifier: string, password?: string): Promise<AuthSession> {
+  async loginWithPassword(
+    identifier: string,
+    password?: string,
+    options: AuthRequestOptions = {},
+  ): Promise<AuthSession> {
     if (CONFIG.demoMode) {
       await new Promise((res) => setTimeout(res, 400));
+
       const session: AuthSession = {
         token: `jwt_welli_auth_${Date.now()}`,
         user: {
           id: 'me',
           fullName: 'Amara Nwosu',
           phoneNumber: '+234 805 335 5504',
-          email: identifier.includes('@') ? identifier.trim().toLowerCase() : 'amara.nwosu@gmail.com',
+          email: identifier.includes('@')
+            ? identifier.trim().toLowerCase()
+            : 'amara.nwosu@gmail.com',
           bloodType: 'O+',
           genotype: 'AA',
           hmoProvider: 'Hygeia HMO',
           hmoPolicyNumber: 'HYG-992014-LAG',
         },
       };
-      await this.saveSession(session);
+
+      if (options.persist !== false) {
+        await this.saveSession(session);
+      }
+
       return session;
     }
 
@@ -285,50 +412,73 @@ export const authService = {
       identifier: identifier.trim(),
       password,
     });
+
     const session = unwrapAuthSession(raw, {
-      email: identifier.includes('@') ? identifier.trim().toLowerCase() : undefined,
-      phoneNumber: !identifier.includes('@') ? identifier.trim() : undefined,
+      email: identifier.includes('@')
+        ? identifier.trim().toLowerCase()
+        : undefined,
+      phoneNumber: !identifier.includes('@')
+        ? identifier.trim()
+        : undefined,
     });
-    await this.saveSession(session);
+
+    // A challenge response is not an authenticated app session yet.
+    if (
+      options.persist !== false &&
+      session.token &&
+      !session.requiresOtp
+    ) {
+      await this.saveSession(session);
+    }
+
     return session;
   },
 
-  /**
-   * Verifies Social Authentication (Google / Apple via Clerk) with backend
-   */
-  async verifySocialAuth(details: { provider: 'google' | 'apple'; email: string; fullName?: string }): Promise<AuthSession & { isNewAccount?: boolean }> {
+  async verifySocialAuth(details: {
+    provider: 'google' | 'apple';
+    email: string;
+    fullName?: string;
+  }): Promise<AuthSession & { isNewAccount?: boolean }> {
     if (CONFIG.demoMode) {
       throw new Error('Social sign-in is not available in demo mode');
     }
+
     const raw = await apiClient.post<any>('/auth/social/verify', {
       provider: details.provider,
       email: details.email.trim().toLowerCase(),
       fullName: details.fullName,
     });
+
     const session = unwrapAuthSession(raw, {
       email: details.email.trim().toLowerCase(),
       fullName: details.fullName,
     });
+
+    if (!session.token) {
+      throw new Error('Social authentication did not return a valid session.');
+    }
+
     await this.saveSession(session);
     return { ...session, isNewAccount: raw?.isNewAccount };
   },
 
-  /**
-   * Registers a new patient account with Health Vault
-   */
-  async registerUser(data: {
-    name: string;
-    email: string;
-    phone: string;
-    dob?: string;
-    bloodType?: string;
-    genotype?: string;
-    insuranceProvider?: string;
-    insuranceId?: string;
-    password?: string;
-  }): Promise<AuthSession> {
+  async registerUser(
+    data: {
+      name: string;
+      email: string;
+      phone: string;
+      dob?: string;
+      bloodType?: string;
+      genotype?: string;
+      insuranceProvider?: string;
+      insuranceId?: string;
+      password?: string;
+    },
+    options: AuthRequestOptions = {},
+  ): Promise<AuthSession> {
     if (CONFIG.demoMode) {
       await new Promise((res) => setTimeout(res, 400));
+
       const session: AuthSession = {
         token: `jwt_welli_reg_${Date.now()}`,
         user: {
@@ -339,68 +489,78 @@ export const authService = {
           bloodType: data.bloodType || 'O+',
           genotype: data.genotype || 'AA',
           hmoProvider: data.insuranceProvider || 'Hygeia HMO',
-          hmoPolicyNumber: data.insuranceId || `HYG-${Math.floor(100000 + Math.random() * 900000)}`,
+          hmoPolicyNumber:
+            data.insuranceId ||
+            `HYG-${Math.floor(100000 + Math.random() * 900000)}`,
+          dateOfBirth: data.dob,
         },
       };
-      await this.saveSession(session);
+
+      if (options.persist !== false) {
+        await this.saveSession(session);
+      }
+
       return session;
     }
 
-    try {
-      const session = await apiClient.post<AuthSession>('/auth/register', data);
-      await this.saveSession(session);
-      return session;
-    } catch {
-      const session: AuthSession = {
-        token: `jwt_welli_reg_${Date.now()}`,
-        user: {
-          id: 'me',
-          fullName: data.name,
-          phoneNumber: data.phone || '+234 800 000 0000',
-          email: data.email || 'user@example.com',
-          bloodType: data.bloodType || 'O+',
-          genotype: data.genotype || 'AA',
-          hmoProvider: data.insuranceProvider || 'Hygeia HMO',
-          hmoPolicyNumber: data.insuranceId || `HYG-${Math.floor(100000 + Math.random() * 900000)}`,
-        },
-      };
-      await this.saveSession(session);
-      return session;
+    // Never fabricate a production session when registration fails.
+    const raw = await apiClient.post<any>('/auth/register', data);
+    const session = unwrapAuthSession(raw, {
+      id: 'me',
+      fullName: data.name,
+      phoneNumber: data.phone,
+      email: data.email,
+      dateOfBirth: data.dob,
+      bloodType: data.bloodType,
+      genotype: data.genotype,
+      hmoProvider: data.insuranceProvider,
+      hmoPolicyNumber: data.insuranceId,
+    });
+
+    if (!session.token) {
+      throw new Error('Account creation did not return a valid session.');
     }
+
+    if (options.persist !== false) {
+      await this.saveSession(session);
+    }
+
+    return session;
   },
 
-  /**
-   * Persists active session locally
-   */
   async saveSession(session: AuthSession): Promise<void> {
+    if (!session?.token) {
+      throw new Error('Cannot persist an authentication session without a token.');
+    }
+
     setAuthToken(session.token);
+
     try {
-      await storage.setItem('welli_auth_session', JSON.stringify(session));
+      await storage.setItem(
+        'welli_auth_session',
+        JSON.stringify(session),
+      );
     } catch {}
-    // Fire-and-forget: register this device's push token now that we have
-    // a valid session. Never blocks or fails the login flow.
+
     registerForPushNotificationsAsync().catch(() => {});
   },
 
-  /**
-   * Retrieves saved local session
-   */
   async getSavedSession(): Promise<AuthSession | null> {
     try {
       const raw = await storage.getItem('welli_auth_session');
       if (!raw) return null;
+
       const session = JSON.parse(raw) as AuthSession;
+
       if (session?.token) {
         setAuthToken(session.token);
         return session;
       }
     } catch {}
+
     return null;
   },
 
-  /**
-   * Toggles two-factor authentication on the backend and persists local preference
-   */
   async toggleTwoFactor(enabled: boolean): Promise<boolean> {
     try {
       await storage.setItem('welli_2fa_enabled', enabled ? '1' : '0');
@@ -411,18 +571,19 @@ export const authService = {
     }
 
     try {
-      const res = await apiClient.post<{ success: boolean; twoFactorEnabled: boolean }>('/auth/2fa/toggle', {
+      const res = await apiClient.post<{
+        success: boolean;
+        twoFactorEnabled: boolean;
+      }>('/auth/2fa/toggle', {
         twoFactorEnabled: enabled,
       });
+
       return Boolean(res?.twoFactorEnabled ?? enabled);
     } catch {
       return enabled;
     }
   },
 
-  /**
-   * Permanently deletes user account and erases vault records under NDPR Right to Erasure
-   */
   async deleteAccount(): Promise<boolean> {
     try {
       if (!CONFIG.demoMode) {
@@ -431,19 +592,19 @@ export const authService = {
     } catch {}
 
     await this.logout();
+
     try {
       await storage.removeItem('welli_active_shares');
       await storage.removeItem('welli_face_id');
       await storage.removeItem('welli_2fa_enabled');
     } catch {}
+
     return true;
   },
 
-  /**
-   * Clears the current session
-   */
   async logout(): Promise<void> {
     setAuthToken(null);
+
     try {
       await storage.removeItem('welli_auth_session');
     } catch {}

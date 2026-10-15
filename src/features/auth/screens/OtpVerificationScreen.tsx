@@ -15,6 +15,7 @@ import { LogoMark } from '../../../components/Logo';
 
 type Props = {
   phoneNumber: string;
+  purpose?: 'signup' | 'login';
 
   onBack?: () => void;
 
@@ -27,6 +28,7 @@ type Props = {
 
 export function OtpVerificationScreen({
   phoneNumber,
+  purpose = 'login',
   onBack,
   onVerify,
   onResend,
@@ -225,7 +227,9 @@ export function OtpVerificationScreen({
           />
 
           <Text style={styles.flowLabel}>
-            PHONE SIGN-IN · 6-DIGIT PHONE OTP
+            {purpose === 'signup'
+              ? 'ACCOUNT · PHONE VERIFICATION'
+              : 'PHONE SIGN-IN · 6-DIGIT PHONE OTP'}
           </Text>
         </View>
 
@@ -234,8 +238,9 @@ export function OtpVerificationScreen({
         </Text>
 
         <Text style={styles.subtitle}>
-          Enter the 6-digit verification code sent to your phone
-          number.
+          {purpose === 'signup'
+            ? 'Enter the 6-digit code sent to this phone number to finish securing your account.'
+            : 'Enter the 6-digit verification code sent to your phone number.'}
         </Text>
 
         {!!maskedPhone && (
@@ -245,7 +250,7 @@ export function OtpVerificationScreen({
         )}
 
         <Text style={styles.requirementNote}>
-          Phone sign-in requires an active authentication plan.
+          Verification codes expire shortly and can only be used once.
         </Text>
 
         <View style={styles.heroCard}>
@@ -325,7 +330,7 @@ export function OtpVerificationScreen({
             />
           ) : (
             <Text style={styles.primaryButtonText}>
-              Verify & Sign In
+              {purpose === 'signup' ? 'Verify phone' : 'Verify & Sign In'}
             </Text>
           )}
         </TouchableOpacity>
@@ -778,3 +783,5 @@ const styles = StyleSheet.create({
     marginTop: 21,
   },
 });
+
+

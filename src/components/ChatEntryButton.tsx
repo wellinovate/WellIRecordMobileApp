@@ -1,37 +1,28 @@
-import React, { useState } from 'react';
-import { TouchableOpacity, Text, StyleSheet } from 'react-native';
-import ChatScreen from '../screens/ChatScreen';
+import React from "react";
+import { Text, TouchableOpacity } from "react-native";
 
-// Drop this into the tab bar area or a header, wherever the app's existing
-// action buttons live. Not a floating widget — matches native modal patterns.
-export default function ChatEntryButton() {
-  const [open, setOpen] = useState(false);
+import type { WelliApp } from "../state/useWelliApp";
 
+type ChatEntryButtonProps = {
+  app: WelliApp;
+};
+
+export default function ChatEntryButton({
+  app,
+}: ChatEntryButtonProps) {
   return (
-    <>
-      <TouchableOpacity
-        style={styles.button}
-        onPress={() => setOpen(true)}
-        activeOpacity={0.8}
-        accessibilityLabel="Help & WelliRecord Assistant"
-      >
-        <Text style={styles.buttonText}>Help</Text>
-      </TouchableOpacity>
-      <ChatScreen visible={open} onClose={() => setOpen(false)} />
-    </>
+    <TouchableOpacity
+      activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityLabel="Help & WelliRecord Assistant"
+      onPress={() => app.actions.setTab("chat")}
+      className="items-center justify-center rounded-[18px] bg-[#00AA77] px-[12px] py-[6px]"
+    >
+      <Text className="text-[13px] font-semibold text-white">
+        Help
+      </Text>
+    </TouchableOpacity>
   );
 }
 
 export { ChatEntryButton };
-
-const styles = StyleSheet.create({
-  button: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 18,
-    backgroundColor: '#0a7',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  buttonText: { color: '#fff', fontWeight: '600', fontSize: 13 },
-});

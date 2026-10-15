@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
+  ActivityIndicator,
   SafeAreaView,
   StatusBar,
   StyleSheet,
@@ -12,13 +13,33 @@ import { LogoMark } from '../../../components/Logo';
 
 type Props = {
   firstName?: string;
-  onEnterVault: () => void;
+  onEnterVault: () => Promise<void> | void;
 };
 
 export function SuccessfulLoginScreen({
   firstName,
   onEnterVault,
 }: Props) {
+  const [entering, setEntering] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleEnterVault = async () => {
+    if (entering) return;
+
+    try {
+      setError(null);
+      setEntering(true);
+      await onEnterVault();
+    } catch (err: any) {
+      setError(
+        err?.message ||
+          'Unable to open your health vault. Please try signing in again.',
+      );
+    } finally {
+      setEntering(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.root}>
       <StatusBar
@@ -86,13 +107,24 @@ export function SuccessfulLoginScreen({
 
           <TouchableOpacity
             activeOpacity={0.86}
-            onPress={onEnterVault}
-            style={styles.primaryButton}
+            onPress={handleEnterVault}
+            disabled={entering}
+            style={[styles.primaryButton, entering && styles.buttonDisabled]}
           >
-            <Text style={styles.primaryButtonText}>
-              Go to My Health Vault
-            </Text>
+            {entering ? (
+              <ActivityIndicator size="small" color="#082F67" />
+            ) : (
+              <Text style={styles.primaryButtonText}>
+                Go to My Health Vault
+              </Text>
+            )}
           </TouchableOpacity>
+
+          {error && (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          )}
 
           <View style={styles.tipCard}>
             <View style={styles.tipIcon}>
@@ -272,6 +304,29 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
+  buttonDisabled: {
+    opacity: 0.72,
+  },
+
+  errorBox: {
+    width: '100%',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: '#5F7FA8',
+    borderRadius: 9,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    marginTop: -7,
+    marginBottom: 14,
+  },
+
+  errorText: {
+    color: '#FFFFFF',
+    fontSize: 9.5,
+    lineHeight: 14,
+    textAlign: 'center',
+  },
+
   tipCard: {
     width: '100%',
     minHeight: 61,
@@ -339,3 +394,5 @@ const styles = StyleSheet.create({
     marginTop: 25,
   },
 });
+
+

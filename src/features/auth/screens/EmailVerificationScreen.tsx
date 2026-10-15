@@ -15,6 +15,7 @@ import { LogoMark } from '../../../components/Logo';
 
 type Props = {
   email: string;
+  purpose?: 'signup' | 'login';
   onBack?: () => void;
   onVerify: (code: string) => Promise<void> | void;
   onResend: () => Promise<void> | void;
@@ -23,6 +24,7 @@ type Props = {
 
 export function EmailVerificationScreen({
   email,
+  purpose = 'signup',
   onBack,
   onVerify,
   onResend,
@@ -121,12 +123,16 @@ export function EmailVerificationScreen({
           <View style={styles.headerSpacer} />
         </View>
 
-        <Text style={styles.eyebrow}>ACCOUNT · STEP 2 OF 2</Text>
+        <Text style={styles.eyebrow}>
+          {purpose === 'login' ? 'SIGN IN · SECURITY CHECK' : 'ACCOUNT · STEP 2 OF 2'}
+        </Text>
 
         <Text style={styles.title}>Check your inbox</Text>
 
         <Text style={styles.subtitle}>
-          Verify your email before continuing to your profile.
+          {purpose === 'login'
+            ? 'Enter the code sent to your email to finish signing in.'
+            : 'Verify your email before continuing to your profile.'}
         </Text>
 
         <View style={styles.heroCard}>
@@ -162,7 +168,7 @@ export function EmailVerificationScreen({
           <Text style={styles.cardTitle}>Enter your email code</Text>
 
           <Text style={styles.cardDescription}>
-            A verification code will be sent to the email you entered.
+            A 6-digit verification code was sent to this email address.
           </Text>
 
           {!!email && (
@@ -204,7 +210,9 @@ export function EmailVerificationScreen({
             {verifying ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
-              <Text style={styles.verifyButtonText}>Verify email</Text>
+              <Text style={styles.verifyButtonText}>
+                {purpose === 'login' ? 'Verify & Continue' : 'Verify email'}
+              </Text>
             )}
           </TouchableOpacity>
 
@@ -274,8 +282,8 @@ export function EmailVerificationScreen({
         </TouchableOpacity>
 
         <Text style={styles.previewNotice}>
-          Illustrative verification preview. No code has been sent and no
-          account has been created.
+          Verification codes expire after a short period. If you did not request
+          this code, return to sign in and do not share it.
         </Text>
 
         <View style={styles.bottomIndicator} />
@@ -569,3 +577,5 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 });
+
+

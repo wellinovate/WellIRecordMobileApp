@@ -468,7 +468,7 @@ export function WelcomeBackScreen({
 
           <Text style={styles.phoneButtonText}>
 
-            Phone sign-in — proposed
+            Sign in with phone
 
           </Text>
 
@@ -1085,3 +1085,5 @@ const styles = StyleSheet.create({
   },
 
 });
+
+

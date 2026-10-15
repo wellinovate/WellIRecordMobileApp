@@ -2,7 +2,6 @@ import React, { useEffect } from "react";
 import "../global.css";
 import { View, StyleSheet, BackHandler, Platform } from "react-native";
 
-
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 import { useWelliApp } from "./state/useWelliApp";
@@ -100,13 +99,10 @@ import { ClerkProvider, ClerkLoaded } from "@clerk/expo";
 import { tokenCache } from "./utils/tokenCache";
 
 const publishableKey =
-
   process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ||
-
   "pk_test_aW1wcm92ZWQtaGVuLTQ3MTAuY2xlcmsuYWNjb3VudHMuZGV2JA";
 
 function MainWelliApp() {
-
   const app = useWelliApp();
 
   const { state } = app;
@@ -114,310 +110,229 @@ function MainWelliApp() {
   const theme = themeFor(state.darkMode);
 
   useEffect(() => {
-
     if (Platform.OS !== "android") return;
 
     const onBackPress = () => {
-
       if (state.showVaultExport) {
-
         app.actions.closeVaultExport();
 
         return true;
-
       }
 
       if (state.showVitalsTrends) {
-
         app.actions.closeVitalsTrends();
 
         return true;
-
       }
 
       if (state.showUpcomingVisits) {
-
         app.actions.closeUpcomingVisits();
 
         return true;
-
       }
 
       if (state.showOrderTracking) {
-
         app.actions.closeOrderTracking();
 
         return true;
-
       }
 
       if (state.showOrderMedication) {
-
         app.actions.closeOrderMedication();
 
         return true;
-
       }
 
       if (state.showRefillModal) {
-
         app.actions.closeRefillModal();
 
         return true;
-
       }
 
       if (state.showPrintLabResult) {
-
         app.actions.closePrintLabResult();
 
         return true;
-
       }
 
       if (state.showEmailLabResult) {
-
         app.actions.closeEmailLabResult();
 
         return true;
-
       }
-if (state.showInvoiceDetail) {
-
+      if (state.showInvoiceDetail) {
         app.actions.closeInvoiceDetail();
 
         return true;
-
       }
 
       if (state.showAddFamilyMember) {
-
         app.actions.closeAddFamilyMember();
 
         return true;
-
       }
 
       if (state.showPrivacyPolicy) {
-
         app.actions.closePrivacyPolicy();
 
         return true;
-
       }
 
       if (state.personalInfoEditMode) {
-
         app.actions.cancelEditPersonalInfo();
 
         return true;
-
       }
 
       if (state.showShareFlow) {
-
         app.actions.shareBack();
 
         return true;
-
       }
 
       if (state.showUpload) {
-
         if (state.uploadStep > 0) {
-
           app.actions.openUpload();
-
         } else {
-
           app.actions.closeUpload();
-
         }
 
         return true;
-
       }
 
       if (state.showSmartConsent) {
-
         app.actions.closeSmartConsent();
 
         return true;
-
       }
 
       if (state.showEmergency) {
-
         app.actions.closeEmergency();
 
         return true;
-
       }
 
       if (state.showBookAppointment) {
-
         app.actions.closeBookAppointment();
 
         return true;
-
       }
 
       if (state.showBilling) {
-
         app.actions.closeBilling();
 
         return true;
-
       }
 
       if (state.showPersonalInfo) {
-
         app.actions.closePersonalInfo();
 
         return true;
-
       }
 
       if (state.showFamilyAccess) {
-
         app.actions.closeFamilyAccess();
 
         return true;
-
       }
 
       if (state.showPrivacySecurity) {
-
         app.actions.closePrivacySecurity();
 
         return true;
-
       }
 
       if (state.showLinkedAccounts) {
-
         app.actions.closeLinkedAccounts();
 
         return true;
-
       }
 
       if (state.showNotificationSettings) {
-
         app.actions.closeNotificationSettings();
 
         return true;
-
       }
 
       if (state.showProxyLog) {
-
         app.actions.closeProxyLog();
 
         return true;
-
       }
 
       if (state.showActivity) {
-
         app.actions.closeActivity();
 
         return true;
-
       }
 
       if (state.showLanguage) {
-
         app.actions.closeLanguage();
 
         return true;
-
       }
 
       if (state.showNotifications) {
-
         app.actions.closeNotifications();
 
         return true;
-
       }
 
       if (state.recordDetailId) {
-
         app.actions.closeRecord();
 
         return true;
-
       }
 
       if (state.inCall) {
-
         app.actions.endCall();
 
         return true;
-
       }
 
       // Tab navigation history
 
       if (state.tabHistory.length > 0) {
-
         app.actions.goBackTab();
 
         return true;
-
       }
 
       return false;
-
     };
 
     const subscription = BackHandler.addEventListener(
-
       "hardwareBackPress",
 
       onBackPress,
-
     );
 
     return () => subscription.remove();
-
   }, [state, app.actions]);
 
   const renderScreen = () => {
-
     switch (state.tab) {
-
       case "home":
-
         return <HomeScreen app={app} />;
 
       case "records":
-
         return <RecordsScreen app={app} />;
 
       case "share":
-
         return <ShareScreen app={app} />;
 
       case "care":
-
         return <CareScreen app={app} />;
 
       case "chat":
-
         return <ChatScreen app={app} />;
 
       case "profile":
-
         return <ProfileScreen app={app} />;
 
       default:
-
         return <HomeScreen app={app} />;
-
     }
-
   };
 
   // Unauthenticated session -> new Figma authentication flow
@@ -444,19 +359,13 @@ if (state.showInvoiceDetail) {
   // 3. Authenticated Active Session -> Show MainApp Dashboard
 
   return (
-
     <ThemeContext.Provider value={theme}>
-
       <PhoneShell>
-
         <SafeAreaView
-
           style={[styles.safeArea, { backgroundColor: theme.bg }]}
 
           edges={["top", "left", "right"]}
-
         >
-
           <View style={styles.screenContainer}>{renderScreen()}</View>
 
           <TabBar active={state.tab} onSelect={app.actions.setTab} />
@@ -482,31 +391,23 @@ if (state.showInvoiceDetail) {
           {Boolean(state.showPersonalInfo) && <PersonalInfoModal app={app} />}
 
           {Boolean(state.showPrivacySecurity) && (
-
             <PrivacySecurityModal app={app} />
-
           )}
 
           {Boolean(state.showPrivacyPolicy) && <PrivacyPolicyModal app={app} />}
 
           {Boolean(state.showLinkedAccounts) && (
-
             <LinkedAccountsModal app={app} />
-
           )}
 
           {Boolean(state.showNotificationSettings) && (
-
             <NotificationSettingsModal app={app} />
-
           )}
 
           {Boolean(state.showFamilyAccess) && <FamilyAccessModal app={app} />}
 
           {Boolean(state.showAddFamilyMember) && (
-
             <AddFamilyMemberModal app={app} />
-
           )}
 
           {Boolean(state.showProxyLog) && <ProxyLogModal app={app} />}
@@ -518,9 +419,7 @@ if (state.showInvoiceDetail) {
           {Boolean(state.showLockScreen) && <FaceIdLockScreen app={app} />}
 
           {Boolean(state.showBookAppointment) && (
-
             <BookAppointmentModal app={app} />
-
           )}
 
           {Boolean(state.showBilling) && <BillingModal app={app} />}
@@ -528,43 +427,31 @@ if (state.showInvoiceDetail) {
           {Boolean(state.showInvoiceDetail) && <InvoiceDetailModal app={app} />}
 
           {Boolean(state.showPrintLabResult) && (
-
             <PrintLabResultModal app={app} />
-
           )}
 
           {Boolean(state.showEmailLabResult) && <EmailReportModal app={app} />}
 
           {Boolean(state.showRefillModal) && (
-
             <PrescriptionRefillModal app={app} />
-
           )}
 
           {Boolean(state.showOrderMedication) && (
-
             <OrderMedicationModal app={app} />
-
           )}
 
           {Boolean(state.showMedicationReminder) && (
-
             <MedicationReminderModal app={app} />
-
           )}
 
           {Boolean(state.showPharmacyDirectory) && (
-
             <PharmacyDirectoryModal app={app} />
-
           )}
 
           {Boolean(state.showOrderTracking) && <OrderTrackingModal app={app} />}
 
           {Boolean(state.showUpcomingVisits) && (
-
             <UpcomingVisitsModal app={app} />
-
           )}
 
           {Boolean(state.showVitalsTrends) && <VitalsTrendsModal app={app} />}
@@ -574,55 +461,34 @@ if (state.showInvoiceDetail) {
           {Boolean(state.showVaultExport) && <VaultExportModal app={app} />}
 
           <Toast message={state.toast} />
-
         </SafeAreaView>
-
       </PhoneShell>
-
     </ThemeContext.Provider>
-
   );
-
 }
 
 export default function App() {
-
   return (
-
     <SafeAreaProvider>
-
       <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
-
         <ClerkLoaded>
-
           <MainWelliApp />
-
         </ClerkLoaded>
-
       </ClerkProvider>
-
     </SafeAreaProvider>
-
   );
-
 }
 
 const styles = StyleSheet.create({
-
   safeArea: {
-
     flex: 1,
 
     position: "relative",
-
   },
 
   screenContainer: {
-
     flex: 1,
 
     position: "relative",
-
   },
-
 });
