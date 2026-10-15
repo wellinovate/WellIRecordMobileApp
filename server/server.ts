@@ -32,6 +32,7 @@ import {
   AppointmentRead,
   AccessGrant,
 } from './models';
+import { createWellipayRouter } from './wellipayPartner';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -74,6 +75,18 @@ app.use(
       return callback(new Error(`CORS policy does not allow access from origin: ${origin}`));
     },
     credentials: true,
+  })
+);
+// WelliPay partner API. Mounted before the global JSON parser: it needs the raw
+// body for signature checks, and its code bodies must stay out of the request log.
+app.use(
+  '/wellipay/v1',
+  createWellipayRouter({
+    sendSms: sendWelliSms,
+    sendEmail: async (to, subject, text) => {
+      const r = await sendWelliEmail({ to, subject, text, html: `<p>${text}</p>` });
+      if (!r.success) throw new Error('email not sent');
+    },
   })
 );
 app.use(express.json());
@@ -455,6 +468,25 @@ function toLocalNigerianPhone(phone?: string): string {
     return `0${e164.slice(4)}`;
   }
   return phone ? phone.replace(/[^0-9]/g, '') : '';
+}
+
+// Sends one plain SMS through Termii. Throws when Termii is not configured or rejects the message.
+async function sendWelliSms(phone: string, message: string): Promise<void> {
+  if (!TERMII_API_KEY || TERMII_API_KEY === 'TL_TEST_KEY') throw new Error('SMS is not configured');
+  const response = await fetch('https://api.ng.termii.com/api/sms/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      api_key: TERMII_API_KEY,
+      to: String(phone).replace(/[^0-9]/g, '').replace(/^0/, '234'),
+      from: 'N-Alert',
+      sms: message,
+      type: 'plain',
+      channel: 'dnd',
+    }),
+  });
+  const data: any = await response.json();
+  if (!(data.code === 'ok' || data.message?.includes('Successfully'))) throw new Error(`SMS rejected: ${JSON.stringify(data)}`);
 }
 
 // 2. Termii Nigerian SMS OTP Dispatch

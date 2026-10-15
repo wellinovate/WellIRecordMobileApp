@@ -840,8 +840,8 @@ export const INITIAL_NOTIFICATIONS: Notification[] = [
 ];
 
 export const LINKED_ACCOUNTS: LinkedAccountDef[] = [
-  { id: 'insurance', category: 'healthcare', emoji: '🛡️', name: 'Hygeia HMO Portal', sub: 'Active Policy: HYG-88213045' },
-  { id: 'portal', category: 'healthcare', emoji: '🏥', name: 'Wellicare Hospital EMR', sub: 'Linked Medical Record #WCR-44019' },
+  { id: 'insurance', category: 'healthcare', emoji: '🛡️', name: 'Hygeia HMO Portal', sub: 'Link your HMO policy' },
+  { id: 'portal', category: 'healthcare', emoji: '🏥', name: 'Wellicare Hospital EMR', sub: 'Link a hospital record' },
   { id: 'pharmacy', category: 'healthcare', emoji: '💊', name: 'MediTrust Pharmacy Refill', sub: 'Direct e-prescription link' },
   { id: 'google', category: 'signin', emoji: '🔍', name: 'Google Account', sub: 'Backup & multi-factor verification' },
   { id: 'apple', category: 'signin', emoji: '🍎', name: 'Apple ID', sub: 'Face ID & iCloud Keychain' },
