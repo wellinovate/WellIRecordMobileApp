@@ -33,6 +33,7 @@ via `.env`, which is gitignored):
 - `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`: required. Release builds throw at launch without it;
   dev builds fall back to the Clerk development instance.
 - `EXPO_PUBLIC_API_URL`: optional override of the backend URL in `src/services/config.ts`.
+- `EXPO_PUBLIC_WELLIPAY_API_URL`: address of the wellipay-api service. Without it the WelliPay screen shows "not available".
 - `GOOGLE_MAPS_ANDROID_API_KEY`, `GOOGLE_MAPS_IOS_API_KEY`: read by `app.config.js`.
 
 `app.json` holds static Expo config; `app.config.js` layers the Maps keys on top.

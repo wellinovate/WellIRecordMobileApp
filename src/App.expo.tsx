@@ -70,7 +70,6 @@ import { BookAppointmentModal } from "./modals/BookAppointmentModal";
 
 import { BillingModal } from "./modals/BillingModal";
 
-import { InvoiceDetailModal } from "./modals/InvoiceDetailModal";
 
 import { PrintLabResultModal } from "./modals/PrintLabResultModal";
 
@@ -168,11 +167,6 @@ function MainWelliApp() {
 
       if (state.showEmailLabResult) {
         app.actions.closeEmailLabResult();
-
-        return true;
-      }
-      if (state.showInvoiceDetail) {
-        app.actions.closeInvoiceDetail();
 
         return true;
       }
@@ -435,7 +429,6 @@ function MainWelliApp() {
 
           {Boolean(state.showBilling) && <BillingModal app={app} />}
 
-          {Boolean(state.showInvoiceDetail) && <InvoiceDetailModal app={app} />}
 
           {Boolean(state.showPrintLabResult) && (
             <PrintLabResultModal app={app} />
