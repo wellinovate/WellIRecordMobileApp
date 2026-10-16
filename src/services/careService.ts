@@ -37,7 +37,21 @@ export interface AppointmentItem {
   status: AppointmentStatus | string;
 }
 
+export interface DirectoryDoctor {
+  id: string;
+  name: string;
+  role: string;
+  organizationName: string;
+  organizationId: string;
+  address: string;
+}
+
 export const careService = {
+  async fetchDoctors(): Promise<DirectoryDoctor[]> {
+    const res = await apiClient.get<{ success: boolean; doctors: DirectoryDoctor[] }>('/care/doctors');
+    return Array.isArray(res?.doctors) ? res.doctors : [];
+  },
+
   /**
    * Queries verified healthcare facilities in Lagos with specialty and HMO filtering
    */

@@ -2753,7 +2753,7 @@ app.get(['/api/v1/care/providers', '/api/v1/providers'], async (_req: Request, r
       {},
       // Explicit field projection — never pull unbounded fields like a
       // base64 logo blob into memory. Only what the directory needs.
-      'wrOrgId organizationName organizationType officeAddress verificationStatus'
+      'wrOrgId organizationName organizationType officeAddress verificationStatus phone location'
     )
       .limit(200) // hard cap, prevents unbounded growth as orgs scale
       .lean(); // skip Mongoose document overhead, return plain objects
@@ -2766,11 +2766,71 @@ app.get(['/api/v1/care/providers', '/api/v1/providers'], async (_req: Request, r
       logo: null, // omit entirely from this endpoint — directory listing doesn't need it
       isVerified: org.verificationStatus === 'approved',
       wrOrgId: org.wrOrgId || null,
+      phone: org.phone || null,
+      // GeoJSON stores [longitude, latitude].
+      lat: Array.isArray(org.location?.coordinates) ? org.location.coordinates[1] : null,
+      lng: Array.isArray(org.location?.coordinates) ? org.location.coordinates[0] : null,
     }));
     return res.json({ success: true, providers });
   } catch (err) {
     console.error('[Provider Directory Error]', err);
     return res.status(500).json({ success: false, message: 'Failed to fetch provider directory' });
+  }
+});
+
+// 6a-2. Clinician directory: active doctors/clinicians of approved organizations.
+// Read-only mirror of the web backend's OrganizationMembership collection.
+const OrganizationMembership: mongoose.Model<any> =
+  (mongoose.models.OrganizationMembership as any) ||
+  mongoose.model('OrganizationMembership', new mongoose.Schema({}, { strict: false }), 'organizationmemberships');
+
+app.get('/api/v1/care/doctors', async (req: Request, res: Response) => {
+  if (!getAuthUserId(req)) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.json({ success: true, doctors: [] });
+    }
+    const memberships: any[] = await OrganizationMembership.find(
+      { membershipRole: { $in: ['doctor', 'clinician'] }, isActive: true },
+      'userId organizationId membershipRole'
+    )
+      .limit(300)
+      .lean();
+
+    const orgIds = Array.from(new Set(memberships.map((m) => String(m.organizationId)).filter((id) => mongoose.isValidObjectId(id))));
+    const userIds = Array.from(new Set(memberships.map((m) => String(m.userId)).filter((id) => mongoose.isValidObjectId(id))));
+    const [orgs, profiles]: [any[], any[]] = await Promise.all([
+      OrganizationProfile.find(
+        { _id: { $in: orgIds }, verificationStatus: 'approved' },
+        'organizationName wrOrgId officeAddress'
+      ).lean(),
+      UserProfile.find({ _id: { $in: userIds } }, 'fullName name').lean(),
+    ]);
+    const orgById = new Map(orgs.map((o) => [String(o._id), o]));
+    const profileById = new Map(profiles.map((p) => [String(p._id), p]));
+
+    const doctors = memberships
+      .map((m) => {
+        const org = orgById.get(String(m.organizationId));
+        const profile = profileById.get(String(m.userId));
+        const name = profile?.fullName || profile?.name;
+        if (!org || !name) return null;
+        return {
+          id: String(m._id),
+          name,
+          role: m.membershipRole === 'doctor' ? 'Doctor' : 'Clinician',
+          organizationName: org.organizationName,
+          organizationId: org.wrOrgId || String(org._id),
+          address: org.officeAddress || '',
+        };
+      })
+      .filter(Boolean);
+    return res.json({ success: true, doctors });
+  } catch (err) {
+    console.error('[Doctors Directory Error]', err);
+    return res.status(500).json({ success: false, message: 'Failed to fetch clinicians' });
   }
 });
 
