@@ -4,6 +4,7 @@ import { View, Text, TouchableOpacity, Modal, StyleSheet, SafeAreaView, Platform
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { WebView } from 'react-native-webview';
+import { getAuthToken } from '../services/apiClient';
 import Svg, { Path } from 'react-native-svg';
 
 export function PdfViewerModal({
@@ -20,6 +21,11 @@ export function PdfViewerModal({
   const [error, setError] = React.useState<string | null>(null);
   const [opening, setOpening] = React.useState(false);
 
+  const token = getAuthToken();
+  const authHeaders: Record<string, string> = token
+    ? { Authorization: `Bearer ${token}` }
+    : {};
+
   const proxiedUrl = url
     ? `${CONFIG.apiBaseUrl}/lab-documents/proxy?url=${encodeURIComponent(url)}`
     : null;
@@ -34,6 +40,7 @@ export function PdfViewerModal({
     try {
       const file = await File.downloadFileAsync(proxiedUrl, new File(Paths.cache, `doc_${Date.now()}.pdf`), {
         idempotent: true,
+        headers: authHeaders,
       });
       if (!(await Sharing.isAvailableAsync())) {
         setError('No app is available to open this document.');
@@ -61,7 +68,7 @@ export function PdfViewerModal({
           </TouchableOpacity>
         </View>
         {Platform.OS === 'ios' ? (
-          <WebView source={{ uri: proxiedUrl }} style={{ flex: 1 }} startInLoadingState />
+          <WebView source={{ uri: proxiedUrl, headers: authHeaders }} style={{ flex: 1 }} startInLoadingState />
         ) : (
           <View style={styles.center}>
             <Text style={styles.message}>{error || 'Open this document in your PDF app.'}</Text>

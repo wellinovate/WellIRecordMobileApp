@@ -42,7 +42,7 @@ interface FAQItem {
 const FAQ_ITEMS: FAQItem[] = [
   {
     q: 'How does WelliRecord protect my medical data?',
-    a: 'All records are encrypted end-to-end using AES-256 standards both at rest and in transit. WelliRecord complies with NDPR (Nigeria Data Protection Regulation) and international HIPAA security guidelines. Only you decide who gets access.',
+    a: 'Your connection to WelliRecord is encrypted in transit. You decide who gets access to your records, and you can review and remove access at any time.',
   },
   {
     q: 'What happens in an emergency if I am unconscious?',

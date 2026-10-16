@@ -55,10 +55,8 @@ export const familyService = {
       dateOfBirth: data.dateOfBirth || data.dob,
       dob: data.dateOfBirth || data.dob,
     };
-    console.log('[FAMILY ADD PAYLOAD]', JSON.stringify(payload));
     try {
       const res = await apiClient.post<FamilyMemberResponse>('/family/add', payload);
-      console.log('[FAMILY ADD RESPONSE]', JSON.stringify(res));
       if (!res || !res.success) {
         throw new Error(res?.message || 'Server rejected family member creation');
       }
@@ -77,9 +75,7 @@ export const familyService = {
     data: Partial<AddFamilyMemberData>
   ): Promise<FamilyMember | null> {
     try {
-      console.log(`[FAMILY UPDATE PAYLOAD] ${id}`, JSON.stringify(data));
       const res = await apiClient.patch<FamilyMemberResponse>(`/family/${id}`, data);
-      console.log('[FAMILY UPDATE RESPONSE]', JSON.stringify(res));
       return res?.member || null;
     } catch (err: any) {
       console.error('[FAMILY UPDATE ERROR]', err);
@@ -94,7 +90,6 @@ export const familyService = {
     try {
       console.log(`[FAMILY DELETE] Requesting DELETE /family/${id}`);
       const res = await apiClient.delete<{ success: boolean; message?: string }>(`/family/${id}`);
-      console.log('[FAMILY DELETE RESPONSE]', JSON.stringify(res));
       return res?.success ?? true;
     } catch (err: any) {
       console.error('[FAMILY DELETE ERROR]', err);

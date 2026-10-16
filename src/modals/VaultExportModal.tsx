@@ -212,7 +212,7 @@ export function VaultExportModal({ app }: { app: WelliApp }) {
               <View style={styles.complianceBox}>
                 <Text style={{ fontSize: 16 }}>🛡️</Text>
                 <Text style={styles.complianceText}>
-                  Compliant with Nigeria Data Protection Regulation (NDPR) & HIPAA offline export portability standards.
+                  Your export contains your own records. Store the file somewhere safe, because anyone who has it can read it.
                 </Text>
               </View>
             </>

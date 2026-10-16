@@ -907,15 +907,18 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
   ].filter((k): k is string => Boolean(k));
 
   const reviewerOtp = process.env.REVIEWER_OTP;
-  const REVIEWER_ACCOUNTS = new Set([
-    'appstore.review@wellirecord.com',
-    'googleplay.reviewer@wellirecord.com',
-    '09062002094',
-    '+2349062002094',
-    '2349062002094',
-  ]);
+  // Dedicated review accounts only (emails, comma-separated in
+  // REVIEWER_ACCOUNTS; defaults to the two review mailboxes). The bypass is
+  // disabled unless REVIEWER_OTP is at least 8 characters.
+  const REVIEWER_ACCOUNTS = new Set(
+    (process.env.REVIEWER_ACCOUNTS || 'appstore.review@wellirecord.com,googleplay.reviewer@wellirecord.com')
+      .split(',')
+      .map((v) => v.trim().toLowerCase())
+      .filter((v) => v.includes('@'))
+  );
   const isReviewerBypass = Boolean(
     reviewerOtp &&
+      reviewerOtp.length >= 8 &&
       code === reviewerOtp &&
       candidateKeys.some((k) => REVIEWER_ACCOUNTS.has(k.toLowerCase()))
   );
@@ -2054,8 +2057,32 @@ app.get('/api/v1/records/medications', async (req: Request, res: Response) => {
 // GET /api/v1/lab-documents/proxy — streams Cloudinary attachment with inline disposition
 app.get('/api/v1/lab-documents/proxy', async (req: Request, res: Response) => {
   try {
+    // Signed-in callers (mobile app) send a Bearer token. The web app embeds
+    // this route in an iframe, which cannot send headers, so requests that
+    // originate from the WelliRecord web hosts are also accepted.
+    const webOrigins = [
+      'https://wellirecord.com',
+      'https://www.wellirecord.com',
+      'https://staging.wellirecord.com',
+      'https://wellirecords.vercel.app',
+      'http://localhost:5173',
+      'http://localhost:3000',
+    ];
+    const fromWeb = [req.headers.origin, req.headers.referer].some(
+      (h) => typeof h === 'string' && webOrigins.some((o) => h === o || h.startsWith(`${o}/`))
+    );
+    if (!getAuthUserId(req) && !fromWeb) {
+      return res.status(401).json({ success: false, message: 'Authentication required' });
+    }
+
     const { url } = req.query;
-    if (!url || typeof url !== 'string' || !url.startsWith('https://res.cloudinary.com/')) {
+    let validHost = false;
+    try {
+      validHost = typeof url === 'string' && new URL(url).origin === 'https://res.cloudinary.com';
+    } catch {
+      validHost = false;
+    }
+    if (!url || typeof url !== 'string' || !validHost) {
       return res.status(400).json({ success: false, message: 'Invalid document URL' });
     }
 
