@@ -73,7 +73,7 @@ export function RecordDetailSheet({ app }: { app: WelliApp }) {
       return;
     }
 
-    actions.showToast("No document preview is attached to this demo record");
+    actions.showToast("This record has no document attached");
   };
 
   return (

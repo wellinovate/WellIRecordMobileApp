@@ -6,25 +6,6 @@
 import { apiClient } from './apiClient';
 import type { PrescriptionItem } from '../data/types';
 
-export interface RefillOrderRequest {
-  prescriptionId: string;
-  deliveryAddress: string;
-  hmoProvider: string;
-  notes?: string;
-}
-
-export interface RefillOrderResponse {
-  orderId: string;
-  prescriptionId: string;
-  medicationName: string;
-  totalPriceNaira: number;
-  hmoCoveredNaira: number;
-  patientCoPayNaira: number;
-  status: 'refill_requested' | 'in_transit' | 'delivered';
-  eta: string;
-  trackingNumber: string;
-}
-
 export const pharmacyService = {
   /**
    * Fetches active prescriptions for a family member vault
@@ -37,11 +18,13 @@ export const pharmacyService = {
   },
 
   /**
-   * Requests a medication refill with automatic HMO tariff co-pay resolution
+   * Sends a refill request for a prescription. A pharmacist reviews it.
    */
-  async requestRefill(payload: RefillOrderRequest): Promise<RefillOrderResponse> {
-
-    return apiClient.post<RefillOrderResponse>('/pharmacy/refills', payload);
+  async requestRefill(payload: { prescriptionId: string; deliveryAddress: string; notes?: string }): Promise<{ orderId: string }> {
+    return apiClient.post<{ orderId: string }>(
+      `/pharmacy/prescriptions/${encodeURIComponent(payload.prescriptionId)}/refill`,
+      { deliveryAddress: payload.deliveryAddress, notes: payload.notes }
+    );
   },
 
   /**

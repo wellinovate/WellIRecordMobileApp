@@ -184,7 +184,7 @@ export function ProfileScreen({
             </Text>
 
             <Text style={styles.identityId}>
-              Demo ID · {recordId}
+              Record ID · {recordId}
             </Text>
 
             <Text style={styles.identityHint}>
@@ -311,7 +311,7 @@ export function ProfileScreen({
           <SettingsRow
             icon="verify"
             title="Email & phone verification"
-            subtitle="No verification connected in this demo"
+            subtitle="View or change your email and phone number"
             onPress={actions.openPersonalInfo}
           />
 

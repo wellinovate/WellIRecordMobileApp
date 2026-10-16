@@ -34,7 +34,6 @@ import { RecordDetailSheet } from "./modals/RecordDetailSheet";
 
 import { UploadModal } from "./modals/UploadModal";
 
-import { ShareFlowModal } from "./modals/ShareFlowModal";
 
 import { SmartConsentModal } from "./modals/SmartConsentModal";
 
@@ -73,7 +72,6 @@ import { BillingModal } from "./modals/BillingModal";
 
 import { PrintLabResultModal } from "./modals/PrintLabResultModal";
 
-import { EmailReportModal } from "./modals/EmailReportModal";
 
 import { PrescriptionRefillModal } from "./modals/PrescriptionRefillModal";
 
@@ -165,12 +163,6 @@ function MainWelliApp() {
         return true;
       }
 
-      if (state.showEmailLabResult) {
-        app.actions.closeEmailLabResult();
-
-        return true;
-      }
-
       if (state.showAddFamilyMember) {
         app.actions.closeAddFamilyMember();
 
@@ -185,12 +177,6 @@ function MainWelliApp() {
 
       if (state.personalInfoEditMode) {
         app.actions.cancelEditPersonalInfo();
-
-        return true;
-      }
-
-      if (state.showShareFlow) {
-        app.actions.shareBack();
 
         return true;
       }
@@ -383,7 +369,6 @@ function MainWelliApp() {
 
           {Boolean(state.showUpload) && <UploadModal app={app} />}
 
-          {Boolean(state.showShareFlow) && <ShareFlowModal app={app} />}
 
           {Boolean(state.showSmartConsent) && <SmartConsentModal app={app} />}
 
@@ -434,7 +419,6 @@ function MainWelliApp() {
             <PrintLabResultModal app={app} />
           )}
 
-          {Boolean(state.showEmailLabResult) && <EmailReportModal app={app} />}
 
           {Boolean(state.showRefillModal) && (
             <PrescriptionRefillModal app={app} />

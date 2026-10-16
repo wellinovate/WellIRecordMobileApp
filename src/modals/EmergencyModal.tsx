@@ -925,8 +925,7 @@ export function EmergencyModal({
             </TouchableOpacity>
 
             <Text className="mt-3 text-center text-[10.5px] text-slate-400">
-              Status is unchanged from setup. This demo contains no clinical
-              facts.
+              Status is unchanged from setup.
             </Text>
           </ScrollView>
         ) : null}

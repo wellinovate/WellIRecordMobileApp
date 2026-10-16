@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Linking, Share } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
+import { Alert, Linking } from 'react-native';
 import {
   CONSENT_SCOPES,
   LINKED_ACCOUNTS,
@@ -16,13 +15,11 @@ import type {
   PrescriptionItem,
   RecordType,
   ShareExpiry,
-  ShareMethod,
   SignUpFormData,
   Tab,
   VitalLogEntry,
   WelcomeTab,
 } from '../data/types';
-import { bridgeLinkFor, generateBridgeCode } from '../utils/bridgeCode';
 import { EXPIRY_SHORT_LABEL_MAP } from '../utils/expiry';
 import { hapticFeedback } from '../utils/haptics';
 import { storage } from '../utils/storage';
@@ -30,6 +27,7 @@ import { authenticateWithBiometrics, getBiometricStatus } from '../utils/biometr
 import { authService, type AuthSession } from '../services/authService';
 import { apiClient, setAuthToken } from '../services/apiClient';
 import { recordsService } from '../services/recordsService';
+import { pharmacyService } from '../services/pharmacyService';
 import { profileService } from '../services/profileService';
 import { familyService } from '../services/familyService';
 import { facilityService } from '../services/facilityService';
@@ -54,14 +52,6 @@ export interface AppState {
   recordDetailId: string | null;
   showUpload: boolean;
   uploadStep: 0 | 1 | 2;
-  showShareFlow: boolean;
-  shareStep: 0 | 1 | 2 | 3 | 4;
-  shareSelected: Record<string, boolean>;
-  shareMethod: ShareMethod;
-  shareDoctorQuery: string;
-  shareSelectedDoctorId: string | null;
-  bridgeCode: string | null;
-  shareExpiry: ShareExpiry;
   activeShares: ActiveShare[];
   showSmartConsent: boolean;
   consentGranteeType: ConsentGranteeType;
@@ -105,7 +95,6 @@ export interface AppState {
   bookingTimeSlot: string;
   showBilling: boolean;
   showPrintLabResult: string | null;
-  showEmailLabResult: string | null;
   prescriptions: PrescriptionItem[];
   showRefillModal: string | null;
   showOrderMedication: boolean;
@@ -233,14 +222,6 @@ const initialState: AppState = {
   showUpload: false,
   uploadStep: 0,
   showVaultExport: false,
-  showShareFlow: false,
-  shareStep: 0,
-  shareSelected: {},
-  shareMethod: 'search',
-  shareDoctorQuery: '',
-  shareSelectedDoctorId: null,
-  bridgeCode: null,
-  shareExpiry: '24h',
   activeShares: [],
   showSmartConsent: false,
   consentGranteeType: 'individual',
@@ -284,7 +265,6 @@ const initialState: AppState = {
   bookingTimeSlot: '',
   showBilling: false,
   showPrintLabResult: null,
-  showEmailLabResult: null,
   prescriptions: [],
   showRefillModal: null,
   showOrderMedication: false,
@@ -465,6 +445,10 @@ export function useWelliApp() {
             const labResults = labResultsResult.status === 'fulfilled' ? labResultsResult.value : [];
             const vitals = vitalsResult.status === 'fulfilled' ? vitalsResult.value : [];
             const providerMedications = providerMedicationsResult.status === 'fulfilled' ? providerMedicationsResult.value : [];
+            pharmacyService
+              .fetchPrescriptions('me')
+              .then((list) => patch({ prescriptions: Array.isArray(list) ? list : [] }))
+              .catch(() => {});
 
             const formatDate = (value?: string | Date) =>
               value
@@ -895,112 +879,24 @@ export function useWelliApp() {
     setUploadStepScanning: () => patch({ uploadStep: 1 }),
     setUploadStepReview: () => patch({ uploadStep: 2 }),
 
-    openShareFlow: (prefillId?: string) => {
-      const sel: Record<string, boolean> = {};
-      if (prefillId) sel[prefillId] = true;
-      patch({
-        showShareFlow: true,
-        shareStep: 0,
-        shareSelected: sel,
-        shareMethod: 'search',
-        shareDoctorQuery: '',
-        shareSelectedDoctorId: null,
-        bridgeCode: null,
-        shareExpiry: '24h',
-      });
-    },
-    closeShareFlow: () => patch({ showShareFlow: false }),
-    shareBack: () => {
-      setState((s) => {
-        if (s.shareStep === 0) {
-          return { ...s, showShareFlow: false };
-        }
-        return { ...s, shareStep: Math.max(0, s.shareStep - 1) as AppState['shareStep'] };
-      });
-    },
-    shareNext: () => {
-      setState((s) => {
-        const valid = [
-          Object.values(s.shareSelected).filter(Boolean).length > 0,
-          !!s.shareSelectedDoctorId,
-          true,
-          true,
-          true,
-        ][s.shareStep];
-        if (!valid) return s;
-        if (s.shareStep === 3) {
-          let doc: { id: string; name: string; initials: string };
-          if (s.shareSelectedDoctorId === 'bridge') {
-            doc = { id: 'bridge', name: `WelliBridge Link · ${s.bridgeCode}`, initials: 'WB' };
-          } else {
-            const foundDoc = undefined as { id: string; name: string; initials: string } | undefined;
-            const foundFac = (s.facilitiesList ?? []).find((f) => f.id === s.shareSelectedDoctorId);
-            if (foundDoc) {
-              doc = foundDoc;
-            } else if (foundFac) {
-              const inits = foundFac.name.split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || 'HC';
-              doc = { id: foundFac.id, name: foundFac.name, initials: inits };
-            } else {
-              doc = { id: s.shareSelectedDoctorId || 'org', name: 'Healthcare Provider', initials: 'HP' };
-            }
-          }
-          const count = Object.values(s.shareSelected).filter(Boolean).length;
-          const newShare: ActiveShare = {
-            id: 's' + Date.now(),
-            doctorId: doc.id,
-            doctorName: doc.name,
-            initials: doc.initials,
-            recordCount: count,
-            expiresLabel: EXPIRY_SHORT_LABEL_MAP[s.shareExpiry],
-            ownerId: s.activeFamilyId,
-          };
-          const activeShares = [newShare, ...s.activeShares];
-          persistShares(activeShares);
-          return { ...s, activeShares, shareStep: 4 };
-        }
-        if (s.shareStep === 4) {
-          return { ...s, showShareFlow: false };
-        }
-        return { ...s, shareStep: Math.min(4, s.shareStep + 1) as AppState['shareStep'] };
-      });
-    },
-    toggleShareRecord: (id: string) =>
-      patch((s) => ({ shareSelected: { ...s.shareSelected, [id]: !s.shareSelected[id] } })),
-    setMethod: (m: ShareMethod) => {
-      setState((s) => {
-        if (m !== 'bridge') return { ...s, shareMethod: m };
-        const bridgeCode = s.bridgeCode ?? generateBridgeCode();
-        return { ...s, shareMethod: m, bridgeCode, shareSelectedDoctorId: 'bridge' };
-      });
-    },
-    setDoctorQuery: (value: string) => patch({ shareDoctorQuery: value }),
-    selectDoctor: (id: string) => patch({ shareSelectedDoctorId: id }),
+    // Sharing goes through the consent flow, which creates a real grant on the server.
+    openShareFlow: (_prefillId?: string) => actions.openSmartConsent(),
     shareWithFacility: (facilityId: string) => {
       hapticFeedback.light();
-      const owned = state.recordsList.filter((r) => r.ownerId === state.activeFamilyId);
-      const selected: Record<string, boolean> = {};
-      owned.forEach((r) => {
-        selected[r.id] = true;
-      });
+      const facility = (state.facilitiesList ?? []).find((f) => f.id === facilityId);
       patch({
-        showShareFlow: true,
         showLabDirectory: false,
         showPharmacyDirectory: false,
-        shareStep: 1,
-        shareSelected: selected,
-        shareMethod: 'search',
-        shareSelectedDoctorId: facilityId,
+        showSmartConsent: true,
+        consentGranteeType: 'organization',
+        consentProviderId: facility?.name || '',
+        consentProviderWrId: '',
+        consentScope: null,
+        consentAllowWrite: false,
+        consentExpiry: '24h',
+        consentPurpose: '',
       });
-      showToast('Facility pre-selected for clinical vault share');
     },
-    copyBridgeLink: () => {
-      const code = state.bridgeCode;
-      if (!code) return;
-      const link = `https://${bridgeLinkFor(code)}`;
-      Clipboard.setStringAsync(link).catch(() => {});
-      showToast('Link copied');
-    },
-    setExpiry: (v: ShareExpiry) => patch({ shareExpiry: v }),
     revokeShare: (id: string) => {
       setState((s) => {
         const activeShares = s.activeShares.filter((x) => x.id !== id);
@@ -1660,6 +1556,8 @@ export function useWelliApp() {
         patch({ showLinkedAccounts: true });
       } else if (notif.targetModal === 'family') {
         patch({ showFamilyAccess: true });
+      } else if (notif.targetModal === 'visits') {
+        actions.openUpcomingVisits();
       }
     },
 
@@ -1723,62 +1621,6 @@ export function useWelliApp() {
       patch({ showPrintLabResult: recordId });
     },
     closePrintLabResult: () => patch({ showPrintLabResult: null }),
-
-    openEmailLabResult: (recordId: string) => {
-      hapticFeedback.light();
-      patch({ showEmailLabResult: recordId });
-    },
-    closeEmailLabResult: () => patch({ showEmailLabResult: null }),
-
-    sendEmailReport: (_recordId: string, recipientEmail: string, _note?: string) => {
-      hapticFeedback.success();
-      patch({ showEmailLabResult: null });
-      showToast(`Encrypted lab result PDF sent to ${recipientEmail}`);
-    },
-
-    shareViaWhatsApp: async (recordId: string) => {
-      hapticFeedback.success();
-      const record = state.recordsList.find((r) => r.id === recordId);
-      if (!record) return;
-      const owner = state.familyMembers.find((f) => f.id === record.ownerId) || state.familyMembers[0];
-      const bridgeCode = state.bridgeCode || generateBridgeCode();
-
-      let keyValuesText = '';
-      if (record.extractedOcr?.keyValues) {
-        keyValuesText = record.extractedOcr.keyValues
-          .map((kv) => `• ${kv.label}: ${kv.value}`)
-          .join('\n');
-      }
-
-      const message =
-        `🏥 *WelliRecord Verified Health Result*\n\n` +
-        `👤 *Patient:* ${owner.name}\n` +
-        `📄 *Report:* ${record.title}\n` +
-        `🏥 *Provider:* ${record.provider}\n` +
-        `📅 *Date:* ${record.date}\n\n` +
-        (keyValuesText ? `📊 *Key Biomarkers:*\n${keyValuesText}\n\n` : '') +
-        `🔒 *Encrypted Patient-Authorized Access (Valid for 24h):*\n` +
-        `https://${bridgeLinkFor(bridgeCode)}\n\n` +
-        `_Encrypted with zero-knowledge keys · NDPR Compliant_`;
-
-      try {
-        await Clipboard.setStringAsync(message);
-        const whatsappUrl = `whatsapp://send?text=${encodeURIComponent(message)}`;
-        const canOpen = await Linking.canOpenURL(whatsappUrl);
-        if (canOpen) {
-          await Linking.openURL(whatsappUrl);
-          showToast('Opening WhatsApp & link copied');
-        } else {
-          await Share.share({
-            message,
-            title: record.title,
-          });
-          showToast('Result summary copied & shared');
-        }
-      } catch {
-        showToast('Result link & summary copied to clipboard');
-      }
-    },
 
     openWelcomeHome: (tab: WelcomeTab = 'about') =>
       patch({ showWelcomeHome: true, welcomeTab: tab }),
@@ -2128,24 +1970,17 @@ export function useWelliApp() {
     },
     closeLabDirectory: () => patch({ showLabDirectory: false }),
 
-    requestRefill: (data: { prescriptionId: string; deliveryAddress: string; notes?: string }) => {
-      hapticFeedback.success();
-      patch((s) => ({
-        prescriptions: s.prescriptions.map((rx) => {
-          if (rx.id === data.prescriptionId) {
-            return {
-              ...rx,
-              refillsRemaining: Math.max(0, rx.refillsRemaining - 1),
-              status: 'refill_requested',
-              deliveryAddress: data.deliveryAddress,
-              notes: data.notes || rx.notes,
-            };
-          }
-          return rx;
-        }),
-        showRefillModal: null,
-      }));
-      showToast('Prescription refill dispatched via HMO E-Pharmacy');
+    requestRefill: async (data: { prescriptionId: string; deliveryAddress: string; notes?: string }) => {
+      try {
+        await pharmacyService.requestRefill(data);
+        hapticFeedback.success();
+        patch({ showRefillModal: null });
+        showToast('Refill sent for pharmacist review');
+        return true;
+      } catch (err: any) {
+        showToast(err?.message || 'Could not send the refill request. Try again.');
+        return false;
+      }
     },
 
     logOut: async () => {
@@ -2159,6 +1994,7 @@ export function useWelliApp() {
         showWelcomeHome: false,
         familyMembers: [DEFAULT_PRIMARY_USER],
         recordsList: [],
+        prescriptions: [],
         vitalsLogs: [],
         vitalsSeries: [],
         tab: 'home',

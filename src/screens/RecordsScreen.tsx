@@ -93,7 +93,8 @@ function DetailRow({
 }
 
 export function RecordsScreen({ app }: { app: WelliApp }) {
-  const { state, actions, records, family } = app;
+  const { state, actions, records, family, prescriptions } = app;
+  const memberPrescriptions = prescriptions.filter((rx) => rx.ownerId === state.activeFamilyId);
   const [section, setSection] = useState<RecordSection>("uploads");
 
   const activeMember =
@@ -439,6 +440,36 @@ export function RecordsScreen({ app }: { app: WelliApp }) {
               Text extraction (OCR) helps read uploads. An uploaded document is
               not a verified clinical result.
             </Text>
+
+            {memberPrescriptions.length > 0 ? (
+              <View className="mt-7">
+                <Text className="text-[18px] font-extrabold text-[#082F67]">
+                  Prescriptions
+                </Text>
+                <View className="mt-3 gap-3">
+                  {memberPrescriptions.map((rx) => (
+                    <View key={rx.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <Text className="text-[14px] font-bold text-[#173B68]">{rx.medicationName}</Text>
+                      <Text className="mt-1 text-[12px] text-slate-500">
+                        {[rx.dosage, rx.frequency].filter(Boolean).join(" · ") || "Dosage not recorded"}
+                      </Text>
+                      <Text className="mt-1 text-[11.5px] text-slate-500">
+                        {rx.prescriber ? `${rx.prescriber} · ` : ""}Refills left {rx.refillsRemaining} of {rx.refillsTotal}
+                      </Text>
+                      {rx.refillsRemaining > 0 ? (
+                        <TouchableOpacity
+                          accessibilityRole="button"
+                          onPress={() => actions.openRefillModal(rx.id)}
+                          className="mt-3 min-h-[44px] items-center justify-center rounded-xl bg-[#082F67]"
+                        >
+                          <Text className="text-[13px] font-semibold text-white">Request refill</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ) : null}
 
             <View className="mt-7">
               <Text className="text-[18px] font-extrabold text-[#082F67]">

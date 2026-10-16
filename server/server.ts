@@ -2137,13 +2137,102 @@ app.get('/api/v1/pharmacy/prescriptions', async (req: Request, res: Response) =>
     }
 
     if (mongoose.connection.readyState === 1) {
-      const rxs = await Prescription.find({ familyMemberId: ownerId }).sort({ createdAt: -1 });
-      return res.json(rxs);
+      // Patient-initiated orders are listed by /pharmacy/orders, not here.
+      const rxs: any[] = await Prescription.find({
+        familyMemberId: ownerId,
+        orderType: { $ne: 'patient_order' },
+        status: { $nin: ['pending_review', 'rejected'] },
+      })
+        .sort({ createdAt: -1 })
+        .lean();
+      return res.json(
+        rxs.map((rx) => ({
+          id: String(rx._id),
+          ownerId: String(rx.familyMemberId) === authUserId ? 'me' : String(rx.familyMemberId),
+          medicationName: rx.medicationName,
+          dosage: rx.dosage || '',
+          frequency: rx.frequency || '',
+          prescriber: rx.prescriber || '',
+          prescribedDate: rx.prescribedDate || '',
+          pharmacyProvider: rx.pharmacyProvider || '',
+          totalPriceNaira: rx.totalPriceNaira || 0,
+          hmoCoveredNaira: rx.hmoCoveredNaira || 0,
+          patientCoPayNaira: rx.patientCoPayNaira || 0,
+          refillsTotal: rx.refillsTotal || 0,
+          refillsRemaining: rx.refillsRemaining || 0,
+          status: rx.status,
+          deliveryAddress: rx.deliveryAddress || '',
+          eta: rx.eta || '',
+          hmoProvider: rx.hmoProvider || undefined,
+          notes: rx.notes || undefined,
+        }))
+      );
     }
     return res.json([]);
   } catch (err) {
     console.error('[GET /pharmacy/prescriptions] ERROR:', err);
     return res.status(500).json({ success: false, error: err });
+  }
+});
+
+// POST /api/v1/pharmacy/prescriptions/:id/refill — the patient asks for a refill.
+// Creates a pending_review order. A pharmacist approves it; approval spends one refill.
+app.post('/api/v1/pharmacy/prescriptions/:id/refill', async (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+  const { id } = req.params;
+  const deliveryAddress = String(req.body?.deliveryAddress || '').trim();
+  const notes = String(req.body?.notes || '').trim().slice(0, 500);
+  if (!mongoose.isValidObjectId(id)) {
+    return res.status(400).json({ success: false, message: 'Invalid prescription ID' });
+  }
+  if (!deliveryAddress) {
+    return res.status(400).json({ success: false, message: 'A delivery address is required' });
+  }
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({ success: false, message: 'Database unavailable' });
+  }
+  try {
+    const rx: any = await Prescription.findById(id);
+    if (!rx || rx.orderType === 'patient_order') {
+      return res.status(404).json({ success: false, message: 'Prescription not found' });
+    }
+    const canAccess = await callerCanAccessOwner(authUserId, String(rx.familyMemberId));
+    if (!canAccess) {
+      return res.status(403).json({ success: false, message: 'Access denied to this prescription' });
+    }
+    if ((rx.refillsRemaining || 0) <= 0) {
+      return res.status(409).json({ success: false, message: 'No refills left. Ask your prescriber for a new prescription.' });
+    }
+    const pending = await Prescription.findOne({ refillOf: rx._id, status: 'pending_review' }).lean();
+    if (pending) {
+      return res.status(409).json({ success: false, message: 'A refill for this prescription is already awaiting review.' });
+    }
+    const order = await Prescription.create({
+      accountId: new mongoose.Types.ObjectId(authUserId),
+      familyMemberId: rx.familyMemberId,
+      medicationName: rx.medicationName,
+      dosage: rx.dosage || '',
+      quantity: 1,
+      frequency: rx.frequency || '',
+      prescriber: rx.prescriber || 'Refill request',
+      prescribedDate: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
+      pharmacyProvider: rx.pharmacyProvider || 'WelliRecord Pharmacy Network',
+      deliveryAddress,
+      deliveryType: 'home',
+      notes,
+      orderType: 'patient_order',
+      refillOf: rx._id,
+      status: 'pending_review',
+      refillsTotal: 0,
+      refillsRemaining: 0,
+    } as any);
+    return res.status(201).json({ success: true, message: 'Refill sent for pharmacist review', orderId: String(order._id) });
+  } catch (err) {
+    console.error('[POST /pharmacy/prescriptions/:id/refill] ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Could not send the refill request' });
   }
 });
 
@@ -2352,6 +2441,12 @@ app.post('/api/v1/pharmacy/orders/:id/approve', requireAdminSecret, async (req: 
     }
 
     order.status = 'active';
+    if ((order as any).refillOf) {
+      await Prescription.updateOne(
+        { _id: (order as any).refillOf, refillsRemaining: { $gt: 0 } },
+        { $inc: { refillsRemaining: -1 } }
+      );
+    }
     if (totalPriceNaira !== undefined) order.totalPriceNaira = totalPriceNaira;
     if (hmoCoveredNaira !== undefined) order.hmoCoveredNaira = hmoCoveredNaira;
     if (patientCoPayNaira !== undefined) order.patientCoPayNaira = patientCoPayNaira;
@@ -4558,6 +4653,51 @@ app.post(['/api/v1/chatbot/respond', '/chatbot/respond'], async (req: Request, r
     audience: 'patient'
   });
 });
+
+// Tells the patient when a facility confirms or cancels an appointment request.
+// The facility changes the status elsewhere (web console), so this sweeps for
+// changes. Only requests updated in the last 2 days are considered.
+async function sweepAppointmentStatusNotifications() {
+  if (mongoose.connection.readyState !== 1) return;
+  try {
+    const since = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    const changed: any[] = await AppointmentRequest.find({
+      status: { $in: ['confirmed', 'cancelled'] },
+      updatedAt: { $gte: since },
+      $expr: { $ne: [{ $ifNull: ['$notifiedStatus', ''] }, '$status'] },
+    }).limit(50);
+    for (const appt of changed) {
+      const claimed = await AppointmentRequest.updateOne(
+        { _id: appt._id, status: appt.status, notifiedStatus: appt.notifiedStatus ?? null },
+        { $set: { notifiedStatus: appt.status } }
+      );
+      if (!claimed.modifiedCount) continue;
+      const day = new Date(appt.scheduledFor).toLocaleDateString('en-GB', {
+        weekday: 'short', day: '2-digit', month: 'short', timeZone: 'Africa/Lagos',
+      });
+      const confirmed = appt.status === 'confirmed';
+      const video = appt.visitType === 'video';
+      await dispatchPushNotification({
+        userId: String(appt.accountId),
+        type: 'system',
+        emoji: confirmed ? '✅' : '📅',
+        tint: confirmed ? '#dcfce7' : '#fee2e2',
+        categoryLabel: 'Appointment',
+        title: confirmed ? 'Visit confirmed' : 'Visit cancelled',
+        body: confirmed
+          ? `${appt.facilityName} confirmed your ${video ? 'video visit' : 'visit'} on ${day}, ${appt.timeSlot}.${video ? ' Join from Upcoming visits on the day.' : ''}`
+          : `${appt.facilityName} cancelled your visit on ${day}, ${appt.timeSlot}.`,
+        actionLabel: 'View visits',
+        targetModal: 'visits',
+        targetTab: 'care',
+        targetId: String(appt._id),
+      });
+    }
+  } catch (err) {
+    console.warn('[Appointment sweep] failed:', err);
+  }
+}
+setInterval(sweepAppointmentStatusNotifications, 60 * 1000).unref();
 
 // 8. Start Server
 app.listen(PORT, () => {
