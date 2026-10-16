@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Keyboard,
+  Linking,
   ScrollView,
   StatusBar,
   Text,
@@ -8,9 +9,13 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import * as Location from "expo-location";
+import MapView, { Marker, PROVIDER_DEFAULT } from "react-native-maps";
 import Svg, { Circle, Path } from "react-native-svg";
 
 import type { CareFacility } from "../data/types";
+import { careService, type DirectoryDoctor } from "../services/careService";
+import { DoctorDetailsModal, type DoctorDetailsModel } from "../modals/DoctorDetailsModal";
 import { FacilityDetailsModal } from "../modals/FacilityDetailsModal";
 import type { WelliApp } from "../state/useWelliApp";
 
@@ -122,6 +127,51 @@ export function CareScreen({ app }: { app: WelliApp }) {
   const [selectedFacility, setSelectedFacility] =
     useState<CareFacility | null>(null);
 
+  const [doctors, setDoctors] = useState<DirectoryDoctor[]>([]);
+  const [selectedDoctor, setSelectedDoctor] =
+    useState<DirectoryDoctor | null>(null);
+  const [coords, setCoords] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+  const [locating, setLocating] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    careService
+      .fetchDoctors()
+      .then((list) => {
+        if (active) setDoctors(list);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleUseLocation = async () => {
+    try {
+      setLocating(true);
+      const permission =
+        await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== "granted") {
+        actions.showToast("Location permission was not granted");
+        return;
+      }
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      setCoords({
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      });
+    } catch {
+      actions.showToast("Could not get your location. Try again.");
+    } finally {
+      setLocating(false);
+    }
+  };
+
   const query = state.careQuery.trim().toLowerCase();
 
   const filteredFacilities = facilities.filter((facility) => {
@@ -135,7 +185,55 @@ export function CareScreen({ app }: { app: WelliApp }) {
     );
   });
 
-  const exampleFacilities = filteredFacilities;
+  const distanceKm = (f: CareFacility) => {
+    if (!coords || typeof f.lat !== "number" || typeof f.lng !== "number") {
+      return Number.POSITIVE_INFINITY;
+    }
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const dLat = toRad(f.lat - coords.latitude);
+    const dLng = toRad(f.lng - coords.longitude);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(coords.latitude)) *
+        Math.cos(toRad(f.lat)) *
+        Math.sin(dLng / 2) ** 2;
+    return 6371 * 2 * Math.asin(Math.sqrt(a));
+  };
+
+  const exampleFacilities = useMemo(
+    () =>
+      coords
+        ? [...filteredFacilities].sort((a, b) => distanceKm(a) - distanceKm(b))
+        : filteredFacilities,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filteredFacilities, coords],
+  );
+
+  const mappedFacilities = exampleFacilities.filter(
+    (f) => typeof f.lat === "number" && typeof f.lng === "number",
+  );
+
+  const filteredDoctors = doctors.filter(
+    (d) =>
+      !query ||
+      d.name.toLowerCase().includes(query) ||
+      d.organizationName.toLowerCase().includes(query),
+  );
+
+  const doctorFacility = (d: DirectoryDoctor) =>
+    facilities.find(
+      (f) => f.wrOrgId === d.organizationId || f.id === d.organizationId,
+    );
+
+  const openDoctorBooking = (d: DirectoryDoctor) => {
+    const match = doctorFacility(d);
+    setSelectedDoctor(null);
+    if (match) {
+      actions.openBookAppointment(match.id);
+    } else {
+      actions.showToast("This organization is not available for booking yet");
+    }
+  };
 
 
   const handleSearch = () => {
@@ -225,9 +323,56 @@ export function CareScreen({ app }: { app: WelliApp }) {
               </Text>
             </TouchableOpacity>
 
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={handleUseLocation}
+              disabled={locating}
+              className="min-h-[44px] justify-center"
+            >
+              <Text className="text-[13px] font-semibold text-[#315B90]">
+                {locating
+                  ? "Locating..."
+                  : coords
+                    ? "Sorted by distance"
+                    : "Use my location"}
+              </Text>
+            </TouchableOpacity>
+
           </View>
         </View>
 
+
+        {mappedFacilities.length > 0 ? (
+          <View className="mt-5 h-[220px] overflow-hidden rounded-2xl">
+            <MapView
+              provider={PROVIDER_DEFAULT}
+              style={{ flex: 1 }}
+              showsUserLocation={Boolean(coords)}
+              initialRegion={{
+                latitude:
+                  coords?.latitude ?? (mappedFacilities[0].lat as number),
+                longitude:
+                  coords?.longitude ?? (mappedFacilities[0].lng as number),
+                latitudeDelta: 0.15,
+                longitudeDelta: 0.15,
+              }}
+              key={coords ? "located" : "default"}
+            >
+              {mappedFacilities.map((f) => (
+                <Marker
+                  key={f.id}
+                  coordinate={{
+                    latitude: f.lat as number,
+                    longitude: f.lng as number,
+                  }}
+                  title={f.name}
+                  description={f.address}
+                  onCalloutPress={() => setSelectedFacility(f)}
+                />
+              ))}
+            </MapView>
+          </View>
+        ) : null}
 
         <TouchableOpacity
           activeOpacity={0.82}
@@ -287,6 +432,31 @@ export function CareScreen({ app }: { app: WelliApp }) {
             ))}
 
 
+            {filteredDoctors.length > 0 ? (
+              <View>
+                <Text className="mb-3 mt-3 text-[18px] font-extrabold text-[#082F67]">
+                  Doctors and clinicians
+                </Text>
+                <View className="gap-3">
+                  {filteredDoctors.map((d) => (
+                    <TouchableOpacity
+                      key={d.id}
+                      activeOpacity={0.82}
+                      onPress={() => setSelectedDoctor(d)}
+                      className="rounded-2xl border border-slate-200 bg-white p-4"
+                    >
+                      <Text className="text-[14px] font-bold text-[#173B68]">
+                        {d.name}
+                      </Text>
+                      <Text className="mt-1 text-[11.5px] leading-[17px] text-slate-500">
+                        {d.role} · {d.organizationName}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+
             <TouchableOpacity
               activeOpacity={0.82}
               onPress={() => actions.setTab("chat")}
@@ -326,6 +496,32 @@ export function CareScreen({ app }: { app: WelliApp }) {
         }}
       />
 
+
+      <DoctorDetailsModal
+        visible={Boolean(selectedDoctor)}
+        doctor={
+          selectedDoctor
+            ? ({
+                id: selectedDoctor.id,
+                name: selectedDoctor.name,
+                specialty: selectedDoctor.role,
+                org: selectedDoctor.organizationName,
+              } as DoctorDetailsModel)
+            : null
+        }
+        onClose={() => setSelectedDoctor(null)}
+        onBook={() => {
+          if (selectedDoctor) openDoctorBooking(selectedDoctor);
+        }}
+        onCall={
+          selectedDoctor && doctorFacility(selectedDoctor)?.phone
+            ? () =>
+                Linking.openURL(
+                  `tel:${doctorFacility(selectedDoctor)?.phone}`,
+                )
+            : null
+        }
+      />
     </View>
   );
 }
