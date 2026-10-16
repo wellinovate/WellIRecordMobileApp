@@ -57,9 +57,8 @@ export function HomeScreen({ app }: { app: WelliApp }) {
   const isGuardianView = state.activeFamilyId !== 'me';
 
   const recordId =
-    activeMember.id === 'me'
-      ? 'WR-DEMO-001'
-      : `WR-${String(activeMember.id).toUpperCase()}`;
+    (activeMember as { wrId?: string }).wrId ||
+    'Not assigned yet';
 
   return (
     <View style={styles.screen}>
@@ -98,7 +97,7 @@ export function HomeScreen({ app }: { app: WelliApp }) {
           <Text style={styles.patientLabel}>
             {isGuardianView
               ? 'DEPENDENT RECORD'
-              : 'ILLUSTRATIVE PATIENT'}
+              : 'PATIENT'}
           </Text>
 
           <Text style={styles.greeting}>
@@ -178,7 +177,6 @@ export function HomeScreen({ app }: { app: WelliApp }) {
 
             <Text style={styles.recordDescription}>
               One patient ID links your record across facilities.
-              This identity is illustrative.
             </Text>
 
             <TouchableOpacity
@@ -256,9 +254,6 @@ export function HomeScreen({ app }: { app: WelliApp }) {
             />
           </View>
 
-          <Text style={styles.demoFooter}>
-            Illustrative demo · no connected clinical data
-          </Text>
         </View>
       </ScrollView>
     </View>

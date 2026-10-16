@@ -399,7 +399,7 @@ export function PrivacySecurityModal({
                 </Text>
 
                 <Text className="mt-1 text-[11px] leading-[16px] text-slate-500">
-                  Illustrative current session · {currentSessionDate}
+                  Current session · {currentSessionDate}
                 </Text>
 
                 <Text className="mt-1 text-[11px] text-slate-500">
@@ -458,8 +458,7 @@ export function PrivacySecurityModal({
             </TouchableOpacity>
 
             <Text className="mt-3 text-center text-[10.5px] text-slate-400">
-              Illustrative session · no real devices were inspected or signed
-              out.
+              Only this device is listed. Other devices are not tracked yet.
             </Text>
           </ScrollView>
         ) : null}
@@ -789,7 +788,7 @@ export function PrivacySecurityModal({
               </Text>
 
               <Text className="mt-2 text-[11.5px] leading-[17px] text-slate-500">
-                Illustrative email: {email}
+                Email: {email}
               </Text>
 
               <Text className="mt-4 text-[12px] font-semibold text-[#173B68]">

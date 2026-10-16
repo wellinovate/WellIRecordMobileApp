@@ -552,8 +552,7 @@ export function ShareFlowModal({ app }: { app: WelliApp }) {
               </Text>
 
               <Text className="mt-1 text-[13px] leading-[19px] text-slate-500">
-                Only the scope below will be included in this illustrative
-                share.
+                Only the scope below will be included in this share.
               </Text>
 
               <View className="mt-6 rounded-2xl bg-[#EEF3FA] p-4">

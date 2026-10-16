@@ -3,7 +3,6 @@ import { Alert, Linking, Share } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import {
   CONSENT_SCOPES,
-  DOCTORS,
   LINKED_ACCOUNTS,
   ONBOARDING,
 } from '../data/mockData';
@@ -946,7 +945,7 @@ export function useWelliApp() {
           if (s.shareSelectedDoctorId === 'bridge') {
             doc = { id: 'bridge', name: `WelliBridge Link · ${s.bridgeCode}`, initials: 'WB' };
           } else {
-            const foundDoc = DOCTORS.find((d) => d.id === s.shareSelectedDoctorId);
+            const foundDoc = undefined as { id: string; name: string; initials: string } | undefined;
             const foundFac = (s.facilitiesList ?? []).find((f) => f.id === s.shareSelectedDoctorId);
             if (foundDoc) {
               doc = foundDoc;
@@ -2272,7 +2271,7 @@ export function useWelliApp() {
     immunizations: state.immunizationSchedule,
     vitalsLogs: state.vitalsLogs,
     family: state.familyMembers,
-    doctors: DOCTORS,
+    doctors: [],
     proxyLog: [],
     activityLog: [],
     onboardingSlides: ONBOARDING,
