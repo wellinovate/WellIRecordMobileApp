@@ -2706,7 +2706,7 @@ function BookingReview({
         </p>
         <p className="mt-4 text-sm font-semibold">₦5,000 registration fee</p>
         <p className="mt-2 text-xs text-[#53657c]">
-          Not covered by HMO · Separate bill LG-B051026-073.
+          Not covered by HMO.
         </p>
       </Card>
       <Guidance title="Booking information only">
@@ -3587,29 +3587,6 @@ function CareJourney({ go }: { go: (screen: Screen) => void }) {
         Please stay near the waiting area. Your slot is at 10:30 AM; timing may
         change. Ask reception if you need help or your symptoms worsen.
       </Guidance>
-      <SectionTitle>This visit’s healthcare bill</SectionTitle>
-      <Card>
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-semibold">WelliPay</p>
-          <Badge tone="amber">Payment due</Badge>
-        </div>
-        <p className="mt-5 text-[27px] font-bold">₦5,000</p>
-        <p className="mt-3 text-xs leading-[1.45] text-[#53657c]">
-          Bill LG-B051026-073
-          <br />
-          Registration fee · Not covered by HMO
-          <br />
-          Consultation: Reliance authorization confirmed.
-          <br />
-          No additional test charges yet.
-        </p>
-        <div className="mt-5">
-          <PrimaryButton>View & pay healthcare bill</PrimaryButton>
-        </div>
-        <button className="mt-4 text-xs font-semibold">
-          Request family payment · Bill only
-        </button>
-      </Card>
       <p className="text-xs leading-[1.45] text-[#53657c]">
         A payment request shares bill details, not your health record. Every
         authorized record access is logged.
