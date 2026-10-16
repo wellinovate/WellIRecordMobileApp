@@ -16,6 +16,7 @@ type Props = {
   onResend: () => Promise<void> | void;
   onChangeEmail?: () => void;
   onBackToSignIn?: () => void;
+  onContinue?: () => void;
 };
 
 export function RecoveryEmailSentScreen({
@@ -24,6 +25,7 @@ export function RecoveryEmailSentScreen({
   onResend,
   onChangeEmail,
   onBackToSignIn,
+  onContinue,
 }: Props) {
   const [seconds, setSeconds] = useState(30);
   const [resending, setResending] = useState(false);
@@ -105,7 +107,7 @@ export function RecoveryEmailSentScreen({
       <Text style={styles.title}>Check your email</Text>
 
       <Text style={styles.subtitle}>
-        If an account exists for this email, reset instructions will be sent.
+        If a password account exists for this email, we sent a 6-digit reset code. It expires in 5 minutes.
       </Text>
 
       <View style={styles.mailCard}>
@@ -136,14 +138,10 @@ export function RecoveryEmailSentScreen({
           {maskEmail(email)}
         </Text>
 
-        <Text style={styles.maskedText}>
-          Masked illustrative address
-        </Text>
       </View>
 
       <Text style={styles.instructions}>
-        Check your inbox and junk folder. You can resend when the countdown
-        reaches zero, or correct the email address.
+        Check your inbox and junk folder. Accounts created with a sign-in code have no password. Go back and use "Email me a sign-in code" instead.
       </Text>
 
       {error && (
@@ -153,6 +151,16 @@ export function RecoveryEmailSentScreen({
       )}
 
       <View style={styles.actions}>
+        <TouchableOpacity
+          activeOpacity={0.86}
+          onPress={onContinue}
+          style={[styles.secondaryButton, { backgroundColor: '#0B3268' }]}
+        >
+          <Text style={[styles.secondaryButtonText, { color: '#FFFFFF' }]}>
+            Enter reset code
+          </Text>
+        </TouchableOpacity>
+
         <TouchableOpacity
           activeOpacity={0.8}
           disabled={seconds > 0 || resending}
@@ -168,7 +176,7 @@ export function RecoveryEmailSentScreen({
             <Text style={styles.secondaryButtonText}>
               {seconds > 0
                 ? `Resend in 00:${String(seconds).padStart(2, '0')}`
-                : 'Resend reset instructions'}
+                : 'Resend reset code'}
             </Text>
           )}
         </TouchableOpacity>
@@ -194,9 +202,6 @@ export function RecoveryEmailSentScreen({
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.previewText}>
-        Illustrative sent state · no message was sent.
-      </Text>
 
       <View style={styles.bottomIndicator} />
     </ScrollView>

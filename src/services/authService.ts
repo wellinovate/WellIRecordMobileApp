@@ -113,6 +113,24 @@ function unwrapAuthSession(
 }
 
 export const authService = {
+  async requestPasswordReset(email: string): Promise<void> {
+    await apiClient.post('/auth/password/forgot', {
+      email: email.trim().toLowerCase(),
+    });
+  },
+
+  async resetPassword(
+    email: string,
+    code: string,
+    newPassword: string,
+  ): Promise<void> {
+    await apiClient.post('/auth/password/reset', {
+      email: email.trim().toLowerCase(),
+      code: code.trim(),
+      newPassword,
+    });
+  },
+
   async sendPhoneOtp(
     phoneNumber: string,
     mode: 'login' | 'signup' = 'signup',

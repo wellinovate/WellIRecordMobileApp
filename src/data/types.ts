@@ -35,6 +35,7 @@ export interface HealthRecord {
   type: RecordType;
   provider: string;
   summary: string;
+  source?: 'facility';
   extractedOcr?: {
     keyValues: Array<{ label: string; value: string }>;
     statusBadge?: string;
