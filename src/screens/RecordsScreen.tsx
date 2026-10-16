@@ -101,8 +101,14 @@ export function RecordsScreen({ app }: { app: WelliApp }) {
     family[0] ??
     ({ id: "me", name: "WelliRecord Patient" } as any);
 
-  const ownedRecords = records.filter(
+  const memberRecords = records.filter(
     (record) => record.ownerId === state.activeFamilyId,
+  );
+  const ownedRecords = memberRecords.filter(
+    (record) => record.source !== "facility",
+  );
+  const facilityRecords = memberRecords.filter(
+    (record) => record.source === "facility",
   );
 
   const medical = activeMember as any;
@@ -434,14 +440,65 @@ export function RecordsScreen({ app }: { app: WelliApp }) {
               not a verified clinical result.
             </Text>
 
-            <View className="mt-5 rounded-2xl bg-[#E7EDF8] p-4">
-              <Text className="text-[14px] font-bold text-[#082F67]">
-                Facility lab results are on web
+            <View className="mt-7">
+              <Text className="text-[18px] font-extrabold text-[#082F67]">
+                Facility results
               </Text>
-              <Text className="mt-2 text-[12px] leading-[18px] text-[#516881]">
-                Facility lab results are not yet visible in the mobile app. Use
-                WelliRecord on web to view them.
+              <Text className="mt-1 text-[12px] text-slate-500">
+                Sent by your labs and clinics · {facilityRecords.length}{" "}
+                {facilityRecords.length === 1 ? "result" : "results"}
               </Text>
+
+              {facilityRecords.length === 0 ? (
+                <View className="mt-3 rounded-2xl bg-[#E7EDF8] p-4">
+                  <Text className="text-[12px] leading-[18px] text-[#516881]">
+                    No facility results yet. Lab results, vitals and
+                    prescriptions shared by your care providers appear here.
+                  </Text>
+                </View>
+              ) : (
+                <View className="mt-3 gap-3">
+                  {facilityRecords.map((record) => {
+                    const meta =
+                      RECORD_META[record.type] ??
+                      ({ emoji: "📄", tint: "#EEF3FA" } as any);
+
+                    return (
+                      <TouchableOpacity
+                        key={record.id}
+                        activeOpacity={0.76}
+                        onPress={() => actions.openRecord(record.id)}
+                        className="flex-row items-center rounded-2xl border border-slate-200 bg-white p-3"
+                      >
+                        <View
+                          className="h-11 w-11 items-center justify-center rounded-xl"
+                          style={{ backgroundColor: meta.tint }}
+                        >
+                          <Text className="text-[18px]">{meta.emoji}</Text>
+                        </View>
+
+                        <View className="ml-3 flex-1">
+                          <Text
+                            numberOfLines={1}
+                            className="text-[14px] font-bold text-[#173B68]"
+                          >
+                            {record.title}
+                          </Text>
+                          <Text
+                            numberOfLines={2}
+                            className="mt-1 text-[11.5px] text-slate-500"
+                          >
+                            {record.provider} · {record.date}
+                            {record.summary ? ` · ${record.summary}` : ""}
+                          </Text>
+                        </View>
+
+                        <ChevronIcon />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
             </View>
           </>
         )}

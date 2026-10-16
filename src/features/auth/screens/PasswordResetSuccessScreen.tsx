@@ -134,9 +134,6 @@ export function PasswordResetSuccessScreen({
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.preview}>
-        Illustrative completion · no password was changed.
-      </Text>
 
       <View style={styles.bottomIndicator} />
     </ScrollView>

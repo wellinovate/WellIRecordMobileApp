@@ -229,8 +229,51 @@ export function CareScreen({ app }: { app: WelliApp }) {
         </View>
 
 
+        <TouchableOpacity
+          activeOpacity={0.82}
+          onPress={actions.openUpcomingVisits}
+          className="mt-6 rounded-2xl border border-slate-200 bg-[#F8FAFD] p-4"
+        >
+          <Text className="text-[14px] font-bold text-[#173B68]">
+            My appointments
+          </Text>
+          <Text className="mt-1 text-[11.5px] leading-[17px] text-slate-500">
+            {state.appointments.length
+              ? `${state.appointments.length} requested or booked`
+              : "View and cancel your appointment requests"}
+          </Text>
+        </TouchableOpacity>
+
+        <View className="mt-3 flex-row gap-3">
+          <TouchableOpacity
+            activeOpacity={0.82}
+            onPress={actions.openPharmacyDirectory}
+            className="flex-1 rounded-2xl border border-slate-200 bg-[#F8FAFD] p-4"
+          >
+            <Text className="text-[14px] font-bold text-[#173B68]">
+              Pharmacies
+            </Text>
+            <Text className="mt-1 text-[11.5px] leading-[17px] text-slate-500">
+              Find pharmacies on a map
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            activeOpacity={0.82}
+            onPress={actions.openLabDirectory}
+            className="flex-1 rounded-2xl border border-slate-200 bg-[#F8FAFD] p-4"
+          >
+            <Text className="text-[14px] font-bold text-[#173B68]">
+              Diagnostic labs
+            </Text>
+            <Text className="mt-1 text-[11.5px] leading-[17px] text-slate-500">
+              Find labs on a map
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         <Text className="mt-6 text-[18px] font-extrabold text-[#082F67]">
-          Care options
+          Registered facilities
         </Text>
 
         {exampleFacilities.length ? (

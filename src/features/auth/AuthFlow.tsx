@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 
 import type { WelliApp } from '../../state/useWelliApp';
-import type { AuthSession } from '../../services/authService';
+import { authService, type AuthSession } from '../../services/authService';
 
 import { CreateAccountScreen } from './screens/CreateAccountScreen';
 import { CreateNewPasswordScreen } from './screens/CreateNewPasswordScreen';
@@ -407,11 +407,15 @@ export function AuthFlow({ app }: Props) {
 
             setRecoveryEmail(value);
 
-            // No password-reset API exists in the supplied authService yet.
-            // Keep this route explicit instead of pretending a reset occurred.
-            app.actions.showToast(
-              `Recovery instructions requested for ${value}`,
-            );
+            try {
+              await authService.requestPasswordReset(value);
+            } catch (error) {
+              showAuthError(
+                error,
+                'Could not send the reset code. Check your connection and try again.',
+              );
+              throw error;
+            }
 
             setStep('recovery-email-sent');
           }}
@@ -425,10 +429,9 @@ export function AuthFlow({ app }: Props) {
           onBack={() => setStep('forgot-password')}
           onChangeEmail={() => setStep('forgot-password')}
           onBackToSignIn={resetToWelcome}
+          onContinue={() => setStep('create-new-password')}
           onResend={async () => {
-            app.actions.showToast(
-              `Recovery instructions requested again for ${recoveryEmail}`,
-            );
+            await authService.requestPasswordReset(recoveryEmail);
           }}
         />
       );
@@ -438,8 +441,9 @@ export function AuthFlow({ app }: Props) {
         <CreateNewPasswordScreen
           onBack={() => setStep('recovery-email-sent')}
           onBackToSignIn={resetToWelcome}
-          onSavePassword={async (password: string) => {
-            setNewPassword(password);
+          onSavePassword={async (password: string, code: string) => {
+            await authService.resetPassword(recoveryEmail, code, password);
+            setNewPassword('');
             setStep('password-reset-success');
           }}
         />

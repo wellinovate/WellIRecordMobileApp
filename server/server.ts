@@ -1804,8 +1804,8 @@ app.post('/api/v1/auth/register', async (req: Request, res: Response) => {
         phoneNumber: phone ? phone.trim() : undefined,
         password: passwordHash,
         dateOfBirth: dob ? new Date(dob) : undefined,
-        bloodType: bloodType || 'O+',
-        genotype: genotype || 'AA',
+        bloodType: bloodType || undefined,
+        genotype: genotype || undefined,
         hmoProvider: insuranceProvider || null,
         hmoPolicyNumber: insuranceId || null,
         isPhoneVerified: true,
@@ -1834,6 +1834,63 @@ app.post('/api/v1/auth/register', async (req: Request, res: Response) => {
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Registration error', error: err });
+  }
+});
+
+// 3d. Password reset: emailed 6-digit code, then a new password.
+// Responses never reveal whether an account exists for the email.
+app.post('/api/v1/auth/password/forgot', otpLimiter, async (req: Request, res: Response) => {
+  const rawEmail = typeof req.body?.email === 'string' ? req.body.email : '';
+  const cleanEmail = rawEmail.toLowerCase().trim();
+  if (!cleanEmail.includes('@')) {
+    return res.status(400).json({ success: false, message: 'A valid email address is required' });
+  }
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const user = await User.findOne({ email: cleanEmail });
+      if (user && user.password) {
+        const code = generateOtp(`reset:${cleanEmail}`, 'login');
+        await sendWelliEmail({
+          to: cleanEmail,
+          subject: 'Reset your WelliRecord™ password',
+          html: renderOtpEmailHtml({
+            fullName: user.fullName || 'WelliRecord Patient',
+            code,
+            expiresInMinutes: 5,
+          }),
+        });
+      }
+    }
+  } catch (err) {
+    console.error('[Password forgot ERROR]', err);
+  }
+  return res.json({
+    success: true,
+    message: 'If a password account exists for this email, a reset code has been sent.',
+  });
+});
+
+app.post('/api/v1/auth/password/reset', otpLimiter, async (req: Request, res: Response) => {
+  const cleanEmail = typeof req.body?.email === 'string' ? req.body.email.toLowerCase().trim() : '';
+  const code = typeof req.body?.code === 'string' ? req.body.code.trim() : '';
+  const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword : '';
+  if (!cleanEmail || !code || newPassword.length < 8 || newPassword.length > 128) {
+    return res.status(400).json({ success: false, message: 'Email, code and a password of at least 8 characters are required' });
+  }
+  if (!verifyStoredOtp(`reset:${cleanEmail}`, code)) {
+    return res.status(400).json({ success: false, message: 'That code is invalid or has expired' });
+  }
+  try {
+    const user = await User.findOne({ email: cleanEmail });
+    if (!user) {
+      return res.status(400).json({ success: false, message: 'That code is invalid or has expired' });
+    }
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
+    return res.json({ success: true, message: 'Password updated. Sign in with your new password.' });
+  } catch (err) {
+    console.error('[Password reset ERROR]', err);
+    return res.status(500).json({ success: false, message: 'Could not reset the password. Try again.' });
   }
 });
 

@@ -15,7 +15,7 @@ import { LogoMark } from '../../../components/Logo';
 
 type Props = {
   onBack?: () => void;
-  onSavePassword: (password: string) => Promise<void> | void;
+  onSavePassword: (password: string, code: string) => Promise<void> | void;
   onBackToSignIn?: () => void;
 };
 
@@ -24,12 +24,18 @@ export function CreateNewPasswordScreen({
   onSavePassword,
   onBackToSignIn,
 }: Props) {
+  const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const handleSave = async () => {
+    if (code.trim().length !== 6) {
+      setError('Enter the 6-digit code from your email.');
+      return;
+    }
+
     if (password.length < 8) {
       setError('Use at least 8 characters for your new password.');
       return;
@@ -44,7 +50,7 @@ export function CreateNewPasswordScreen({
       setError(null);
       setSubmitting(true);
 
-      await onSavePassword(password);
+      await onSavePassword(password, code.trim());
     } catch (err: any) {
       setError(
         err?.message ||
@@ -110,6 +116,21 @@ export function CreateNewPasswordScreen({
           Use a password you don't use for other accounts.
         </Text>
 
+        <Text style={styles.label}>Reset code</Text>
+
+        <TextInput
+          value={code}
+          onChangeText={(value) => {
+            setCode(value.replace(/\D/g, '').slice(0, 6));
+            setError(null);
+          }}
+          placeholder="6-digit code"
+          placeholderTextColor="#697587"
+          keyboardType="number-pad"
+          maxLength={6}
+          style={[styles.input, error && styles.inputError]}
+        />
+
         <Text style={styles.label}>New password</Text>
 
         <TextInput
@@ -170,9 +191,6 @@ export function CreateNewPasswordScreen({
             guessed phrases.
           </Text>
 
-          <Text style={styles.guidanceFootnote}>
-            Guidance is illustrative, not the production password policy.
-          </Text>
         </View>
 
         <View style={styles.actions}>
@@ -205,9 +223,6 @@ export function CreateNewPasswordScreen({
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.preview}>
-          Design preview · no action is connected.
-        </Text>
 
         <View style={styles.bottomIndicator} />
       </ScrollView>
