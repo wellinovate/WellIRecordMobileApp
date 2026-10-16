@@ -19,9 +19,6 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.wellirecord.app",
-      "config": {
-        "googleMapsApiKey": "AIzaSyCE9x1cTlCqdr675wPmvonFoQclx4rqGag"
-      },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSFaceIDUsageDescription": "WelliRecord uses Face ID to securely unlock your health records.",
@@ -32,16 +29,17 @@
     },
     "android": {
       "package": "com.wellirecord.app",
-      "config": {
-        "googleMaps": {
-          "apiKey": "AIzaSyDzusF6aOxUXg3hR2Bf1HxjSAJrUh0fjk4"
-        }
-      },
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#041E42"
       },
-      "versionCode": 1
+      "versionCode": 1,
+      "permissions": [
+        "CAMERA",
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
+        "POST_NOTIFICATIONS"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png",

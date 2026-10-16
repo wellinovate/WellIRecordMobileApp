@@ -50,25 +50,6 @@ export const sharingService = {
     // emergency summary the resulting public token unlocks.
     familyMemberId?: string;
   }): Promise<ShareGrant> {
-    if (CONFIG.demoMode) {
-      await new Promise((res) => setTimeout(res, 400));
-      return {
-        id: `grant_${Date.now()}`,
-        grantorId: 'u_amara_nwosu',
-        recipientType: params.recipientType,
-        recipientId: params.recipientId,
-        recipientName: params.recipientName,
-        recordIds: params.recordIds,
-        expiry: params.expiry,
-        expiresAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
-        createdAt: new Date().toISOString(),
-        status: 'active',
-        ...(params.recipientType === 'bridge'
-          ? { shareToken: 'demo-token', shareUrl: 'https://wellirecordmobileapp.onrender.com/api/v1/shares/bridge/demo-token' }
-          : {}),
-      };
-    }
-
     return apiClient.post<ShareGrant>('/shares/grants', params);
   },
 

@@ -585,11 +585,11 @@ export const authService = {
   },
 
   async deleteAccount(): Promise<boolean> {
-    try {
-      if (!CONFIG.demoMode) {
-        await apiClient.delete<{ success: boolean }>('/auth/account');
-      }
-    } catch {}
+    // Let API failures propagate: the caller must not report a deletion
+    // (or sign the user out) when the server did not delete the account.
+    if (!CONFIG.demoMode) {
+      await apiClient.delete<{ success: boolean }>('/auth/account');
+    }
 
     await this.logout();
 

@@ -16,7 +16,6 @@ import type {
   VitalLogEntry,
   PrescriptionItem,
   MedicationDoseSchedule,
-  MedicationDoseLog,
 } from './types';
 
 export const RECORD_META: Record<RecordType, { tint: string; emoji: string }> = {

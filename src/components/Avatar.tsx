@@ -1,4 +1,3 @@
-import React from 'react';
 import { View, Text, Image } from 'react-native';
 import type { FamilyMember } from '../data/types';
 

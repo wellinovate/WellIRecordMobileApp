@@ -98,14 +98,6 @@ export const recordsService = {
     fileName: string,
     contentType: string
   ): Promise<PresignedUploadUrlResponse> {
-    if (CONFIG.demoMode) {
-      return {
-        uploadUrl: `https://storage.wellirecord.com/vault-uploads/${Date.now()}_${fileName}`,
-        fileKey: `vault/${Date.now()}_${fileName}`,
-        expiresInSeconds: 900,
-      };
-    }
-
     return apiClient.post<PresignedUploadUrlResponse>('/records/upload-url', {
       fileName,
       contentType,

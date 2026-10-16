@@ -221,30 +221,6 @@ const DEFAULT_PRIMARY_USER: FamilyMember = {
   memberId: 'WR-ABJ-88204',
 };
 
-const DEFAULT_DEPENDENT_USER: FamilyMember = {
-  id: 'fam-nneoma',
-  name: 'Nneoma Nwogha',
-  initials: 'NN',
-  role: 'dependent',
-  dob: 'August 22, 1994',
-  gender: 'Female',
-  bloodType: 'A+',
-  genotype: 'AA',
-  height: '168 cm',
-  weight: '62 kg',
-  allergies: 'Sulfa Drugs',
-  conditions: 'None',
-  contact: 'Chibuike Joshua Nwogha (Spouse)',
-  emergencyContacts: [],
-  email: 'nneoma@wellirecord.com',
-  phone: '+234 803 555 0192',
-  address: 'Maitama, Abuja, Nigeria',
-  insuranceProvider: 'Hygeia HMO',
-  insuranceId: 'HYG-90218-B',
-  wrId: 'WR-ABJ-88205',
-  memberId: 'WR-ABJ-88205',
-};
-
 const initialState: AppState = {
   tab: 'home',
   tabHistory: [],
@@ -1438,7 +1414,10 @@ export function useWelliApp() {
             onPress: async () => {
               try {
                 await authService.deleteAccount();
-              } catch {}
+              } catch {
+                showToast('Could not delete your account. Check your connection and try again.');
+                return;
+              }
               patch({
                 isAuthenticated: false,
                 user: null,
@@ -1460,7 +1439,10 @@ export function useWelliApp() {
     deleteAccount: async () => {
       try {
         await authService.deleteAccount();
-      } catch {}
+      } catch {
+        showToast('Could not delete your account. Check your connection and try again.');
+        return;
+      }
       patch({
         isAuthenticated: false,
         user: null,
@@ -1827,7 +1809,7 @@ export function useWelliApp() {
     },
     closeEmailLabResult: () => patch({ showEmailLabResult: null }),
 
-    sendEmailReport: (recordId: string, recipientEmail: string, _note?: string) => {
+    sendEmailReport: (_recordId: string, recipientEmail: string, _note?: string) => {
       hapticFeedback.success();
       patch({ showEmailLabResult: null });
       showToast(`Encrypted lab result PDF sent to ${recipientEmail}`);

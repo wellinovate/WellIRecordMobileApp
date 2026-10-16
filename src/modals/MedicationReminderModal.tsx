@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -7,11 +7,10 @@ import {
   StyleSheet,
   Modal,
   Switch,
-  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import Svg, { Path, Circle } from "react-native-svg";
+import Svg, { Path } from "react-native-svg";
 import { ModalHeader } from "../components/ModalHeader";
 import { hapticFeedback } from "../utils/haptics";
 import {
@@ -28,7 +27,7 @@ export function MedicationReminderModal({ app }: { app: WelliApp }) {
     Array<{ schedule: MedicationDoseSchedule; log?: MedicationDoseLog }>
   >([]);
   const [stats, setStats] = useState<AdherenceStats | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [selectedDoseForSkip, setSelectedDoseForSkip] = useState<string | null>(null);
 
   const activeMember =

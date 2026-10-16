@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
@@ -464,10 +464,6 @@ export function EmergencyModal({
     )
       ? allergyText
       : "Not recorded";
-
-  const hasContact =
-    Boolean(contactDraft.name.trim()) ||
-    Boolean(contactDraft.phone.trim());
 
   const close = () => {
     setStep("setup");
