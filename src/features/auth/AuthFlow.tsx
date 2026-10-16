@@ -32,7 +32,7 @@ type AuthStep =
   | 'create-new-password'
   | 'password-reset-success';
 
-type AuthIntent = 'signup' | 'password-login' | 'phone-login';
+type AuthIntent = 'signup' | 'password-login' | 'phone-login' | 'email-login';
 type VerificationChannel = 'email' | 'phone';
 type LooseRecord = Record<string, any>;
 
@@ -486,6 +486,25 @@ export function AuthFlow({ app }: Props) {
             }
 
             setStep('forgot-password');
+          }}
+          onEmailCodeSignIn={async (typedEmail: string) => {
+            const target = typedEmail.trim().toLowerCase();
+
+            try {
+              await app.actions.sendAuthOtp(target, 'email', undefined, 'login');
+            } catch (error) {
+              showAuthError(
+                error,
+                'Could not send a sign-in code. Check the email address and try again.',
+              );
+              throw error;
+            }
+
+            setIntent('email-login');
+            setPendingSession(null);
+            setEmail(target);
+            setVerificationIdentifier(target);
+            setStep('email-verification');
           }}
           onPhoneSignIn={() => {
             setIntent('phone-login');
