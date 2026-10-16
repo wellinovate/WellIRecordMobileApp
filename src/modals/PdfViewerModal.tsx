@@ -1,6 +1,8 @@
 import { CONFIG } from '../services/config';
 import React from 'react';
-import { View, Text, TouchableOpacity, Modal, StyleSheet, SafeAreaView } from 'react-native';
+import { View, Text, TouchableOpacity, Modal, StyleSheet, SafeAreaView, Platform, ActivityIndicator } from 'react-native';
+import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { WebView } from 'react-native-webview';
 import Svg, { Path } from 'react-native-svg';
 
@@ -15,11 +17,37 @@ export function PdfViewerModal({
   title?: string;
   onClose: () => void;
 }) {
-  if (!url) return null;
+  const [error, setError] = React.useState<string | null>(null);
+  const [opening, setOpening] = React.useState(false);
 
-  const API_BASE_URL = CONFIG.apiBaseUrl || 'https://wellirecordmobileapp.onrender.com/api/v1';
-  const proxiedUrl = `${API_BASE_URL}/lab-documents/proxy?url=${encodeURIComponent(url)}`;
-  const viewerUrl = `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(proxiedUrl)}`;
+  const proxiedUrl = url
+    ? `${CONFIG.apiBaseUrl}/lab-documents/proxy?url=${encodeURIComponent(url)}`
+    : null;
+
+  // Android WebView cannot render PDFs, and routing the file through a third
+  // party viewer would send patient documents to that third party. Download
+  // to app cache and hand it to the user's own PDF app instead.
+  const openExternally = React.useCallback(async () => {
+    if (!proxiedUrl) return;
+    setOpening(true);
+    setError(null);
+    try {
+      const file = await File.downloadFileAsync(proxiedUrl, new File(Paths.cache, `doc_${Date.now()}.pdf`), {
+        idempotent: true,
+      });
+      if (!(await Sharing.isAvailableAsync())) {
+        setError('No app is available to open this document.');
+        return;
+      }
+      await Sharing.shareAsync(file.uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf', dialogTitle: title || 'Document' });
+    } catch {
+      setError('Could not open this document. Check your connection and try again.');
+    } finally {
+      setOpening(false);
+    }
+  }, [proxiedUrl, title]);
+
+  if (!url || !proxiedUrl) return null;
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
@@ -32,7 +60,16 @@ export function PdfViewerModal({
             </Svg>
           </TouchableOpacity>
         </View>
-        <WebView source={{ uri: viewerUrl }} style={{ flex: 1 }} startInLoadingState />
+        {Platform.OS === 'ios' ? (
+          <WebView source={{ uri: proxiedUrl }} style={{ flex: 1 }} startInLoadingState />
+        ) : (
+          <View style={styles.center}>
+            <Text style={styles.message}>{error || 'Open this document in your PDF app.'}</Text>
+            <TouchableOpacity onPress={openExternally} disabled={opening} style={styles.openBtn}>
+              {opening ? <ActivityIndicator color="#fff" /> : <Text style={styles.openText}>{error ? 'Try again' : 'Open document'}</Text>}
+            </TouchableOpacity>
+          </View>
+        )}
       </SafeAreaView>
     </Modal>
   );
@@ -51,4 +88,8 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 16, fontWeight: '600', color: '#0f172a', flex: 1 },
   closeBtn: { padding: 4 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  message: { fontSize: 15, color: '#334155', textAlign: 'center', marginBottom: 16 },
+  openBtn: { backgroundColor: '#041E42', borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12, minWidth: 160, alignItems: 'center' },
+  openText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 });

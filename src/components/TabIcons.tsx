@@ -1,4 +1,3 @@
-import React from "react";
 import Svg, { Path, Rect, Circle } from "react-native-svg";
 import type { Tab } from "../data/types";
 

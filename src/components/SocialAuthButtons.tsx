@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -60,8 +60,8 @@ export function SocialAuthButtons({
         onSuccess?.({
           provider,
           sessionId: createdSessionId,
-          email: email || (provider === 'google' ? 'amara.nwosu@gmail.com' : 'amara.nwosu@icloud.com'),
-          fullName: fullName || 'Amara Nwosu',
+          email: email ?? undefined,
+          fullName,
           avatar,
         });
       } else if (signUp?.status === 'missing_requirements') {
@@ -69,8 +69,7 @@ export function SocialAuthButtons({
         onSuccess?.({
           provider,
           sessionId: 'pending_clerk',
-          email: signUp?.emailAddress || (provider === 'google' ? 'amara.nwosu@gmail.com' : 'amara.nwosu@icloud.com'),
-          fullName: 'Amara Nwosu',
+          email: signUp?.emailAddress ?? undefined,
         });
       }
       // If user cancelled, createdSessionId is null without exception

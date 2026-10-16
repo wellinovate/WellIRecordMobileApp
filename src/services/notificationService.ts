@@ -1,7 +1,6 @@
 import { apiClient, getAuthToken } from './apiClient';
 import { CONFIG } from './config';
 import { storage } from '../utils/secureStorage';
-import { INITIAL_NOTIFICATIONS } from '../data/mockData';
 import type { Notification } from '../data/types';
 import { registerForPushNotificationsAsync } from './pushNotifications';
 
@@ -25,7 +24,7 @@ class NotificationService {
   private listListeners: Set<NotificationsListener> = new Set();
   private eventSource: EventSource | null = null;
   private pollInterval: any = null;
-  private currentNotifications: Notification[] = [...INITIAL_NOTIFICATIONS];
+  private currentNotifications: Notification[] = [];
   private activeEmergencyAlert: EmergencyScanAlert | null = null;
 
   constructor() {
@@ -72,12 +71,7 @@ class NotificationService {
     try {
       const res = await apiClient.get<{ success: boolean; notifications: Notification[] }>('/notifications');
       if (res?.success && Array.isArray(res.notifications) && res.notifications.length > 0) {
-        // Merge with initial list to preserve mock demonstrations while prioritizing live server items
-        const serverIds = new Set(res.notifications.map((n) => n.id));
-        const combined = [
-          ...res.notifications,
-          ...INITIAL_NOTIFICATIONS.filter((n) => !serverIds.has(n.id)),
-        ];
+        const combined = [...res.notifications];
         this.currentNotifications = combined;
         await storage.setItem(this.CACHE_KEY, JSON.stringify(combined));
         this.notifyListListeners();

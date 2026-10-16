@@ -3,7 +3,6 @@
  * Manages user sessions, registration, and Nigerian SMS/email OTP dispatch.
  */
 
-import { CONFIG } from './config';
 import { apiClient, setAuthToken } from './apiClient';
 import { registerForPushNotificationsAsync } from './pushNotifications';
 import { storage } from '../utils/secureStorage';
@@ -120,16 +119,6 @@ export const authService = {
   ): Promise<SendOtpResponse> {
     const normalized = normalizeNigerianPhone(phoneNumber);
 
-    if (CONFIG.demoMode) {
-      await new Promise((res) => setTimeout(res, 400));
-      return {
-        success: true,
-        message: `Security code sent to ${normalized || phoneNumber}`,
-        otpId: `otp_${Date.now()}`,
-        expiresInSeconds: 300,
-      };
-    }
-
     return await apiClient.post<SendOtpResponse>('/auth/otp/send', {
       phoneNumber: normalized || phoneNumber,
       mode,
@@ -143,33 +132,6 @@ export const authService = {
     options: AuthRequestOptions = {},
   ): Promise<AuthSession> {
     const normalized = normalizeNigerianPhone(phoneNumber);
-
-    if (CONFIG.demoMode) {
-      await new Promise((res) => setTimeout(res, 400));
-
-      const session: AuthSession = {
-        token: `jwt_welli_demo_${Date.now()}`,
-        user: {
-          id: 'me',
-          fullName: userData?.fullName || 'Amara Nwosu',
-          phoneNumber:
-            normalized || phoneNumber || '+2348053355504',
-          email: userData?.email || 'amara.nwosu@gmail.com',
-          bloodType: userData?.bloodType || 'O+',
-          genotype: userData?.genotype || 'AA',
-          hmoProvider: userData?.hmoProvider || 'Hygeia HMO',
-          hmoPolicyNumber:
-            userData?.hmoPolicyNumber || 'HYG-992014-LAG',
-          dateOfBirth: userData?.dateOfBirth,
-        },
-      };
-
-      if (options.persist !== false) {
-        await this.saveSession(session);
-      }
-
-      return session;
-    }
 
     const raw = await apiClient.post<any>('/auth/otp/verify', {
       phoneNumber: normalized || phoneNumber,
@@ -210,15 +172,6 @@ export const authService = {
   ): Promise<SendOtpResponse> {
     const cleanEmail = email.trim().toLowerCase();
 
-    if (CONFIG.demoMode) {
-      await new Promise((res) => setTimeout(res, 400));
-      return {
-        success: true,
-        message: `Verification code sent to ${cleanEmail}`,
-        expiresInSeconds: 600,
-      };
-    }
-
     return await apiClient.post<SendOtpResponse>('/auth/email/send', {
       email: cleanEmail,
       fullName,
@@ -233,33 +186,6 @@ export const authService = {
     options: AuthRequestOptions = {},
   ): Promise<AuthSession> {
     const cleanEmail = email.trim().toLowerCase();
-
-    if (CONFIG.demoMode) {
-      await new Promise((res) => setTimeout(res, 400));
-
-      const session: AuthSession = {
-        token: `jwt_welli_demo_${Date.now()}`,
-        user: {
-          id: 'me',
-          fullName: userData?.fullName || 'Amara Nwosu',
-          phoneNumber:
-            userData?.phoneNumber || '+2348053355504',
-          email: cleanEmail,
-          bloodType: userData?.bloodType || 'O+',
-          genotype: userData?.genotype || 'AA',
-          hmoProvider: userData?.hmoProvider || 'Hygeia HMO',
-          hmoPolicyNumber:
-            userData?.hmoPolicyNumber || 'HYG-992014-LAG',
-          dateOfBirth: userData?.dateOfBirth,
-        },
-      };
-
-      if (options.persist !== false) {
-        await this.saveSession(session);
-      }
-
-      return session;
-    }
 
     const raw = await apiClient.post<any>('/auth/otp/verify', {
       email: cleanEmail,
@@ -348,10 +274,6 @@ export const authService = {
     code: string,
     challengeToken?: string,
   ): Promise<{ success: boolean; message?: string }> {
-    if (CONFIG.demoMode) {
-      await new Promise((res) => setTimeout(res, 300));
-      return { success: true };
-    }
 
     const isEmail = identifier.includes('@');
     const normalized = isEmail
@@ -382,31 +304,6 @@ export const authService = {
     password?: string,
     options: AuthRequestOptions = {},
   ): Promise<AuthSession> {
-    if (CONFIG.demoMode) {
-      await new Promise((res) => setTimeout(res, 400));
-
-      const session: AuthSession = {
-        token: `jwt_welli_auth_${Date.now()}`,
-        user: {
-          id: 'me',
-          fullName: 'Amara Nwosu',
-          phoneNumber: '+234 805 335 5504',
-          email: identifier.includes('@')
-            ? identifier.trim().toLowerCase()
-            : 'amara.nwosu@gmail.com',
-          bloodType: 'O+',
-          genotype: 'AA',
-          hmoProvider: 'Hygeia HMO',
-          hmoPolicyNumber: 'HYG-992014-LAG',
-        },
-      };
-
-      if (options.persist !== false) {
-        await this.saveSession(session);
-      }
-
-      return session;
-    }
 
     const raw = await apiClient.post<any>('/auth/login', {
       identifier: identifier.trim(),
@@ -439,9 +336,6 @@ export const authService = {
     email: string;
     fullName?: string;
   }): Promise<AuthSession & { isNewAccount?: boolean }> {
-    if (CONFIG.demoMode) {
-      throw new Error('Social sign-in is not available in demo mode');
-    }
 
     const raw = await apiClient.post<any>('/auth/social/verify', {
       provider: details.provider,
@@ -476,32 +370,6 @@ export const authService = {
     },
     options: AuthRequestOptions = {},
   ): Promise<AuthSession> {
-    if (CONFIG.demoMode) {
-      await new Promise((res) => setTimeout(res, 400));
-
-      const session: AuthSession = {
-        token: `jwt_welli_reg_${Date.now()}`,
-        user: {
-          id: 'me',
-          fullName: data.name,
-          phoneNumber: data.phone || '+234 800 000 0000',
-          email: data.email || 'user@example.com',
-          bloodType: data.bloodType || 'O+',
-          genotype: data.genotype || 'AA',
-          hmoProvider: data.insuranceProvider || 'Hygeia HMO',
-          hmoPolicyNumber:
-            data.insuranceId ||
-            `HYG-${Math.floor(100000 + Math.random() * 900000)}`,
-          dateOfBirth: data.dob,
-        },
-      };
-
-      if (options.persist !== false) {
-        await this.saveSession(session);
-      }
-
-      return session;
-    }
 
     // Never fabricate a production session when registration fails.
     const raw = await apiClient.post<any>('/auth/register', data);
@@ -566,10 +434,6 @@ export const authService = {
       await storage.setItem('welli_2fa_enabled', enabled ? '1' : '0');
     } catch {}
 
-    if (CONFIG.demoMode) {
-      return enabled;
-    }
-
     try {
       const res = await apiClient.post<{
         success: boolean;
@@ -585,11 +449,9 @@ export const authService = {
   },
 
   async deleteAccount(): Promise<boolean> {
-    try {
-      if (!CONFIG.demoMode) {
-        await apiClient.delete<{ success: boolean }>('/auth/account');
-      }
-    } catch {}
+    // Let API failures propagate: the caller must not report a deletion
+    // (or sign the user out) when the server did not delete the account.
+    await apiClient.delete<{ success: boolean }>('/auth/account');
 
     await this.logout();
 

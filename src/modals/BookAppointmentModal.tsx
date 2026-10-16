@@ -1,4 +1,4 @@
-import React,{useMemo,useState} from "react";
+import {useMemo,useState} from "react";
 import { Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg,{Path} from "react-native-svg";
@@ -16,6 +16,7 @@ export function BookAppointmentModal({app}:{app:WelliApp}){
   const [memberId,setMemberId]=useState(state.activeFamilyId||"me");
   const [reason,setReason]=useState("");
   const [month,setMonth]=useState(()=>new Date());
+  const days=useMemo(()=>daysFor(month),[month]);
   if(!state.showBookAppointment) return null;
 
   const ext=state.externalBookingFacility;
@@ -25,7 +26,6 @@ export function BookAppointmentModal({app}:{app:WelliApp}){
   const name=ext?.name||facility?.name||"Demo Community Clinic";
   const address=ext?.address||(facility as any)?.address||"";
   const specialty=(facility as any)?.specialty||"Primary care";
-  const days=useMemo(()=>daysFor(month),[month]);
   const patient=family.find(f=>f.id===memberId)||family[0];
   const disabled=!state.bookingDate||!state.bookingTimeSlot||!!state.bookingSubmitting;
 

@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import { useEffect } from "react";
 import "../global.css";
 import { View, StyleSheet, BackHandler, Platform } from "react-native";
 
@@ -98,9 +98,20 @@ import { ClerkProvider, ClerkLoaded } from "@clerk/expo";
 
 import { tokenCache } from "./utils/tokenCache";
 
+// The development Clerk instance is only used in dev builds. Release builds
+// must supply EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY (pk_live_...) via EAS env.
+const DEV_CLERK_KEY =
+  "pk_test_aW1wcm92ZWQtaGVuLTQ3MTAuY2xlcmsuYWNjb3VudHMuZGV2JA";
+
 const publishableKey =
   process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ||
-  "pk_test_aW1wcm92ZWQtaGVuLTQ3MTAuY2xlcmsuYWNjb3VudHMuZGV2JA";
+  (__DEV__ ? DEV_CLERK_KEY : "");
+
+if (!publishableKey) {
+  throw new Error(
+    "Missing EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY. Set it in the EAS build environment."
+  );
+}
 
 function MainWelliApp() {
   const app = useWelliApp();

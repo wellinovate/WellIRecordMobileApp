@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -113,7 +113,7 @@ export function InCallModal({ app }: { app: WelliApp }) {
                 ) : (
                   <Text style={{ fontSize: 24 }}>👤</Text>
                 )}
-                <Text style={styles.pipLabel}>You (Amara)</Text>
+                <Text style={styles.pipLabel}>You</Text>
               </View>
             </LinearGradient>
 

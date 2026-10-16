@@ -10,7 +10,6 @@
  */
 
 import { storage } from "../utils/secureStorage";
-import { INITIAL_DOSE_SCHEDULES } from "../data/mockData";
 import type {
   MedicationDoseSchedule,
   MedicationDoseLog,
@@ -62,15 +61,14 @@ export const medicationReminderService = {
       const raw = await storage.getItem(SCHEDULES_STORAGE_KEY);
       let list: MedicationDoseSchedule[] = raw ? JSON.parse(raw) : [];
 
-      if (!Array.isArray(list) || list.length === 0) {
-        list = [...INITIAL_DOSE_SCHEDULES];
-        await storage.setItem(SCHEDULES_STORAGE_KEY, JSON.stringify(list));
+      if (!Array.isArray(list)) {
+        list = [];
       }
 
       return list.filter((s) => s.ownerId === ownerId || (ownerId === "me" && s.ownerId === "me"));
     } catch (e) {
       console.warn("[MedReminder] Error loading schedules:", e);
-      return INITIAL_DOSE_SCHEDULES.filter((s) => s.ownerId === ownerId);
+      return [];
     }
   },
 
@@ -369,7 +367,7 @@ export const medicationReminderService = {
    */
   async toggleNotification(scheduleId: string, enabled: boolean): Promise<MedicationDoseSchedule | null> {
     const raw = await storage.getItem(SCHEDULES_STORAGE_KEY);
-    const list: MedicationDoseSchedule[] = raw ? JSON.parse(raw) : [...INITIAL_DOSE_SCHEDULES];
+    const list: MedicationDoseSchedule[] = raw ? JSON.parse(raw) : [];
     const target = list.find((s) => s.id === scheduleId);
     if (!target) return null;
 
@@ -397,7 +395,7 @@ export const medicationReminderService = {
    */
   async updateScheduleTime(scheduleId: string, newTime: string): Promise<MedicationDoseSchedule | null> {
     const raw = await storage.getItem(SCHEDULES_STORAGE_KEY);
-    const list: MedicationDoseSchedule[] = raw ? JSON.parse(raw) : [...INITIAL_DOSE_SCHEDULES];
+    const list: MedicationDoseSchedule[] = raw ? JSON.parse(raw) : [];
     const target = list.find((s) => s.id === scheduleId);
     if (!target) return null;
 

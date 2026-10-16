@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -249,12 +249,19 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
   };
 
   const handleBiometricSignIn = async () => {
+    if (!loginIdentifier.trim()) {
+      setSignInError('Enter your phone number or email address first');
+      hapticFeedback.error();
+      return;
+    }
     setAuthenticatingBio(true);
     hapticFeedback.light();
     const result = await authenticateWithBiometrics('Sign in to WelliRecord');
     setAuthenticatingBio(false);
     if (result.success) {
-      actions.signInWithCredentials('amara.nwosu@gmail.com');
+      // Biometrics only confirms the device owner; the account is still
+      // verified by a one-time code sent to the identifier entered above.
+      await handleSendOtpSignIn();
     }
   };
 

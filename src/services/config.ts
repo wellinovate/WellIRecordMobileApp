@@ -1,11 +1,10 @@
 /**
  * WelliRecord Service Configuration
- * Provides environment toggles between Live Backend API and Offline/Demo Mode.
+ * Service configuration for the live backend API.
  */
 
 export interface AppConfig {
   apiBaseUrl: string;
-  demoMode: boolean;
   termiiSenderId: string;
   encryptionAlgorithm: string;
   defaultHmoProvider: string;
@@ -18,9 +17,6 @@ export const CONFIG: AppConfig = {
   // Live backend API URL on Render
   apiBaseUrl: process.env.EXPO_PUBLIC_API_URL || API_BASE_URL,
   
-  // Set to false when connecting to a live backend
-  demoMode: false,
-
   // Nigerian SMS Gateway Sender ID (registered on Termii / DND-compliant)
   termiiSenderId: 'WelliRecord',
 

@@ -167,19 +167,6 @@ export function PrivacySecurityModal({
     setDeletionAcknowledged,
   ] = useState(false);
 
-  if (!state.showPrivacySecurity) {
-    return null;
-  }
-
-  const user = state.user as any;
-
-  const deviceName =
-    Platform.OS === "ios"
-      ? "iPhone"
-      : Platform.OS === "android"
-        ? "Android device"
-        : "Web browser";
-
   const currentSessionDate = useMemo(
     () =>
       new Date().toLocaleDateString(
@@ -192,6 +179,19 @@ export function PrivacySecurityModal({
       ),
     [],
   );
+
+  if (!state.showPrivacySecurity) {
+    return null;
+  }
+
+  const user = state.user as any;
+
+  const deviceName =
+    Platform.OS === "ios"
+      ? "iPhone"
+      : Platform.OS === "android"
+        ? "Android device"
+        : "Web browser";
 
   const email =
     user?.email || "Not added";

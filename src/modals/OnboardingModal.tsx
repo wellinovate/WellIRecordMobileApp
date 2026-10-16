@@ -1,4 +1,3 @@
-import React from 'react';
 import {
   View,
   Text,
@@ -33,8 +32,8 @@ export function OnboardingModal({ app }: { app: WelliApp }) {
   }) => {
     actions.signInWithClerk({
       provider: details.provider,
-      fullName: details.fullName || clerkUser?.fullName || 'Amara Nwosu',
-      email: details.email || clerkUser?.primaryEmailAddress?.emailAddress || (details.provider === 'google' ? 'amara.nwosu@gmail.com' : 'amara.nwosu@icloud.com'),
+      fullName: details.fullName || clerkUser?.fullName || undefined,
+      email: details.email || clerkUser?.primaryEmailAddress?.emailAddress,
       avatar: details.avatar || clerkUser?.imageUrl,
     });
   };
@@ -93,17 +92,6 @@ export function OnboardingModal({ app }: { app: WelliApp }) {
                   onError={handleSocialError}
                 />
               </View>
-
-              {/* Guest / Demo Option */}
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={() => actions.signInWithDemo()}
-                style={styles.guestLinkBtn}
-              >
-                <Text style={styles.guestLinkText}>
-                  Or explore Demo Vault as Guest →
-                </Text>
-              </TouchableOpacity>
 
               {/* Security Footnote */}
               <View style={styles.securityFootnote}>
