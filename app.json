@@ -56,6 +56,12 @@
       "expo-image-picker",
       "expo-local-authentication",
       [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "WelliRecord uses your location to show nearby care. It stays on your device."
+        }
+      ],
+      [
         "expo-notifications",
         {
           "icon": "./assets/icon.png",

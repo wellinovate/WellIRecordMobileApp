@@ -99,6 +99,9 @@ export const facilityService = {
             gradient: 'linear-gradient(135deg, #0f766e 0%, #0d9488 100%)',
             acceptedHmos: prov.acceptedHmos || [],
             consultationFeeNaira: prov.consultationFeeNaira,
+            phone: prov.phone || null,
+            lat: typeof prov.lat === 'number' ? prov.lat : null,
+            lng: typeof prov.lng === 'number' ? prov.lng : null,
           };
 
           if (existingIdx >= 0) {

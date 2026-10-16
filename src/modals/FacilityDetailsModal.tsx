@@ -33,6 +33,7 @@ export function FacilityDetailsModal({visible,facility,onClose,onBook}:{visible:
         <View className="mt-3 rounded-2xl border border-slate-200 p-4"><Text className="text-[11.5px] leading-[17px] text-slate-500">Opening hours are not listed. Request an appointment and the facility will confirm a time.</Text></View>
 
         {f.address ? <TouchableOpacity onPress={()=>Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${facility.name} ${f.address}`)}`)} className="mt-6 min-h-[48px] items-center justify-center rounded-xl border border-slate-200"><Text className="text-[13px] font-semibold text-[#315B90]">Get directions</Text></TouchableOpacity> : null}
+        {facility.phone ? <TouchableOpacity onPress={()=>Linking.openURL(`tel:${facility.phone}`)} className="mt-3 min-h-[48px] items-center justify-center rounded-xl border border-slate-200"><Text className="text-[13px] font-semibold text-[#315B90]">Call {facility.phone}</Text></TouchableOpacity> : null}
         <TouchableOpacity onPress={onBook} className="mt-6 min-h-[48px] items-center justify-center rounded-xl bg-[#082F67]"><Text className="text-[14px] font-semibold text-white">Request an appointment</Text></TouchableOpacity>
         <TouchableOpacity onPress={onClose} className="mt-2 min-h-[44px] items-center justify-center"><Text className="text-[13px] font-semibold text-slate-500">Back to care search</Text></TouchableOpacity>
       </ScrollView>

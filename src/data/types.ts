@@ -173,6 +173,9 @@ export interface CareFacility {
   gradient: string;
   acceptedHmos?: string[];
   consultationFeeNaira?: number;
+  phone?: string | null;
+  lat?: number | null;
+  lng?: number | null;
 }
 
 export interface InvoiceLineItem {
