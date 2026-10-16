@@ -13,15 +13,11 @@ import { ModalHeader } from '../components/ModalHeader';
 import { hapticFeedback } from '../utils/haptics';
 import type { WelliApp } from '../state/useWelliApp';
 
-const EMAIL_PRESETS = [
-  { label: 'Doctor / Clinic', email: 'referrals@riversideclinic.ng' },
-  { label: 'HMO Claims Dept', email: 'claims@hygeiahmo.com' },
-  { label: 'Self Backup', email: 'amara.nwosu@gmail.com' },
-];
-
 export function EmailReportModal({ app }: { app: WelliApp }) {
   const { state, actions, records, family } = app;
   const [recipientEmail, setRecipientEmail] = useState('');
+  const ownEmail = (state.user as any)?.email as string | undefined;
+  const EMAIL_PRESETS = ownEmail ? [{ label: 'Myself', email: ownEmail }] : [];
   const [personalNote, setPersonalNote] = useState('');
 
   if (!state.showEmailLabResult) return null;
@@ -69,6 +65,8 @@ export function EmailReportModal({ app }: { app: WelliApp }) {
           </View>
 
           {/* Quick Recipient Presets */}
+          {EMAIL_PRESETS.length > 0 && (
+            <>
           <Text style={styles.sectionLabel}>QUICK RECIPIENTS</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.presetRow}>
             {EMAIL_PRESETS.map((preset) => {
@@ -91,6 +89,8 @@ export function EmailReportModal({ app }: { app: WelliApp }) {
               );
             })}
           </ScrollView>
+            </>
+          )}
 
           {/* Recipient Email Input */}
           <Text style={styles.sectionLabel}>RECIPIENT EMAIL ADDRESS</Text>

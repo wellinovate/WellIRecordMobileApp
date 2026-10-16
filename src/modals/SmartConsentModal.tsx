@@ -18,7 +18,6 @@ import { EXPIRY_LABEL_MAP } from '../utils/expiry';
 import { normalizeNigerianPhone } from '../utils/phone';
 import { authService } from '../services/authService';
 import { facilityService } from '../services/facilityService';
-import { CONFIG } from '../services/config';
 import type { WelliApp } from '../state/useWelliApp';
 import type { ShareExpiry } from '../data/types';
 
@@ -101,11 +100,6 @@ export function SmartConsentModal({ app }: { app: WelliApp }) {
   };
 
   const triggerDispatch = async (channel: 'phone' | 'email') => {
-    if (CONFIG.demoMode) {
-      setDispatchState('sent');
-      setDispatchMessage('Verification code dispatched (demo mode)');
-      return;
-    }
     setDispatchState('sending');
     setDispatchError(null);
     try {
@@ -173,10 +167,8 @@ export function SmartConsentModal({ app }: { app: WelliApp }) {
     try {
       const code = otpDigits.join('');
       const identifier = otpChannel === 'phone' ? userPhone : userEmail;
-      if (!CONFIG.demoMode) {
-        // Verifies identity only — does not alter account session
-        await authService.verifyAuthOtp(identifier, code);
-      }
+      // Verifies identity only — does not alter account session
+      await authService.verifyAuthOtp(identifier, code);
       hapticFeedback.success();
       await actions.grantSmartAccess();
       setStep('form');

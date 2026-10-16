@@ -1,69 +1,71 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code when working in this repository.
+
+## What this is
+
+WelliRecord mobile: an Expo (SDK 57) / React Native 0.86 app for patient-owned health
+records. Native entry is `index.js` -> `src/App.expo.tsx`. A browser prototype of the same UI
+still exists (`src/main.tsx` -> `src/App.tsx`, served by Vite) and is not what ships to the
+stores. `server/` holds the Express + MongoDB backend deployed on Render.
 
 ## Commands
 
 ```bash
-npm run dev       # start the Vite dev server (HMR)
-npm run build     # tsc -b (type-check, solution-style project refs) then vite build
-npm run preview   # serve the production build locally
-npm run lint       # oxlint (not ESLint) — rules live in .oxlintrc.json
+npm start                                  # Expo dev server
+npm run android                            # build and run a dev client on Android
+npm run dev                                # Vite browser prototype
+npm run lint                               # oxlint (rules in .oxlintrc.json)
+npx tsc --noEmit -p tsconfig.app.json      # type-check the app (must pass)
+CI=1 npx expo export --platform android --output-dir /tmp/export   # verify Metro bundles
+eas build -p android --profile preview     # internal APK
+eas build -p android --profile production  # Play Store AAB
 ```
 
-There is no test runner configured in this project.
+There is no test runner configured. Before opening a PR, run the type-check, lint and the
+Android export above.
+
+## Configuration and secrets
+
+Nothing secret is committed. Values come from the build environment (EAS env/secrets locally
+via `.env`, which is gitignored):
+
+- `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`: required. Release builds throw at launch without it;
+  dev builds fall back to the Clerk development instance.
+- `EXPO_PUBLIC_API_URL`: optional override of the backend URL in `src/services/config.ts`.
+- `GOOGLE_MAPS_ANDROID_API_KEY`, `GOOGLE_MAPS_IOS_API_KEY`: read by `app.config.js`.
+
+`app.json` holds static Expo config; `app.config.js` layers the Maps keys on top.
 
 ## Architecture
 
-This is a client-only React + TypeScript + Vite app — no backend, no router, no network
-requests. It's a faithful reimplementation of a Claude Design mobile prototype ("WelliRecord",
-a family health-records app), rebuilt as a plain responsive web app rather than as a native app
-or a fake-device mockup.
+**Single state hook.** `src/state/useWelliApp.ts` is the source of truth: one `AppState`
+object updated through `patch()`, plus an `actions` object of every mutation. `App.expo.tsx`
+calls it once and passes the result (typed `WelliApp`) to screens and modals as an `app` prop.
 
-**Single state hook, no per-screen state.** `src/state/useWelliApp.ts` (`useWelliApp`) is the
-one source of truth: a single `AppState` object (active tab, modal visibility flags, form
-inputs, etc.) updated through an internal `patch()` helper, plus an `actions` object of every
-mutation (`setTab`, `openShareFlow`, `revokeShare`, ...) and the static reference data
-(`records`, `family`, `doctors`, `proxyLog`, `activityLog`, `onboardingSlides`). `App.tsx` calls
-this hook once and passes the whole returned object (typed as `WelliApp`) down as a single
-`app` prop — screens and modals do not hold their own state or receive granular props.
+**Screens and modals read `app` directly.** `src/screens/` and `src/modals/` take
+`{ app }: { app: WelliApp }` and derive their own view data. Modals are always mounted and
+return `null` when their `state.show*` flag is false. Because of that, every hook in a modal
+must be called before the early `return null`; calling a hook after it crashes when the modal
+opens.
 
-**Screens and modals derive their own view data.** Components in `src/screens/` and
-`src/modals/` take `{ app }: { app: WelliApp }`, read `app.state` / `app.records` / etc.
-directly, and compute whatever filtered or joined data they need inline in the component body
-(e.g. `RecordsScreen` filters `records` by `state.recordFilter` and `state.recordQuery` itself).
-There's no separate selectors/derived-state layer — this mirrors the `renderVals()` pattern of
-the original Claude Design source this was ported from.
+**Tabs are state, not routes.** `state.tab` selects the screen. There is no router.
 
-**Modals are always mounted; visibility is self-guarded.** Every modal in `src/modals/` is
-rendered unconditionally by `App.tsx` and returns `null` internally when its own
-`state.show*`/`state.record DetailId`/etc. flag is falsy. There is no modal stack, portal, or
-z-index manager — stacking order comes from JSX order and hardcoded `z-index` values matched to
-the original design spec.
+**Services talk to the backend.** `src/services/` wraps the REST API through `apiClient.ts`
+(Bearer token, timeout, normalized errors). Services call the live API only; there is no demo
+or offline-fake mode. `offlineSyncService` queues mutations while offline.
 
-**Tab navigation is state, not routes.** `state.tab` (`'home' | 'records' | 'share' | 'care' |
-'profile'`) selects which screen renders in `App.tsx`; there is no React Router or URL sync.
+**Auth.** Clerk (`@clerk/expo`) with tokens in `expo-secure-store` (`src/utils/tokenCache.ts`).
+Auth screens live in `src/features/auth/`.
 
-**Theming via context, not CSS variables.** `src/theme/ThemeContext.tsx` provides the active
-palette object (`LIGHT_THEME` / `DARK_THEME`, defined in `src/data/mockData.ts`) computed from
-`state.darkMode` via `themeFor()`. Components call `useTheme()` and read fields like
-`theme.surface` / `theme.text` directly in inline styles. Many status/brand colors (e.g. the
-`#041E42` navy, `#0EA5E9` accent, red/green status pills) are intentionally hardcoded rather than
-themed, matching the source design.
+**Styling.** NativeWind `className` plus inline style objects. `nativewind-env.d.ts` is
+included in `tsconfig.app.json` so `className` type-checks. Theme colors come from
+`ThemeContext` (`LIGHT_THEME` / `DARK_THEME` in `src/data/mockData.ts`).
 
-**Styling is inline styles + a small utility stylesheet.** Layout and per-element colors are
-almost entirely React inline `style` objects ported directly from the original HTML/CSS design.
-`src/index.css` only holds structural/shared classes (`.phone-shell`, `.screen-pad`, `.chip`,
-`.tab-bar`, `.overlay-fullscreen`, keyframe animations, etc.) and the mobile-shell responsive
-behavior — full-bleed below ~460px, a centered rounded "phone" card above it. There is no
-Tailwind, CSS-in-JS, or component library.
+## Rules for changes
 
-**Mock data doubles as the backend.** `src/data/mockData.ts` holds all fixtures (family
-members, health records, doctors, providers, notifications, onboarding copy, etc.) and
-`src/data/types.ts` holds their shared types. `useWelliApp` mutates copies of this data in
-React state; only two pieces of state persist across reloads, via `localStorage` directly inside
-`useWelliApp` (`welli_active_shares`, `welli_dark_mode`) — everything else resets on refresh.
-
-**Logo is hand-drawn SVG, not an image asset.** `src/components/Logo.tsx` renders the brand mark
-(shield + chevrons + plus) as inline SVG paths rather than loading an image file, so it can be
-recolored per-theme via a `color` prop.
+- Health documents must not be sent to third-party services. Open them in-app or hand the
+  file to the user's own app (see `PdfViewerModal`).
+- Account deletion must surface server errors and only sign the user out on success.
+- Do not commit API keys, keystores or `.env` files.
+- Use one lockfile: `package-lock.json`.

@@ -5,7 +5,6 @@
  */
 
 import { apiClient } from './apiClient';
-import { FACILITIES } from '../data/mockData';
 import type { CareFacility, FacilityType } from '../data/types';
 
 export const facilityService = {
@@ -48,14 +47,6 @@ export const facilityService = {
             consultationFeeNaira: f.consultationFeeNaira || 10000,
           }));
         }
-      }
-
-      // If /care/facilities didn't return items, initialize with bundled FACILITIES
-      if (facilitiesList.length === 0) {
-        facilitiesList = FACILITIES.map((f) => ({
-          ...f,
-          isVerified: f.isVerified !== undefined ? f.isVerified : f.verified,
-        }));
       }
 
       // 2. Process /care/providers (website-registered OrganizationProfiles)
@@ -123,10 +114,7 @@ export const facilityService = {
 
       return facilitiesList;
     } catch {
-      return FACILITIES.map((f) => ({
-        ...f,
-        isVerified: f.isVerified !== undefined ? f.isVerified : f.verified,
-      }));
+      return [];
     }
   },
 };

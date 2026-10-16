@@ -4,8 +4,6 @@ import * as Clipboard from 'expo-clipboard';
 import {
   CONSENT_SCOPES,
   DOCTORS,
-  FACILITIES,
-  INITIAL_NOTIFICATIONS,
   LINKED_ACCOUNTS,
   ONBOARDING,
 } from '../data/mockData';
@@ -195,30 +193,28 @@ export function formatEmergencyContact(profile: any): string {
   return '';
 }
 
+// Empty placeholder profile. Real values come from the signed-in user's
+// account; nothing here should describe an actual person.
 const DEFAULT_PRIMARY_USER: FamilyMember = {
   id: 'me',
-  name: 'Chibuike Joshua Nwogha',
-  initials: 'CJ',
+  name: '',
+  initials: '',
   role: 'owner',
-  dob: 'March 14, 1991',
-  gender: 'Male',
-  bloodType: 'O+',
-  genotype: 'AA',
-  height: '182 cm',
-  weight: '78 kg',
-  allergies: 'Penicillin, Shellfish',
-  conditions: 'None',
-  contact: 'Dr. Amina Bello (+234 803 123 4567)',
-  emergencyContacts: [
-    { name: 'Nneoma Nwogha', relationship: 'Spouse', phone: '+234 803 555 0192' }
-  ],
-  email: 'c.nwogha@wellirecord.com',
-  phone: '+234 802 345 6789',
-  address: 'Maitama, Abuja, Nigeria',
-  insuranceProvider: 'Hygeia HMO',
-  insuranceId: 'HYG-90218-A',
-  wrId: 'WR-ABJ-88204',
-  memberId: 'WR-ABJ-88204',
+  dob: '',
+  gender: '',
+  bloodType: '',
+  genotype: '',
+  height: '',
+  weight: '',
+  allergies: '',
+  conditions: '',
+  contact: '',
+  emergencyContacts: [],
+  email: '',
+  phone: '',
+  address: '',
+  insuranceProvider: '',
+  insuranceId: '',
 };
 
 const initialState: AppState = {
@@ -313,7 +309,7 @@ const initialState: AppState = {
   showOnboarding: false,
   onboardingStep: 0,
   showNotifications: false,
-  notifications: INITIAL_NOTIFICATIONS,
+  notifications: [],
   darkMode: false,
   faceIdEnabled: false,
   showLockScreen: false,
@@ -321,7 +317,7 @@ const initialState: AppState = {
   showLanguage: false,
   language: 'English',
   notifPermission: null,
-  facilitiesList: FACILITIES,
+  facilitiesList: [],
   toast: null,
 };
 
@@ -951,7 +947,7 @@ export function useWelliApp() {
             doc = { id: 'bridge', name: `WelliBridge Link · ${s.bridgeCode}`, initials: 'WB' };
           } else {
             const foundDoc = DOCTORS.find((d) => d.id === s.shareSelectedDoctorId);
-            const foundFac = FACILITIES.find((f) => f.id === s.shareSelectedDoctorId);
+            const foundFac = (s.facilitiesList ?? []).find((f) => f.id === s.shareSelectedDoctorId);
             if (foundDoc) {
               doc = foundDoc;
             } else if (foundFac) {
@@ -1577,7 +1573,7 @@ export function useWelliApp() {
     confirmBooking: async (extra?: { familyMemberId?: string; reason?: string }) => {
       if (state.bookingSubmitting) return;
       const externalFacility = state.externalBookingFacility;
-      const allFacilities = state.facilitiesList?.length ? state.facilitiesList : FACILITIES;
+      const allFacilities = state.facilitiesList ?? [];
       const facility = externalFacility ? null : allFacilities.find((f) => f.id === state.bookingFacilityId);
       if ((!externalFacility && !facility) || !state.bookingDate || !state.bookingTimeSlot) {
         showToast('Choose a date and time to continue');
@@ -1863,19 +1859,6 @@ export function useWelliApp() {
       patch({ showWelcomeHome: true, welcomeTab: tab }),
     closeWelcomeHome: () => patch({ showWelcomeHome: false }),
     setWelcomeTab: (tab: WelcomeTab) => patch({ welcomeTab: tab }),
-
-    signInWithDemo: (memberId = 'me') => {
-      hapticFeedback.success();
-      patch({
-        isAuthenticated: true,
-        loggedOut: false,
-        showWelcomeHome: false,
-        activeFamilyId: memberId,
-        tab: 'home',
-        tabHistory: [],
-      });
-      showToast('Welcome back to WelliRecord');
-    },
 
     sendAuthOtp: async (
       identifier: string,
@@ -2295,7 +2278,7 @@ export function useWelliApp() {
     onboardingSlides: ONBOARDING,
     linkedAccountDefs: LINKED_ACCOUNTS,
     consentScopes: CONSENT_SCOPES,
-    facilities: state.facilitiesList && state.facilitiesList.length > 0 ? state.facilitiesList : FACILITIES,
+    facilities: state.facilitiesList ?? [],
   };
 }
 
