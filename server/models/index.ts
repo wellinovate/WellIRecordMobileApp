@@ -686,6 +686,7 @@ export interface IAppointmentRequest extends Document {
   scheduledFor: Date;
   timeSlot: string;
   reason?: string;
+  visitType?: 'in_person' | 'video';
   status: 'requested' | 'confirmed' | 'cancelled';
 }
 
@@ -699,6 +700,7 @@ const AppointmentRequestSchema = new Schema<IAppointmentRequest>(
     scheduledFor: { type: Date, required: true, index: true },
     timeSlot: { type: String, required: true },
     reason: { type: String, default: '' },
+    visitType: { type: String, enum: ['in_person', 'video'], default: 'in_person' },
     status: { type: String, enum: ['requested', 'confirmed', 'cancelled'], default: 'requested' },
   },
   { timestamps: true }

@@ -29,6 +29,12 @@ export function formatVisitDate(iso: string) {
   return d.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
 }
 
+function isToday(iso: string) {
+  const lagos = new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 10);
+  const d = new Date(iso);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === lagos;
+}
+
 export function isUpcoming(a: AppointmentItem) {
   if (a.status !== 'requested' && a.status !== 'confirmed') return false;
   const t = new Date(a.scheduledFor).getTime();
@@ -65,6 +71,19 @@ export function UpcomingVisitsModal({ app }: { app: WelliApp }) {
         {a.timeSlot ? ` · ${a.timeSlot}` : ''}
       </Text>
       {!!a.reason && <Text style={[styles.sub, { color: theme.muted }]}>Reason: {a.reason}</Text>}
+      {a.visitType === 'video' && (
+        <Text style={[styles.sub, { color: theme.muted }]}>Video visit</Text>
+      )}
+      {a.visitType === 'video' && a.status === 'confirmed' && isToday(a.scheduledFor) && (
+        <TouchableOpacity
+          onPress={() => actions.joinVideoVisit({ id: a.id, facilityName: a.facilityName })}
+          disabled={state.joiningVisitId === a.id}
+          style={styles.joinBtn}
+          accessibilityRole="button"
+        >
+          <Text style={styles.joinText}>{state.joiningVisitId === a.id ? 'Connecting…' : 'Join video visit'}</Text>
+        </TouchableOpacity>
+      )}
       {canCancel && (a.status === 'requested' || a.status === 'confirmed') && (
         <TouchableOpacity onPress={() => confirmCancel(a)} style={styles.cancelBtn} accessibilityRole="button">
           <Text style={styles.cancelText}>Cancel visit</Text>
@@ -105,6 +124,8 @@ const styles = StyleSheet.create({
   title: { fontSize: 15, fontWeight: '700', flex: 1 },
   status: { fontSize: 12, fontWeight: '700' },
   sub: { fontSize: 13 },
+  joinBtn: { marginTop: 8, minHeight: 44, borderRadius: 12, backgroundColor: '#082F67', alignItems: 'center', justifyContent: 'center' },
+  joinText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   cancelBtn: { marginTop: 8, alignSelf: 'flex-start' },
   cancelText: { color: '#b91c1c', fontWeight: '600', fontSize: 13 },
 });

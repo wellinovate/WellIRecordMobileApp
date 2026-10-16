@@ -34,6 +34,7 @@ via `.env`, which is gitignored):
   dev builds fall back to the Clerk development instance.
 - `EXPO_PUBLIC_API_URL`: optional override of the backend URL in `src/services/config.ts`.
 - `EXPO_PUBLIC_WELLIPAY_API_URL`: address of the wellipay-api service. Without it the WelliPay screen shows "not available".
+- Server env for video visits (Render): `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`. Without them the token route returns 503.
 - `GOOGLE_MAPS_ANDROID_API_KEY`, `GOOGLE_MAPS_IOS_API_KEY`: read by `app.config.js`.
 
 `app.json` holds static Expo config; `app.config.js` layers the Maps keys on top.
@@ -62,6 +63,13 @@ Auth screens live in `src/features/auth/`.
 **Styling.** NativeWind `className` plus inline style objects. `nativewind-env.d.ts` is
 included in `tsconfig.app.json` so `className` type-checks. Theme colors come from
 `ThemeContext` (`LIGHT_THEME` / `DARK_THEME` in `src/data/mockData.ts`).
+
+## Video visits
+
+Patients join through LiveKit. `POST /api/v1/telehealth/appointments/:id/token` issues a
+one-hour token for room `wr-visit-<appointmentId>` when the visit is a confirmed video visit
+on the current Lagos day. The clinician side (web console) must join the same room name in the
+same LiveKit project. The app needs a native build (LiveKit/WebRTC); Expo Go does not work.
 
 ## Rules for changes
 

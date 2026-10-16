@@ -15,6 +15,7 @@ export function BookAppointmentModal({app}:{app:WelliApp}){
   const {state,actions,facilities,family}=app;
   const [memberId,setMemberId]=useState(state.activeFamilyId||"me");
   const [reason,setReason]=useState("");
+  const [visitType,setVisitType]=useState<"in_person"|"video">("in_person");
   const [month,setMonth]=useState(()=>new Date());
   const days=useMemo(()=>daysFor(month),[month]);
   if(!state.showBookAppointment) return null;
@@ -23,7 +24,7 @@ export function BookAppointmentModal({app}:{app:WelliApp}){
   const facility=ext?null:facilities.find(f=>f.id===state.bookingFacilityId);
   if(!ext&&!facility) return null;
 
-  const name=ext?.name||facility?.name||"Demo Community Clinic";
+  const name=ext?.name||facility?.name||"Facility";
   const address=ext?.address||(facility as any)?.address||"";
   const specialty=(facility as any)?.specialty||"Primary care";
   const patient=family.find(f=>f.id===memberId)||family[0];
@@ -42,6 +43,8 @@ export function BookAppointmentModal({app}:{app:WelliApp}){
 
         {family.length>1?<View className="mt-5"><Text className="text-[12px] font-semibold text-[#173B68]">Visit for</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-2"><View className="flex-row gap-2 pr-4">{family.map(m=>{const on=m.id===memberId;return <TouchableOpacity key={m.id} onPress={()=>setMemberId(m.id)} className={`rounded-full border px-4 py-3 ${on?"border-[#315B90] bg-[#EEF3FA]":"border-slate-200 bg-white"}`}><Text className={`text-[12px] font-semibold ${on?"text-[#173B68]":"text-slate-600"}`}>{m.id==="me"?"Myself":m.name.split(" ")[0]}</Text></TouchableOpacity>})}</View></ScrollView></View>:null}
 
+        <View className="mt-5"><Text className="text-[12px] font-semibold text-[#173B68]">Visit type</Text><View className="mt-2 flex-row gap-2">{([["in_person","In person"],["video","Video visit"]] as const).map(([v,l])=>{const on=visitType===v;return <TouchableOpacity key={v} onPress={()=>setVisitType(v)} accessibilityRole="button" className={`flex-1 items-center rounded-xl border px-4 py-3 ${on?"border-[#315B90] bg-[#EEF3FA]":"border-slate-200 bg-white"}`}><Text className={`text-[12px] font-semibold ${on?"text-[#173B68]":"text-slate-600"}`}>{l}</Text></TouchableOpacity>})}</View>{visitType==="video"?<Text className="mt-2 text-[11.5px] leading-[17px] text-slate-500">After the facility confirms, a Join button appears under Upcoming visits on the day of the visit.</Text>:null}</View>
+
         <View className="mt-6 rounded-2xl border border-slate-200 p-4">
           <View className="flex-row items-center justify-between"><TouchableOpacity onPress={()=>setMonth(x=>new Date(x.getFullYear(),x.getMonth()-1,1))} className="h-9 w-9 items-center justify-center rounded-full bg-slate-50"><Text className="text-[20px] text-[#315B90]">‹</Text></TouchableOpacity><Text className="text-[15px] font-extrabold text-[#082F67]">{label(month)}</Text><TouchableOpacity onPress={()=>setMonth(x=>new Date(x.getFullYear(),x.getMonth()+1,1))} className="h-9 w-9 items-center justify-center rounded-full bg-slate-50"><Text className="text-[20px] text-[#315B90]">›</Text></TouchableOpacity></View>
           <View className="mt-4 flex-row">{["S","M","T","W","T","F","S"].map((x,i)=><View key={`${x}${i}`} className="flex-1 items-center"><Text className="text-[10.5px] font-semibold text-slate-400">{x}</Text></View>)}</View>
@@ -56,7 +59,7 @@ export function BookAppointmentModal({app}:{app:WelliApp}){
 
         {patient?.insuranceProvider?<View className="mt-4 rounded-2xl border border-[#D7E2F1] bg-[#F3F6FB] p-4"><Text className="text-[13px] font-bold text-[#173B68]">Insurance on file</Text><Text className="mt-2 text-[11.5px] leading-[17px] text-[#536A84]">{patient.insuranceProvider}. Coverage is confirmed by the facility, not this screen.</Text></View>:null}
 
-        <TouchableOpacity disabled={disabled} onPress={()=>{hapticFeedback.success();actions.confirmBooking({familyMemberId:memberId,reason})}} className={`mt-6 min-h-[48px] items-center justify-center rounded-xl ${disabled?"bg-slate-200":"bg-[#082F67]"}`}><Text className={`text-[14px] font-semibold ${disabled?"text-slate-400":"text-white"}`}>{state.bookingSubmitting?"Sending…":"Check demo booking"}</Text></TouchableOpacity>
+        <TouchableOpacity disabled={disabled} onPress={()=>{hapticFeedback.success();actions.confirmBooking({familyMemberId:memberId,reason,visitType})}} className={`mt-6 min-h-[48px] items-center justify-center rounded-xl ${disabled?"bg-slate-200":"bg-[#082F67]"}`}><Text className={`text-[14px] font-semibold ${disabled?"text-slate-400":"text-white"}`}>{state.bookingSubmitting?"Sending…":"Send request"}</Text></TouchableOpacity>
         <TouchableOpacity onPress={actions.closeBookAppointment} className="mt-2 min-h-[44px] items-center justify-center"><Text className="text-[13px] font-semibold text-slate-500">Cancel</Text></TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

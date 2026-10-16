@@ -8,6 +8,7 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import jwt from 'jsonwebtoken';
+import { AccessToken } from 'livekit-server-sdk';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
@@ -3251,6 +3252,7 @@ function normalizeAppointmentRequest(doc: any) {
     scheduledFor: doc.scheduledFor,
     timeSlot: doc.timeSlot,
     reason: doc.reason || '',
+    visitType: (doc.visitType === 'video' ? 'video' : 'in_person') as 'video' | 'in_person',
     status: doc.status as string,
   };
 }
@@ -3272,9 +3274,66 @@ function normalizeWebAppointment(doc: any) {
     scheduledFor: doc.scheduledFor,
     timeSlot: '',
     reason: doc.reasonForVisit || '',
+    visitType: 'in_person' as const,
     status: map[doc.status] || String(doc.status || ''),
   };
 }
+
+// POST /api/v1/telehealth/appointments/:id/token
+// Issues a short-lived LiveKit token for the caller's own confirmed video
+// visit, on the day of the visit (Africa/Lagos). Room name contract with the
+// clinician client: `wr-visit-<appointmentId>`. The clinician's token must be
+// issued by the web backend for the same room using the same LiveKit project.
+app.post('/api/v1/telehealth/appointments/:id/token', appointmentLimiter, async (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+  const livekitUrl = process.env.LIVEKIT_URL;
+  const apiKey = process.env.LIVEKIT_API_KEY;
+  const apiSecret = process.env.LIVEKIT_API_SECRET;
+  if (!livekitUrl || !apiKey || !apiSecret) {
+    return res.status(503).json({ success: false, message: 'Video visits are not set up yet.' });
+  }
+  const id = String(req.params.id);
+  if (!mongoose.isValidObjectId(id) || !mongoose.isValidObjectId(authUserId)) {
+    return res.status(404).json({ success: false, message: 'Appointment not found' });
+  }
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({ success: false, message: 'Database unavailable' });
+  }
+  try {
+    const appt: any = await AppointmentRequest.findOne({
+      _id: new mongoose.Types.ObjectId(id),
+      accountId: new mongoose.Types.ObjectId(authUserId),
+    }).lean();
+    if (!appt || appt.visitType !== 'video') {
+      return res.status(404).json({ success: false, message: 'Video visit not found' });
+    }
+    if (appt.status !== 'confirmed') {
+      return res.status(409).json({ success: false, message: 'This visit has not been confirmed by the facility yet.' });
+    }
+    const lagosToday = new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 10);
+    const visitDay = new Date(appt.scheduledFor).toISOString().slice(0, 10);
+    if (lagosToday !== visitDay) {
+      return res.status(409).json({ success: false, message: 'You can join on the day of your visit.' });
+    }
+
+    const profile: any = await UserProfile.findOne({ accountId: new mongoose.Types.ObjectId(authUserId) }, 'fullName name').lean();
+    const room = `wr-visit-${id}`;
+    const at = new AccessToken(apiKey, apiSecret, {
+      identity: `patient-${authUserId}`,
+      name: profile?.fullName || profile?.name || 'Patient',
+      ttl: '1h',
+    });
+    at.addGrant({ roomJoin: true, room, canPublish: true, canSubscribe: true });
+    const token = await at.toJwt();
+    return res.json({ success: true, url: livekitUrl, token, room });
+  } catch (err) {
+    console.error('[POST /telehealth/token] ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Could not start the video visit' });
+  }
+});
 
 // POST /api/v1/appointments/requests
 app.post('/api/v1/appointments/requests', appointmentLimiter, async (req: Request, res: Response) => {
@@ -3286,7 +3345,10 @@ app.post('/api/v1/appointments/requests', appointmentLimiter, async (req: Reques
     return res.status(503).json({ success: false, message: 'Database unavailable' });
   }
 
-  const { facilityId, facilityName, facilityAddress, date, timeSlot, reason, familyMemberId } = req.body || {};
+  const { facilityId, facilityName, facilityAddress, date, timeSlot, reason, familyMemberId, visitType } = req.body || {};
+  if (visitType !== undefined && visitType !== 'in_person' && visitType !== 'video') {
+    return res.status(400).json({ success: false, message: 'Visit type must be in_person or video' });
+  }
   const when = new Date(String(date || ''));
   if (Number.isNaN(when.getTime())) {
     return res.status(400).json({ success: false, message: 'A valid date is required' });
@@ -3331,6 +3393,7 @@ app.post('/api/v1/appointments/requests', appointmentLimiter, async (req: Reques
       scheduledFor: when,
       timeSlot: timeSlot.trim(),
       reason: typeof reason === 'string' ? reason.trim() : '',
+      visitType: visitType === 'video' ? 'video' : 'in_person',
       status: 'requested',
     });
     return res.status(201).json({ success: true, appointment: normalizeAppointmentRequest(doc) });

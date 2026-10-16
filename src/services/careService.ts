@@ -15,6 +15,7 @@ export interface AppointmentRequestPayload {
   date: string;
   timeSlot: string;
   reason?: string;
+  visitType?: 'in_person' | 'video';
 }
 
 export type AppointmentStatus =
@@ -34,6 +35,7 @@ export interface AppointmentItem {
   scheduledFor: string;
   timeSlot: string;
   reason: string;
+  visitType?: 'in_person' | 'video';
   status: AppointmentStatus | string;
 }
 
@@ -46,7 +48,21 @@ export interface DirectoryDoctor {
   address: string;
 }
 
+export interface TelehealthSession {
+  url: string;
+  token: string;
+  room: string;
+}
+
 export const careService = {
+  async fetchTelehealthToken(appointmentId: string): Promise<TelehealthSession> {
+    const res = await apiClient.post<{ success: boolean } & TelehealthSession>(
+      `/telehealth/appointments/${encodeURIComponent(appointmentId)}/token`,
+      {}
+    );
+    return { url: res.url, token: res.token, room: res.room };
+  },
+
   async fetchDoctors(): Promise<DirectoryDoctor[]> {
     const res = await apiClient.get<{ success: boolean; doctors: DirectoryDoctor[] }>('/care/doctors');
     return Array.isArray(res?.doctors) ? res.doctors : [];

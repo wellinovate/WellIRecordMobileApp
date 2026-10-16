@@ -459,15 +459,15 @@ export function CareScreen({ app }: { app: WelliApp }) {
 
             <TouchableOpacity
               activeOpacity={0.82}
-              onPress={() => actions.setTab("chat")}
+              onPress={() => actions.openUpcomingVisits()}
               className="rounded-2xl border border-slate-200 bg-[#F8FAFD] p-4"
             >
               <Text className="text-[14px] font-bold text-[#173B68]">
-                Telemedicine
+                Video visits
               </Text>
 
               <Text className="mt-1 text-[11.5px] leading-[17px] text-slate-500">
-                Explore remote care through the WelliRecord assistant.
+                Request a video visit when you book. Join from Upcoming visits on the day it is confirmed.
               </Text>
             </TouchableOpacity>
           </View>

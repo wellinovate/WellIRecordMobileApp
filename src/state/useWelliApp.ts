@@ -117,9 +117,8 @@ export interface AppState {
   bookingSubmitting: boolean;
   showLabDirectory: boolean;
   inCall: boolean;
-  callMuted: boolean;
-  callCameraOff: boolean;
-  callDurationSec: number;
+  telehealthSession: { url: string; token: string; room: string; facilityName: string } | null;
+  joiningVisitId: string | null;
   showOnboarding: boolean;
   onboardingStep: number;
   showNotifications: boolean;
@@ -297,9 +296,8 @@ const initialState: AppState = {
   bookingSubmitting: false,
   showLabDirectory: false,
   inCall: false,
-  callMuted: false,
-  callCameraOff: false,
-  callDurationSec: 0,
+  telehealthSession: null,
+  joiningVisitId: null,
   showOnboarding: false,
   onboardingStep: 0,
   showNotifications: false,
@@ -624,14 +622,6 @@ export function useWelliApp() {
       }
     })();
   }, []);
-
-  useEffect(() => {
-    if (!state.inCall) return;
-    const id = setInterval(() => {
-      patch((s) => ({ callDurationSec: s.callDurationSec + 1 }));
-    }, 1000);
-    return () => clearInterval(id);
-  }, [state.inCall]);
 
   const persistShares = (shares: ActiveShare[]) => {
     storage.setItem('welli_active_shares', JSON.stringify(shares)).catch(() => {});
@@ -1469,86 +1459,29 @@ export function useWelliApp() {
     setCareFacilityType: (t: string) => patch({ careFacilityType: t }),
     setCareSpecialty: (s: string) => patch({ careSpecialty: s }),
     setCareQuery: (value: string) => patch({ careQuery: value }),
-    joinCall: () => {
-      // No real video/telehealth backend exists yet on mobile either. This
-      // used to flip into a fake call screen with a hardcoded doctor and
-      // patient name. Match the web app's approach: don't enter a call
-      // screen that looks live when nothing real is happening.
-      showToast('Video telehealth is coming soon — not yet available');
+    joinVideoVisit: async (appointment: { id: string; facilityName: string }) => {
+      if (state.joiningVisitId) return;
+      patch({ joiningVisitId: appointment.id });
+      try {
+        const session = await careService.fetchTelehealthToken(appointment.id);
+        patch({
+          telehealthSession: { ...session, facilityName: appointment.facilityName },
+          inCall: true,
+          showUpcomingVisits: false,
+          joiningVisitId: null,
+        });
+      } catch (err: any) {
+        patch({ joiningVisitId: null });
+        showToast(err?.message || 'Could not start the video visit. Try again.');
+      }
     },
     endCall: () => {
-      patch({ inCall: false });
-      showToast('Call ended');
+      patch({ inCall: false, telehealthSession: null });
     },
-    syncTelehealthVisit: (data: {
-      doctorName: string;
-      diagnosis: string;
-      notes: string;
-      prescriptionName?: string;
-      dosage?: string;
-    }) => {
-      hapticFeedback.success();
-      const newRecordId = `r_${Date.now()}`;
-      const now = new Date();
-      const dateStr = now.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
-
-      const newRecord: HealthRecord = {
-        id: newRecordId,
-        ownerId: state.activeFamilyId,
-        title: `Telehealth Summary · ${data.doctorName}`,
-        date: dateStr,
-        type: 'Clinical Note',
-        provider: `${data.doctorName} · WelliCare Virtual Care`,
-        summary: `Diagnosis: ${data.diagnosis}. ${data.notes}`,
-        extractedOcr: {
-          keyValues: [
-            { label: 'Consultant', value: data.doctorName },
-            { label: 'Diagnosis', value: data.diagnosis },
-            { label: 'Encounter Type', value: 'Telehealth Video Encounter' },
-          ],
-          statusBadge: 'Doctor Certified',
-        },
-      };
-
-      let updatedRxList = state.prescriptions;
-      if (data.prescriptionName) {
-        const newRx: PrescriptionItem = {
-          id: `rx_${Date.now()}`,
-          ownerId: state.activeFamilyId,
-          medicationName: data.prescriptionName,
-          dosage: data.dosage || '1 tablet daily as prescribed',
-          frequency: 'Daily · 10-Day Supply',
-          prescriber: `${data.doctorName} · WelliCare Telehealth`,
-          prescribedDate: dateStr,
-          pharmacyProvider: 'MediTrust Pharmacy & Diagnostics · Lekki Phase 1',
-          totalPriceNaira: 3500,
-          hmoCoveredNaira: 2800,
-          patientCoPayNaira: 700,
-          refillsTotal: 2,
-          refillsRemaining: 2,
-          status: 'active',
-          deliveryAddress: 'Block 12, Admiralty Way, Lekki Phase 1, Lagos',
-          eta: 'Today via Express Dispatch',
-          hmoProvider: 'Hygeia HMO (80% Tariff Co-Pay)',
-          notes: `Prescribed during telehealth follow-up for ${data.diagnosis}.`,
-        };
-        updatedRxList = [newRx, ...state.prescriptions];
-      }
-
-      patch((s) => ({
-        inCall: false,
-        recordsList: [newRecord, ...s.recordsList],
-        prescriptions: updatedRxList,
-      }));
-
-      showToast(
-        data.prescriptionName
-          ? 'Consultation note & new prescription saved to your vault'
-          : 'Consultation note saved to your vault'
-      );
+    reportCallError: (message: string) => {
+      patch({ inCall: false, telehealthSession: null });
+      showToast(message);
     },
-    toggleCallMute: () => patch((s) => ({ callMuted: !s.callMuted })),
-    toggleCallCamera: () => patch((s) => ({ callCameraOff: !s.callCameraOff })),
 
     openBookAppointment: (
       facilityId: string,
@@ -1567,7 +1500,7 @@ export function useWelliApp() {
       patch({ showBookAppointment: false, externalBookingFacility: null }),
     setBookingDate: (v: string) => patch({ bookingDate: v }),
     setBookingTimeSlot: (v: string) => patch({ bookingTimeSlot: v }),
-    confirmBooking: async (extra?: { familyMemberId?: string; reason?: string }) => {
+    confirmBooking: async (extra?: { familyMemberId?: string; reason?: string; visitType?: 'in_person' | 'video' }) => {
       if (state.bookingSubmitting) return;
       const externalFacility = state.externalBookingFacility;
       const allFacilities = state.facilitiesList ?? [];
@@ -1591,6 +1524,7 @@ export function useWelliApp() {
           date: state.bookingDate,
           timeSlot: state.bookingTimeSlot,
           reason: extra?.reason?.trim() || undefined,
+          visitType: extra?.visitType === 'video' ? 'video' : 'in_person',
         });
         patch((s) => ({
           showBookAppointment: false,
