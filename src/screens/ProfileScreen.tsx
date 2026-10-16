@@ -237,9 +237,18 @@ export function ProfileScreen({
 
           <SettingsRow
             icon="membership"
-            title="HMO / provider & membership"
-            subtitle="Optional · not added"
+            title="WelliPay"
+            subtitle="Bills, wallet and payments"
             onPress={actions.openBilling}
+          />
+
+          <Divider />
+
+          <SettingsRow
+            icon="membership"
+            title="HMO / provider & membership"
+            subtitle="Optional · edit in personal info"
+            onPress={actions.openPersonalInfo}
           />
         </SectionCard>
 

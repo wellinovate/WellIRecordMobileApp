@@ -12,7 +12,6 @@ import type {
   FamilyMember,
   HealthRecord,
   ImmunizationMilestone,
-  Invoice,
   Notification,
   PrescriptionItem,
   RecordType,
@@ -105,8 +104,6 @@ export interface AppState {
   bookingDate: string;
   bookingTimeSlot: string;
   showBilling: boolean;
-  invoices: Invoice[];
-  showInvoiceDetail: string | null;
   showPrintLabResult: string | null;
   showEmailLabResult: string | null;
   prescriptions: PrescriptionItem[];
@@ -287,8 +284,6 @@ const initialState: AppState = {
   bookingDate: '',
   bookingTimeSlot: '',
   showBilling: false,
-  invoices: [],
-  showInvoiceDetail: null,
   showPrintLabResult: null,
   showEmailLabResult: null,
   prescriptions: [],
@@ -1633,12 +1628,6 @@ export function useWelliApp() {
 
     openBilling: () => patch({ showBilling: true }),
     closeBilling: () => patch({ showBilling: false }),
-    openInvoiceDetail: (id: string) => patch({ showInvoiceDetail: id }),
-    closeInvoiceDetail: () => patch({ showInvoiceDetail: null }),
-    markInvoicePaid: (id: string) => {
-      patch((s) => ({ invoices: s.invoices.map((inv) => (inv.id === id ? { ...inv, status: 'paid' as const } : inv)) }));
-      showToast('Invoice marked as paid');
-    },
 
     openOnboarding: () => patch({ showOnboarding: true, onboardingStep: 0 }),
     closeOnboarding: () => patch({ showOnboarding: false }),
@@ -2168,15 +2157,6 @@ export function useWelliApp() {
       showToast('Access revoked immediately');
     },
 
-    payInvoice: (id: string) => {
-      hapticFeedback.success();
-      patch((s) => ({
-        invoices: s.invoices.map((inv) =>
-          inv.id === id ? { ...inv, status: 'paid' } : inv
-        ),
-      }));
-      showToast('Invoice marked as reconciled and settled');
-    },
 
     openRefillModal: (prescriptionId: string) => {
       hapticFeedback.light();
