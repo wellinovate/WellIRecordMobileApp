@@ -24,7 +24,10 @@
         "NSFaceIDUsageDescription": "WelliRecord uses Face ID to securely unlock your health records.",
         "NSCameraUsageDescription": "WelliRecord uses the camera to scan documents and for video visits with your care provider.",
         "NSPhotoLibraryUsageDescription": "WelliRecord accesses your photo library so you can upload medical records from your camera roll.",
-        "NSMicrophoneUsageDescription": "WelliRecord uses the microphone for video visits with your care provider."
+        "NSMicrophoneUsageDescription": "WelliRecord uses the microphone for video visits with your care provider.",
+        "UIBackgroundModes": [
+          "audio"
+        ]
       },
       "buildNumber": "1"
     },

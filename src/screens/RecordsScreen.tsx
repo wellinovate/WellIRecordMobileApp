@@ -331,19 +331,15 @@ export function RecordsScreen({ app }: { app: WelliApp }) {
               </Text>
               <TouchableOpacity
                 activeOpacity={0.76}
-                onPress={() =>
-                  actions.showToast(
-                    "Immunization details will be connected after the UI pass",
-                  )
-                }
+                onPress={actions.openUpload}
                 className="mt-3 flex-row items-center rounded-2xl border border-slate-200 p-4"
               >
                 <View className="flex-1">
                   <Text className="text-[14px] font-semibold text-[#173B68]">
-                    Review immunization history
+                    Add an immunization record
                   </Text>
                   <Text className="mt-1 text-[12px] leading-[17px] text-slate-500">
-                    Keep vaccination details ready for care visits.
+                    Upload a vaccination card so it is ready for care visits.
                   </Text>
                 </View>
                 <ChevronIcon />

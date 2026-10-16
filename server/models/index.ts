@@ -439,6 +439,7 @@ export const MedicationEntry: Model<IMedicationEntry> = mongoose.models.Medicati
 
 // 9. Account Model (Matching 'accounts' collection with phone e.g. 07030144923)
 export interface IAccount extends Document {
+  sessionsRevokedAt?: Date;
   phone?: string;
   phoneNumber?: string;
   email?: string;
@@ -454,6 +455,7 @@ export interface IAccount extends Document {
 
 const AccountSchema = new Schema<IAccount>(
   {
+    sessionsRevokedAt: { type: Date },
     phone: { type: String, index: true },
     phoneNumber: { type: String, index: true },
     email: { type: String },
@@ -687,7 +689,8 @@ export interface IAppointmentRequest extends Document {
   timeSlot: string;
   reason?: string;
   visitType?: 'in_person' | 'video';
-  status: 'requested' | 'confirmed' | 'cancelled';
+  status: 'requested' | 'confirmed' | 'cancelled' | 'completed';
+  visitSummary?: { diagnosis?: string; notes?: string; authoredBy?: string; authoredAt?: Date };
   notifiedStatus?: string;
 }
 
@@ -702,7 +705,13 @@ const AppointmentRequestSchema = new Schema<IAppointmentRequest>(
     timeSlot: { type: String, required: true },
     reason: { type: String, default: '' },
     visitType: { type: String, enum: ['in_person', 'video'], default: 'in_person' },
-    status: { type: String, enum: ['requested', 'confirmed', 'cancelled'], default: 'requested' },
+    status: { type: String, enum: ['requested', 'confirmed', 'cancelled', 'completed'], default: 'requested' },
+    visitSummary: {
+      diagnosis: { type: String },
+      notes: { type: String },
+      authoredBy: { type: String },
+      authoredAt: { type: Date },
+    },
     // Last status the patient was notified about. Written by the notification sweep.
     notifiedStatus: { type: String },
   },

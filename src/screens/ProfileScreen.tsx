@@ -246,9 +246,9 @@ export function ProfileScreen({
 
           <SettingsRow
             icon="membership"
-            title="HMO / provider & membership"
-            subtitle="Optional · edit in personal info"
-            onPress={actions.openPersonalInfo}
+            title="HMO and coverage"
+            subtitle="Policies, pre-authorisation and family funding"
+            onPress={actions.openCoverage}
           />
         </SectionCard>
 

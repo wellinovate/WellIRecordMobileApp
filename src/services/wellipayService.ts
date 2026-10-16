@@ -89,6 +89,55 @@ export interface WellipayCharge {
   status: string;
 }
 
+export interface WellipayMoney {
+  amountMinor: number;
+  currency: string;
+}
+
+export interface WellipayHmoPolicy {
+  hmoPolicyId: string;
+  provider: string;
+  policyNo: string;
+  enrolleeName: string;
+  planTier: string;
+  coPayPercent: number;
+  annualLimit: WellipayMoney;
+  usedAmount: WellipayMoney;
+  status: 'ACTIVE' | 'PENDING' | 'EXPIRED' | string;
+  expiryDate?: string;
+}
+
+export interface WellipayPreAuth {
+  preAuthId: string;
+  hmoPolicyId: string;
+  facilityRef: string;
+  procedure: string;
+  estimatedCost: WellipayMoney;
+  coveredAmount: WellipayMoney;
+  patientPortion: WellipayMoney;
+  status: 'APPROVED' | 'IN_REVIEW' | 'DECLINED' | string;
+  approvalCode?: string;
+  notes?: string;
+  requestedAt: string;
+}
+
+export interface WellipayFundingRequest {
+  requestId: string;
+  invoiceId: string;
+  status: string;
+  fundedAmountMinor: number;
+  currency: string;
+  expiresAt?: string;
+  createdAt: string;
+  contributions: { contributionId: string; sponsorRef: string; amountMinor: number; status: string }[];
+}
+
+export function newIdempotencyKey(): string {
+  let key = '';
+  for (let i = 0; i < 32; i++) key += Math.floor(Math.random() * 16).toString(16);
+  return key;
+}
+
 type TokenState = { token: string; expiresAt: number } | null;
 let patientToken: TokenState = null;
 
@@ -99,7 +148,7 @@ export function clearWellipaySession() {
 async function call<T>(
   method: 'GET' | 'POST' | 'DELETE',
   path: string,
-  options: { token?: string; body?: unknown } = {},
+  options: { token?: string; body?: unknown; idempotencyKey?: string } = {},
 ): Promise<T> {
   if (!isWellipayConfigured) {
     throw new WellipayError('WelliPay is not available in this version of the app.', 503, 'not_configured');
@@ -115,6 +164,7 @@ async function call<T>(
         Accept: 'application/json',
         ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
+        ...(options.idempotencyKey ? { 'Idempotency-Key': options.idempotencyKey } : {}),
       },
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
       signal: controller.signal,
@@ -231,6 +281,44 @@ export const wellipayService = {
     body: { invoiceId: string; amountMinor?: number },
   ): Promise<{ reference: string; amountMinor: number; invoiceStatus: string; balanceMinor: number }> {
     return call('POST', '/patient/wallet/pay', { token, body });
+  },
+
+  async listHmoPolicies(token: string): Promise<WellipayHmoPolicy[]> {
+    const res = await call<{ items: WellipayHmoPolicy[] }>('GET', '/patient/hmo-policies?limit=50', { token });
+    return res.items ?? [];
+  },
+
+  addHmoPolicy(
+    token: string,
+    body: {
+      provider: string;
+      policyNo: string;
+      enrolleeName: string;
+      planTier: string;
+      coPayPercent: number;
+      annualLimitMinor: number;
+    },
+    idempotencyKey: string,
+  ): Promise<WellipayHmoPolicy> {
+    return call<WellipayHmoPolicy>('POST', '/patient/hmo-policies', { token, body: { ...body, currency: 'NGN' }, idempotencyKey });
+  },
+
+  async listPreAuths(token: string): Promise<WellipayPreAuth[]> {
+    const res = await call<{ items: WellipayPreAuth[] }>('GET', '/patient/pre-authorizations?limit=50', { token });
+    return res.items ?? [];
+  },
+
+  createPreAuth(
+    token: string,
+    body: { hmoPolicyId: string; facilityRef: string; procedure: string; estimatedCostMinor: number },
+    idempotencyKey: string,
+  ): Promise<WellipayPreAuth> {
+    return call<WellipayPreAuth>('POST', '/patient/pre-authorizations', { token, body, idempotencyKey });
+  },
+
+  async listFamilyFunding(token: string): Promise<WellipayFundingRequest[]> {
+    const res = await call<{ items: WellipayFundingRequest[] }>('GET', '/patient/family-funding-requests?limit=50', { token });
+    return res.items ?? [];
   },
 
   async listCards(token: string): Promise<WellipayCard[]> {

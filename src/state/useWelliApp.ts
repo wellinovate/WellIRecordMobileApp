@@ -94,6 +94,7 @@ export interface AppState {
   bookingDate: string;
   bookingTimeSlot: string;
   showBilling: boolean;
+  showCoverage: boolean;
   showPrintLabResult: string | null;
   prescriptions: PrescriptionItem[];
   showRefillModal: string | null;
@@ -264,6 +265,7 @@ const initialState: AppState = {
   bookingDate: '',
   bookingTimeSlot: '',
   showBilling: false,
+  showCoverage: false,
   showPrintLabResult: null,
   prescriptions: [],
   showRefillModal: null,
@@ -1458,6 +1460,8 @@ export function useWelliApp() {
 
     openBilling: () => patch({ showBilling: true }),
     closeBilling: () => patch({ showBilling: false }),
+    openCoverage: () => patch({ showCoverage: true }),
+    closeCoverage: () => patch({ showCoverage: false }),
 
     openOnboarding: () => patch({ showOnboarding: true, onboardingStep: 0 }),
     closeOnboarding: () => patch({ showOnboarding: false }),

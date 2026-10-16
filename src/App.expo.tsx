@@ -67,6 +67,7 @@ import { FaceIdLockScreen } from "./modals/FaceIdLockScreen";
 
 import { BookAppointmentModal } from "./modals/BookAppointmentModal";
 
+import { CoverageModal } from "./modals/CoverageModal";
 import { BillingModal } from "./modals/BillingModal";
 
 
@@ -205,6 +206,12 @@ function MainWelliApp() {
 
       if (state.showBookAppointment) {
         app.actions.closeBookAppointment();
+
+        return true;
+      }
+
+      if (state.showCoverage) {
+        app.actions.closeCoverage();
 
         return true;
       }
@@ -413,6 +420,7 @@ function MainWelliApp() {
           )}
 
           {Boolean(state.showBilling) && <BillingModal app={app} />}
+          {Boolean(state.showCoverage) && <CoverageModal app={app} />}
 
 
           {Boolean(state.showPrintLabResult) && (

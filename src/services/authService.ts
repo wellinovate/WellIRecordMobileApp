@@ -113,6 +113,17 @@ function unwrapAuthSession(
 }
 
 export const authService = {
+  /**
+   * Signs every other device out. This device keeps working on a fresh token.
+   */
+  async signOutOtherDevices(): Promise<void> {
+    const res = await apiClient.post<{ success: boolean; token: string }>('/auth/sessions/revoke-others', {});
+    const saved = await this.getSavedSession();
+    if (saved && res?.token) {
+      await this.saveSession({ ...saved, token: res.token });
+    }
+  },
+
   async requestPasswordReset(email: string): Promise<void> {
     await apiClient.post('/auth/password/forgot', {
       email: email.trim().toLowerCase(),

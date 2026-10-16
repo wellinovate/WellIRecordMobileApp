@@ -71,6 +71,16 @@ one-hour token for room `wr-visit-<appointmentId>` when the visit is a confirmed
 on the current Lagos day. The clinician side (web console) must join the same room name in the
 same LiveKit project. The app needs a native build (LiveKit/WebRTC); Expo Go does not work.
 
+After a visit, the clinician side posts the summary with the admin secret:
+`POST /api/v1/telehealth/appointments/:id/summary` (header `x-admin-secret`, body `diagnosis`,
+`notes`, `authoredBy`, optional `prescription {medicationName, dosage, frequency, refillsTotal}`).
+It completes the visit, files a clinical note in the patient's vault, and notifies the patient.
+
+## Sessions
+
+`POST /api/v1/auth/sessions/revoke-others` signs out every other device (account
+`sessionsRevokedAt`, checked in `getAuthUserId`) and returns a fresh token for the caller.
+
 ## Rules for changes
 
 - Health documents must not be sent to third-party services. Open them in-app or hand the

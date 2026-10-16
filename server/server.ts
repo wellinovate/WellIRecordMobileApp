@@ -118,12 +118,34 @@ const ocrLimiter = rateLimit({
 });
 
 // Helper to extract authenticated user ID from Authorization header
+// Per-account cutoff (unix seconds). Tokens issued before it are rejected.
+// Set by "sign out other devices". Kept in memory for the sync auth check and
+// reloaded from the database every minute.
+const sessionsRevokedBefore = new Map<string, number>();
+
+async function loadSessionRevocations() {
+  if (mongoose.connection.readyState !== 1) return;
+  try {
+    const rows: any[] = await Account.find({ sessionsRevokedAt: { $exists: true, $ne: null } }, 'sessionsRevokedAt').lean();
+    for (const row of rows) {
+      sessionsRevokedBefore.set(String(row._id), Math.floor(new Date(row.sessionsRevokedAt).getTime() / 1000));
+    }
+  } catch (err) {
+    console.warn('[Sessions] Could not load revocations:', err);
+  }
+}
+
 function getAuthUserId(req: Request): string | null {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     try {
       const decoded: any = jwt.verify(authHeader.substring(7), JWT_SECRET);
-      return decoded.userId || decoded.id || null;
+      const userId = decoded.userId || decoded.id || null;
+      if (userId) {
+        const cutoff = sessionsRevokedBefore.get(String(userId));
+        if (cutoff && (typeof decoded.iat !== 'number' || decoded.iat < cutoff)) return null;
+      }
+      return userId;
     } catch {
       return null;
     }
@@ -2175,6 +2197,33 @@ app.get('/api/v1/pharmacy/prescriptions', async (req: Request, res: Response) =>
   }
 });
 
+// POST /api/v1/auth/sessions/revoke-others — signs every other device out.
+// Returns a fresh token for the caller, who stays signed in.
+app.post('/api/v1/auth/sessions/revoke-others', async (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId || !mongoose.isValidObjectId(authUserId)) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({ success: false, message: 'Database unavailable' });
+  }
+  try {
+    const nowSec = Math.floor(Date.now() / 1000);
+    await Account.updateOne({ _id: authUserId }, { $set: { sessionsRevokedAt: new Date(nowSec * 1000) } });
+    sessionsRevokedBefore.set(authUserId, nowSec);
+    const current: any = jwt.verify(req.headers.authorization!.substring(7), JWT_SECRET as string);
+    const token = jwt.sign(
+      { userId: authUserId, email: current.email, phoneNumber: current.phoneNumber, role: current.role || 'patient' },
+      JWT_SECRET as string,
+      { expiresIn: '30d' }
+    );
+    return res.json({ success: true, token });
+  } catch (err) {
+    console.error('[POST /auth/sessions/revoke-others] ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Could not sign out other devices' });
+  }
+});
+
 // POST /api/v1/pharmacy/prescriptions/:id/refill — the patient asks for a refill.
 // Creates a pending_review order. A pharmacist approves it; approval spends one refill.
 app.post('/api/v1/pharmacy/prescriptions/:id/refill', async (req: Request, res: Response) => {
@@ -3349,6 +3398,13 @@ function normalizeAppointmentRequest(doc: any) {
     reason: doc.reason || '',
     visitType: (doc.visitType === 'video' ? 'video' : 'in_person') as 'video' | 'in_person',
     status: doc.status as string,
+    visitSummary: doc.visitSummary?.authoredAt
+      ? {
+          diagnosis: doc.visitSummary.diagnosis || '',
+          notes: doc.visitSummary.notes || '',
+          authoredBy: doc.visitSummary.authoredBy || '',
+        }
+      : undefined,
   };
 }
 
@@ -3373,6 +3429,94 @@ function normalizeWebAppointment(doc: any) {
     status: map[doc.status] || String(doc.status || ''),
   };
 }
+
+// POST /api/v1/telehealth/appointments/:id/summary
+// Called by the clinician side (web console backend) after a visit, with the
+// admin secret. Marks the visit completed, files a clinical note in the
+// patient's vault, optionally records a prescription, and notifies the patient.
+app.post('/api/v1/telehealth/appointments/:id/summary', requireAdminSecret, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const diagnosis = String(req.body?.diagnosis || '').trim().slice(0, 300);
+  const notes = String(req.body?.notes || '').trim().slice(0, 4000);
+  const authoredBy = String(req.body?.authoredBy || '').trim().slice(0, 120);
+  const rx = req.body?.prescription;
+  if (!mongoose.isValidObjectId(id)) {
+    return res.status(400).json({ success: false, message: 'Invalid appointment ID' });
+  }
+  if (!diagnosis && !notes) {
+    return res.status(400).json({ success: false, message: 'A diagnosis or notes are required' });
+  }
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({ success: false, message: 'Database unavailable' });
+  }
+  try {
+    const appt: any = await AppointmentRequest.findById(id);
+    if (!appt || appt.visitType !== 'video') {
+      return res.status(404).json({ success: false, message: 'Video visit not found' });
+    }
+    if (appt.status === 'completed') {
+      return res.status(409).json({ success: false, message: 'This visit already has a summary' });
+    }
+    if (appt.status !== 'confirmed') {
+      return res.status(409).json({ success: false, message: `A ${appt.status} visit cannot be completed` });
+    }
+    const accountId = String(appt.accountId);
+    const memberId = appt.familyMemberId && mongoose.isValidObjectId(appt.familyMemberId) ? String(appt.familyMemberId) : accountId;
+    const date = new Date(appt.scheduledFor).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric', timeZone: 'Africa/Lagos' });
+
+    appt.visitSummary = { diagnosis, notes, authoredBy, authoredAt: new Date() };
+    appt.status = 'completed';
+    appt.notifiedStatus = 'completed';
+    await appt.save();
+
+    await HealthRecord.create({
+      userId: new mongoose.Types.ObjectId(accountId),
+      familyMemberId: new mongoose.Types.ObjectId(memberId),
+      title: diagnosis ? `Video visit: ${diagnosis}` : `Video visit with ${appt.facilityName}`,
+      recordType: 'Clinical Note',
+      date,
+      provider: authoredBy ? `${authoredBy}, ${appt.facilityName}` : appt.facilityName,
+      summary: [diagnosis, notes].filter(Boolean).join('\n\n'),
+    } as any);
+
+    if (rx && typeof rx.medicationName === 'string' && rx.medicationName.trim()) {
+      const refills = Math.max(0, Math.min(12, Number(rx.refillsTotal) || 0));
+      await Prescription.create({
+        accountId: new mongoose.Types.ObjectId(accountId),
+        familyMemberId: memberId,
+        medicationName: rx.medicationName.trim().slice(0, 200),
+        dosage: String(rx.dosage || '').slice(0, 200),
+        frequency: String(rx.frequency || '').slice(0, 200),
+        prescriber: authoredBy || appt.facilityName,
+        prescribedDate: date,
+        pharmacyProvider: String(rx.pharmacyProvider || 'WelliRecord Pharmacy Network').slice(0, 200),
+        refillsTotal: refills,
+        refillsRemaining: refills,
+        status: 'active',
+        notes: `Prescribed during a video visit with ${appt.facilityName}.`,
+      } as any);
+    }
+
+    dispatchPushNotification({
+      userId: accountId,
+      type: 'system',
+      emoji: '📝',
+      tint: '#e0e7ff',
+      categoryLabel: 'Appointment',
+      title: 'Visit notes added',
+      body: `${appt.facilityName} added notes from your video visit to your records.`,
+      actionLabel: 'View visits',
+      targetModal: 'visits',
+      targetTab: 'records',
+      targetId: String(appt._id),
+    }).catch((e: any) => console.warn('[Visit summary] notify failed:', e));
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[POST /telehealth/summary] ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Could not save the visit summary' });
+  }
+});
 
 // POST /api/v1/telehealth/appointments/:id/token
 // Issues a short-lived LiveKit token for the caller's own confirmed video
@@ -4698,6 +4842,9 @@ async function sweepAppointmentStatusNotifications() {
   }
 }
 setInterval(sweepAppointmentStatusNotifications, 60 * 1000).unref();
+if (mongoose.connection.readyState === 1) loadSessionRevocations();
+else mongoose.connection.once('open', () => { loadSessionRevocations(); });
+setInterval(loadSessionRevocations, 60 * 1000).unref();
 
 // 8. Start Server
 app.listen(PORT, () => {
