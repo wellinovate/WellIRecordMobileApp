@@ -96,7 +96,7 @@ export function OnboardingModal({ app }: { app: WelliApp }) {
               {/* Security Footnote */}
               <View style={styles.securityFootnote}>
                 <Text style={styles.securityFootnoteText}>
-                  🛡️ NDPR & HIPAA Compliant • 256-Bit Vault Encryption • Patient-Owned
+                  🛡️ Patient-owned records • You choose who can see them
                 </Text>
               </View>
             </View>
