@@ -360,9 +360,6 @@ export function GuidedProfileScreen({
           )}
         </TouchableOpacity>
 
-        <Text style={styles.previewNotice}>
-          Illustrative demo · no connected clinical data
-        </Text>
 
         <View style={styles.bottomIndicator} />
       </ScrollView>

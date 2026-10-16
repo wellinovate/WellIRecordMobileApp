@@ -35,8 +35,8 @@ export function BookAppointmentModal({app}:{app:WelliApp}){
         <View className="min-h-[44px] flex-row items-center justify-between"><TouchableOpacity onPress={actions.closeBookAppointment} className="h-9 w-9 items-center justify-center rounded-full bg-slate-50"><Back/></TouchableOpacity><Text className="text-[12px] font-semibold text-slate-800">WelliRecord<Text className="text-[7px]">™</Text></Text><View className="h-9 w-9"/></View>
 
         <Text className="mt-3 text-[11px] font-semibold text-[#315B90]">{name}</Text>
-        <Text className="mt-3 text-[28px] leading-[34px] font-extrabold text-[#082F67]">Plan a demo visit</Text>
-        <Text className="mt-1 text-[13px] leading-[19px] text-slate-500">Appointment request · date and time are illustrative until the facility confirms.</Text>
+        <Text className="mt-3 text-[28px] leading-[34px] font-extrabold text-[#082F67]">Request an appointment</Text>
+        <Text className="mt-1 text-[13px] leading-[19px] text-slate-500">Appointment request · the facility confirms the date and time.</Text>
 
         <View className="mt-6 rounded-2xl bg-[#EEF3FA] p-4"><Text className="text-[14px] font-bold text-[#173B68]">{name}</Text><Text className="mt-1 text-[11.5px] leading-[17px] text-[#536A84]">{specialty}{address?` · ${address}`:""}</Text></View>
 

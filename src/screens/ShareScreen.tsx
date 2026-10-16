@@ -228,9 +228,6 @@ export function ShareScreen({ app }: { app: WelliApp }) {
           </Text>
         </TouchableOpacity>
 
-        <Text className="mt-3 text-center text-[10.5px] text-slate-400">
-          Illustrative sharing UI · backend authorization comes later
-        </Text>
       </ScrollView>
     </View>
   );

@@ -150,12 +150,12 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
     phone: '',
     dob: '',
     password: '',
-    insuranceProvider: 'Hygeia HMO',
+    insuranceProvider: '',
     insuranceId: '',
-    bloodType: 'O+',
-    genotype: 'AA',
+    bloodType: '',
+    genotype: '',
   });
-  const [agreeTerms, setAgreeTerms] = useState(true);
+  const [agreeTerms, setAgreeTerms] = useState(false);
   const [signUpError, setSignUpError] = useState<string | null>(null);
 
   // FAQ Accordion State
@@ -1021,7 +1021,7 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
                 <Text style={styles.inputLabel}>Blood Type</Text>
                 <FormSelect
                   placeholder="Blood Type"
-                  value={signUpData.bloodType || 'O+'}
+                  value={signUpData.bloodType}
                   options={BLOOD_TYPES}
                   onChange={(v: string) => setSignUpData({ ...signUpData, bloodType: v })}
                 />
@@ -1030,7 +1030,7 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
                 <Text style={styles.inputLabel}>Genotype</Text>
                 <FormSelect
                   placeholder="Genotype"
-                  value={signUpData.genotype || 'AA'}
+                  value={signUpData.genotype}
                   options={GENOTYPES}
                   onChange={(v: string) => setSignUpData({ ...signUpData, genotype: v })}
                 />

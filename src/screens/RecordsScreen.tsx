@@ -250,7 +250,7 @@ export function RecordsScreen({ app }: { app: WelliApp }) {
 
             <View className="mb-5">
               <Text className="text-[18px] font-extrabold text-[#082F67]">
-                Verified lab details
+                Blood group and genotype
               </Text>
 
               <View className="mt-3 flex-row gap-3">
@@ -446,9 +446,6 @@ export function RecordsScreen({ app }: { app: WelliApp }) {
           </>
         )}
 
-        <Text className="mt-6 text-center text-[10.5px] text-slate-400">
-          Illustrative demo · no connected clinical data
-        </Text>
       </ScrollView>
     </View>
   );

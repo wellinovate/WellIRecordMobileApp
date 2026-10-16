@@ -66,7 +66,7 @@ export function ProfileScreen({
     owner.name || 'WelliRecord Patient';
 
   const recordId =
-    owner.wrId || 'WR-DEMO-001';
+    owner.wrId || 'Not assigned yet';
 
   const handleNotificationToggle = (
     value: boolean,
@@ -341,9 +341,6 @@ export function ProfileScreen({
           </Text>
         </TouchableOpacity>
 
-        <Text style={styles.demoFooter}>
-          Illustrative demo · no connected clinical data
-        </Text>
       </ScrollView>
     </View>
   );

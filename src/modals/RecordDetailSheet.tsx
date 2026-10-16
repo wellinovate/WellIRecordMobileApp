@@ -180,7 +180,7 @@ export function RecordDetailSheet({ app }: { app: WelliApp }) {
 
             <View className="mt-4 rounded-2xl bg-[#EEF3FA] p-4">
               <Text className="text-[11px] font-semibold uppercase tracking-wide text-[#607189]">
-                Summary · illustrative demo
+                Summary
               </Text>
 
               <Text className="mt-3 text-[13px] leading-[20px] text-[#173B68]">

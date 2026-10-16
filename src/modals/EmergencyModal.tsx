@@ -761,7 +761,7 @@ export function EmergencyModal({
 
               {emergencyMember.wrId ? (
                 <Text className="mt-1 text-[11.5px] font-semibold text-[#BFD0E5]">
-                  Illustrative patient · {emergencyMember.wrId}
+                  Record ID · {emergencyMember.wrId}
                 </Text>
               ) : null}
 
