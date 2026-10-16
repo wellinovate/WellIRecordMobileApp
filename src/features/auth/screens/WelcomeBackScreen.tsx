@@ -27,6 +27,8 @@ type Props = {
 
   onPhoneSignIn?: () => void;
 
+  onEmailCodeSignIn?: (email: string) => Promise<void> | void;
+
   onCreateAccount?: () => void;
 };
 
@@ -36,6 +38,8 @@ export function WelcomeBackScreen({
   onForgotPassword,
 
   onPhoneSignIn,
+
+  onEmailCodeSignIn,
 
   onCreateAccount,
 }: Props) {
@@ -79,6 +83,30 @@ export function WelcomeBackScreen({
     } catch (err: any) {
       setError(
         err?.message || "Unable to sign in. Check your details and try again.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleEmailCode = async () => {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail.includes("@")) {
+      setError("Enter your registered email address first.");
+
+      return;
+    }
+
+    try {
+      setError(null);
+
+      setSubmitting(true);
+
+      await onEmailCodeSignIn?.(normalizedEmail);
+    } catch (err: any) {
+      setError(
+        err?.message || "Unable to send a sign-in code. Try again.",
       );
     } finally {
       setSubmitting(false);
@@ -260,6 +288,18 @@ export function WelcomeBackScreen({
           style={styles.phoneButton}
         >
           <Text style={styles.phoneButtonText}>Sign in with phone</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          activeOpacity={0.8}
+
+          onPress={handleEmailCode}
+
+          disabled={submitting}
+
+          style={styles.phoneButton}
+        >
+          <Text style={styles.phoneButtonText}>Email me a sign-in code</Text>
         </TouchableOpacity>
 
         <View style={styles.createAccountRow}>
