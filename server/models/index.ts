@@ -688,6 +688,7 @@ export interface IAppointmentRequest extends Document {
   reason?: string;
   visitType?: 'in_person' | 'video';
   status: 'requested' | 'confirmed' | 'cancelled';
+  notifiedStatus?: string;
 }
 
 const AppointmentRequestSchema = new Schema<IAppointmentRequest>(
@@ -702,6 +703,8 @@ const AppointmentRequestSchema = new Schema<IAppointmentRequest>(
     reason: { type: String, default: '' },
     visitType: { type: String, enum: ['in_person', 'video'], default: 'in_person' },
     status: { type: String, enum: ['requested', 'confirmed', 'cancelled'], default: 'requested' },
+    // Last status the patient was notified about. Written by the notification sweep.
+    notifiedStatus: { type: String },
   },
   { timestamps: true }
 );

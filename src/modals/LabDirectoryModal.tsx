@@ -260,9 +260,6 @@ export function LabDirectoryModal({ app }: { app: WelliApp }) {
                 </TouchableOpacity>
               );
             })}
-            <View style={styles.comingSoonBadge}>
-              <Text style={[styles.comingSoonText, { color: theme.mutedLight }]}>+ More areas coming soon</Text>
-            </View>
           </ScrollView>
         </View>
 
