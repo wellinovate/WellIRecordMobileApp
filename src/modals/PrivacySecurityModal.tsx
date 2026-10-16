@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from "react";
+import { authService } from "../services/authService";
 import {
+  Alert,
   Linking,
   Modal,
   Platform,
@@ -167,6 +169,11 @@ export function PrivacySecurityModal({
     setDeletionAcknowledged,
   ] = useState(false);
 
+  const [pwStep, setPwStep] = useState<"idle" | "code">("idle");
+  const [pwCode, setPwCode] = useState("");
+  const [pwNew, setPwNew] = useState("");
+  const [pwBusy, setPwBusy] = useState(false);
+
   const currentSessionDate = useMemo(
     () =>
       new Date().toLocaleDateString(
@@ -233,26 +240,69 @@ export function PrivacySecurityModal({
   };
 
   const verifyEmail = () => {
-    actions.showToast(
-      "Email verification management will be connected after the UI pass",
-    );
+    actions.openPersonalInfo();
   };
 
   const verifyPhone = () => {
-    actions.showToast(
-      "Phone verification management will be connected after the UI pass",
-    );
+    actions.openPersonalInfo();
   };
 
-  const managePassword = () => {
-    actions.showToast(
-      "Password management will be connected after the UI pass",
-    );
+  const managePassword = async () => {
+    const target = String(email || "").trim();
+    if (!target || !target.includes("@")) {
+      actions.showToast("Add an email address to your profile first");
+      return;
+    }
+    setPwBusy(true);
+    try {
+      await authService.requestPasswordReset(target);
+      setPwStep("code");
+      actions.showToast("We sent a code to your email");
+    } catch (err: any) {
+      actions.showToast(err?.message || "Could not send the code. Try again.");
+    } finally {
+      setPwBusy(false);
+    }
+  };
+
+  const savePassword = async () => {
+    if (pwCode.trim().length < 4 || pwNew.length < 8) {
+      actions.showToast("Enter the code and a password of at least 8 characters");
+      return;
+    }
+    setPwBusy(true);
+    try {
+      await authService.resetPassword(String(email).trim(), pwCode, pwNew);
+      setPwStep("idle");
+      setPwCode("");
+      setPwNew("");
+      actions.showToast("Password updated");
+    } catch (err: any) {
+      actions.showToast(err?.message || "Could not update the password. Try again.");
+    } finally {
+      setPwBusy(false);
+    }
   };
 
   const signOutOtherSessions = () => {
-    actions.showToast(
-      "Other-session sign-out will be connected after the UI pass",
+    Alert.alert(
+      "Sign out other devices?",
+      "Every other device will need to sign in again. This device stays signed in.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Sign out others",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await authService.signOutOtherDevices();
+              actions.showToast("Other devices signed out");
+            } catch (err: any) {
+              actions.showToast(err?.message || "Could not sign out other devices. Try again.");
+            }
+          },
+        },
+      ],
     );
   };
 
@@ -316,30 +366,52 @@ export function PrivacySecurityModal({
             <SectionCard title="Verification">
               <InfoRow
                 title="Email"
-                subtitle={`${email} · example not verified`}
+                subtitle={`${email || "No email on file"}`}
                 onPress={verifyEmail}
               />
 
               <InfoRow
                 title="Phone"
-                subtitle={`${phone} · example not verified`}
+                subtitle={`${phone || "No phone on file"}`}
                 onPress={verifyPhone}
               />
 
-              <View className="py-3">
-                <Text className="text-[10.5px] leading-[15px] text-slate-500">
-                  Email/password is the mobile baseline. Phone login is
-                  proposed, not enabled here.
-                </Text>
-              </View>
             </SectionCard>
 
             <SectionCard title="Password">
               <InfoRow
                 title="Manage password"
-                subtitle="Use recovery to choose a new password."
+                subtitle={pwBusy ? "Sending code…" : "Change it with a code sent to your email."}
                 onPress={managePassword}
               />
+              {pwStep === "code" ? (
+                <View className="pb-4">
+                  <TextInput
+                    value={pwCode}
+                    onChangeText={setPwCode}
+                    placeholder="Code from your email"
+                    placeholderTextColor="#94A3B8"
+                    keyboardType="number-pad"
+                    className="min-h-[46px] rounded-xl border border-slate-200 bg-white px-3 text-[14px] text-slate-900"
+                  />
+                  <TextInput
+                    value={pwNew}
+                    onChangeText={setPwNew}
+                    placeholder="New password (8+ characters)"
+                    placeholderTextColor="#94A3B8"
+                    secureTextEntry
+                    autoComplete="new-password"
+                    className="mt-2 min-h-[46px] rounded-xl border border-slate-200 bg-white px-3 text-[14px] text-slate-900"
+                  />
+                  <TouchableOpacity
+                    disabled={pwBusy}
+                    onPress={savePassword}
+                    className="mt-3 min-h-[44px] items-center justify-center rounded-xl bg-[#082F67]"
+                  >
+                    <Text className="text-[13px] font-semibold text-white">{pwBusy ? "Saving…" : "Save password"}</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
             </SectionCard>
 
             <SectionCard title="Additional security">
@@ -392,7 +464,7 @@ export function PrivacySecurityModal({
               </View>
             </SectionCard>
 
-            <SectionCard title="Example current session">
+            <SectionCard title="This device">
               <View className="py-4">
                 <Text className="text-[13px] font-bold text-[#173B68]">
                   This {deviceName}
@@ -402,10 +474,6 @@ export function PrivacySecurityModal({
                   Current session · {currentSessionDate}
                 </Text>
 
-                <Text className="mt-1 text-[11px] text-slate-500">
-                  This is example session data, not a live list of actual
-                  signed-in devices.
-                </Text>
               </View>
 
               <TouchableOpacity
@@ -414,7 +482,7 @@ export function PrivacySecurityModal({
                 className="mb-4 min-h-[44px] items-center justify-center rounded-xl bg-[#E1E8F4]"
               >
                 <Text className="text-[12px] font-semibold text-[#315B90]">
-                  Sign out other sessions
+                  Sign out other devices
                 </Text>
               </TouchableOpacity>
             </SectionCard>
@@ -458,7 +526,7 @@ export function PrivacySecurityModal({
             </TouchableOpacity>
 
             <Text className="mt-3 text-center text-[10.5px] text-slate-400">
-              Only this device is listed. Other devices are not tracked yet.
+              Signing out other devices ends every session except this one.
             </Text>
           </ScrollView>
         ) : null}
@@ -645,16 +713,6 @@ export function PrivacySecurityModal({
                 }
               />
 
-              <InfoRow
-                title="Terms"
-                subtitle="Terms placeholder for this UI pass."
-                onPress={() =>
-                  actions.showToast(
-                    "Terms screen will be connected after the UI pass",
-                  )
-                }
-              />
-
               <View className="py-3">
                 <Text className="text-[10.5px] leading-[15px] text-slate-500">
                   Retention and deletion scope are subject to the published
@@ -809,7 +867,7 @@ export function PrivacySecurityModal({
               />
 
               <Text className="mt-2 text-[10.5px] leading-[15px] text-slate-500">
-                Identity confirmation is not connected in this design preview.
+                Deleting your account cannot be undone.
               </Text>
             </View>
 

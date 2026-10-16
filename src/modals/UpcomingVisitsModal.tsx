@@ -74,6 +74,18 @@ export function UpcomingVisitsModal({ app }: { app: WelliApp }) {
       {a.visitType === 'video' && (
         <Text style={[styles.sub, { color: theme.muted }]}>Video visit</Text>
       )}
+      {!!a.visitSummary && (
+        <View style={[styles.summary, { borderColor: theme.border }]}>
+          {!!a.visitSummary.diagnosis && (
+            <Text style={[styles.sub, { color: theme.text, fontWeight: '700' }]}>{a.visitSummary.diagnosis}</Text>
+          )}
+          {!!a.visitSummary.notes && <Text style={[styles.sub, { color: theme.muted }]}>{a.visitSummary.notes}</Text>}
+          {!!a.visitSummary.authoredBy && (
+            <Text style={[styles.sub, { color: theme.muted }]}>By {a.visitSummary.authoredBy}</Text>
+          )}
+          <Text style={[styles.sub, { color: theme.muted }]}>Also saved in your records.</Text>
+        </View>
+      )}
       {a.visitType === 'video' && a.status === 'confirmed' && isToday(a.scheduledFor) && (
         <TouchableOpacity
           onPress={() => actions.joinVideoVisit({ id: a.id, facilityName: a.facilityName })}
@@ -124,6 +136,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 15, fontWeight: '700', flex: 1 },
   status: { fontSize: 12, fontWeight: '700' },
   sub: { fontSize: 13 },
+  summary: { marginTop: 6, borderTopWidth: 1, paddingTop: 8, gap: 2 },
   joinBtn: { marginTop: 8, minHeight: 44, borderRadius: 12, backgroundColor: '#082F67', alignItems: 'center', justifyContent: 'center' },
   joinText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   cancelBtn: { marginTop: 8, alignSelf: 'flex-start' },

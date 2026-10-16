@@ -246,11 +246,6 @@ export function AuthFlow({ app }: Props) {
       return (
         <GuidedProfile
           onBack={() => setStep('email-verification')}
-          onReviewAllergies={() =>
-            app.actions.showToast(
-              'Allergy review will be connected to the profile editor.',
-            )
-          }
           onIdentityAndContact={() =>
             app.actions.showToast(
               'Identity and contact details are part of this guided profile.',

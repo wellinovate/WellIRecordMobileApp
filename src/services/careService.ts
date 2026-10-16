@@ -37,6 +37,7 @@ export interface AppointmentItem {
   reason: string;
   visitType?: 'in_person' | 'video';
   status: AppointmentStatus | string;
+  visitSummary?: { diagnosis: string; notes: string; authoredBy: string };
 }
 
 export interface DirectoryDoctor {

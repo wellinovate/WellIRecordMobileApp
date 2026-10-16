@@ -328,11 +328,6 @@ export function CreateAccountScreen({
 
 
 
-        <Text style={styles.previewNotice}>
-
-          Illustrative form preview — not connected to account creation.
-
-        </Text>
 
 
 
