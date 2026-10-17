@@ -85,6 +85,16 @@ It completes the visit, files a clinical note in the patient's vault, and notifi
 
 `POST /api/v1/auth/password/forgot` emails a 6-digit code (5 minutes) to any email found in `User` or `Account`. `POST /api/v1/auth/password/reset` writes one bcrypt hash to both records and signs out all other devices. `/auth/login` checks `User` first and falls back to `Account`. `trust proxy` is set so rate limits count per client IP.
 
+## Child health profile
+
+A child is a `FamilyMember` with relationship `Child`. `ChildProfileModal` (opened from the family list) has four tabs: overview with WelliID QR and emergency card, vaccines, growth, details.
+
+- Routes (all require the guardian's token and ownership of the child): `GET/PATCH /api/v1/family/:id/child-profile`, `POST/DELETE /api/v1/family/:id/vaccinations[/:vid]`, `POST/DELETE /api/v1/family/:id/growth[/:gid]`. `GET /api/v1/immunization/schedule` is public.
+- The immunization schedule is data in `server/data/immunizationSchedule.ts`, with a `version` and a `reviewStatus`. It stays `pending_clinical_review` until a clinician checks each row against the official NPHCDA schedule and sets `reviewedBy` and `reviewedOn`. Do not copy dose timing into the app. Statuses are computed in `src/utils/immunization.ts`.
+- A guardian can only create `caregiver_reported` doses. A clinic confirms one with `POST /api/v1/family/:id/vaccinations/:vid/verify` (header `x-admin-secret`, body `verifiedBy`, optional `source`). Guardians cannot delete verified doses.
+- The QR code holds the WelliID only.
+- Not built yet: multiple guardians and permissions, custody restrictions, access audit log, WHO growth charts, developmental milestones, reminders by SMS or WhatsApp, offline capture, school profile.
+
 ## Rules for changes
 
 - Health documents must not be sent to third-party services. Open them in-app or hand the

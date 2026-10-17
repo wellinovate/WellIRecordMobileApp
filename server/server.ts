@@ -19,6 +19,8 @@ import {
   Profile,
   UserProfile,
   FamilyMember,
+  ChildVaccination,
+  ChildGrowth,
   HealthRecord,
   Prescription,
   Facility,
@@ -34,6 +36,7 @@ import {
   AccessGrant,
 } from './models';
 import { createWellipayRouter } from './wellipayPartner';
+import { IMMUNIZATION_SCHEDULE, scheduleDoseByCode } from './data/immunizationSchedule';
 
 const app = express();
 // Render sits behind a proxy. Without this every request shares the proxy's IP
@@ -1544,6 +1547,8 @@ app.get(['/api/v1/family/list', '/api/v1/family'], async (req: Request, res: Res
         allergies: m.allergies || '',
         phone: m.phone || '',
         linkedAccountId: m.linkedAccountId?.toString() || null,
+        wrId: m.wrId || null,
+        childProfile: m.childProfile || null,
         createdAt: m.createdAt,
         updatedAt: m.updatedAt,
       })),
@@ -1609,6 +1614,7 @@ app.post(['/api/v1/family/add', '/api/v1/family'], async (req: Request, res: Res
         allergies: allergies || '',
         phone: phone || '',
         linkedAccountId: linkedAccountId && mongoose.isValidObjectId(linkedAccountId) ? new mongoose.Types.ObjectId(linkedAccountId) : null,
+        wrId: generateWelliRecordId(),
       });
 
       savedMember = await newDoc.save();
@@ -1650,6 +1656,7 @@ app.post(['/api/v1/family/add', '/api/v1/family'], async (req: Request, res: Res
         genotype: savedMember.genotype,
         allergies: savedMember.allergies,
         phone: savedMember.phone,
+        wrId: savedMember.wrId || null,
         createdAt: savedMember.createdAt || new Date(),
       },
     });
@@ -1981,6 +1988,305 @@ app.post('/api/v1/auth/password/reset', passwordResetLimiter, async (req: Reques
   } catch (err) {
     console.error('[Password reset ERROR]', err);
     return res.status(500).json({ success: false, message: 'Could not reset the password. Try again.' });
+  }
+});
+
+// -------------------------------------------------------------
+// CHILD HEALTH PROFILE: schedule, vaccinations, growth, identity
+// -------------------------------------------------------------
+
+const isoDate = (v: unknown): string | null => {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  const d = new Date(`${v}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== v ? null : v;
+};
+const cleanText = (v: unknown, max = 200): string | undefined => {
+  if (typeof v !== 'string') return undefined;
+  const t = v.trim().slice(0, max);
+  return t || undefined;
+};
+const cleanNumber = (v: unknown, min: number, max: number): number | undefined => {
+  if (v === '' || v === null || v === undefined) return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= min && n <= max ? n : undefined;
+};
+
+// Loads a dependent the signed-in caller manages. Sends the error response itself.
+async function loadManagedChild(req: Request, res: Response): Promise<any | null> {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) {
+    res.status(401).json({ success: false, message: 'Authentication required' });
+    return null;
+  }
+  const id = req.params.id;
+  if (!mongoose.isValidObjectId(id) || mongoose.connection.readyState !== 1) {
+    res.status(400).json({ success: false, message: 'Invalid family member' });
+    return null;
+  }
+  const member: any = await FamilyMember.findById(id);
+  const owns =
+    member && (String(member.accountId || '') === authUserId || String(member.userId || '') === authUserId);
+  if (!owns) {
+    res.status(404).json({ success: false, message: 'Family member not found' });
+    return null;
+  }
+  return member;
+}
+
+function childProfilePayload(member: any) {
+  return {
+    id: String(member._id),
+    wrId: member.wrId || null,
+    fullName: member.fullName || member.name,
+    dateOfBirth: member.dateOfBirth || (member.dob ? String(member.dob).split('T')[0] : null),
+    gender: member.gender || '',
+    bloodType: member.bloodType || '',
+    genotype: member.genotype || '',
+    allergies: member.allergies || '',
+    childProfile: member.childProfile || {},
+  };
+}
+
+const vaccinationPayload = (v: any) => ({
+  id: String(v._id),
+  vaccineCode: v.vaccineCode,
+  vaccineName: v.vaccineName,
+  administeredDate: v.administeredDate,
+  facility: v.facility || '',
+  provider: v.provider || '',
+  lotNumber: v.lotNumber || '',
+  manufacturer: v.manufacturer || '',
+  expiryDate: v.expiryDate || '',
+  site: v.site || '',
+  route: v.route || '',
+  reaction: v.reaction || '',
+  notes: v.notes || '',
+  verification: v.verification,
+  verifiedBy: v.verifiedBy || '',
+  verifiedAt: v.verifiedAt || null,
+  verificationSource: v.verificationSource || '',
+});
+
+const growthPayload = (g: any) => ({
+  id: String(g._id),
+  measuredOn: g.measuredOn,
+  weightKg: g.weightKg ?? null,
+  lengthCm: g.lengthCm ?? null,
+  headCircumferenceCm: g.headCircumferenceCm ?? null,
+  source: g.source,
+  notes: g.notes || '',
+});
+
+// GET /api/v1/immunization/schedule — the catalogue the app renders against.
+app.get('/api/v1/immunization/schedule', (_req: Request, res: Response) => {
+  res.json({ success: true, schedule: IMMUNIZATION_SCHEDULE });
+});
+
+// GET /api/v1/family/:id/child-profile — identity, vaccinations and growth in one call.
+app.get('/api/v1/family/:id/child-profile', async (req: Request, res: Response) => {
+  try {
+    const member = await loadManagedChild(req, res);
+    if (!member) return;
+    if (!member.wrId) {
+      member.wrId = generateWelliRecordId();
+      await member.save();
+    }
+    const [vaccinations, growth] = await Promise.all([
+      ChildVaccination.find({ memberId: member._id }).sort({ administeredDate: 1 }),
+      ChildGrowth.find({ memberId: member._id }).sort({ measuredOn: -1 }),
+    ]);
+    return res.json({
+      success: true,
+      profile: childProfilePayload(member),
+      vaccinations: vaccinations.map(vaccinationPayload),
+      growth: growth.map(growthPayload),
+    });
+  } catch (err) {
+    console.error('[GET /family/:id/child-profile] ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Could not load the child profile' });
+  }
+});
+
+// PATCH /api/v1/family/:id/child-profile — birth, location and emergency details.
+app.patch('/api/v1/family/:id/child-profile', async (req: Request, res: Response) => {
+  try {
+    const member = await loadManagedChild(req, res);
+    if (!member) return;
+    const b = req.body || {};
+    const next: Record<string, any> = { ...(member.childProfile || {}) };
+    const text: Array<[string, number]> = [
+      ['preferredName', 60], ['birthRegistrationNo', 60], ['birthFacility', 120], ['community', 80],
+      ['state', 60], ['lga', 80], ['address', 200], ['criticalAlerts', 300], ['birthNotes', 300],
+    ];
+    for (const [key, max] of text) {
+      if (key in b) next[key] = cleanText(b[key], max) ?? null;
+    }
+    if ('deliveryMode' in b) {
+      next.deliveryMode = ['Vaginal', 'Caesarean', 'Assisted'].includes(b.deliveryMode) ? b.deliveryMode : null;
+    }
+    if ('gestationalAgeWeeks' in b) next.gestationalAgeWeeks = cleanNumber(b.gestationalAgeWeeks, 20, 45) ?? null;
+    if ('birthWeightKg' in b) next.birthWeightKg = cleanNumber(b.birthWeightKg, 0.3, 7) ?? null;
+    if ('birthLengthCm' in b) next.birthLengthCm = cleanNumber(b.birthLengthCm, 20, 70) ?? null;
+    if (b.emergencyContact && typeof b.emergencyContact === 'object') {
+      next.emergencyContact = {
+        name: cleanText(b.emergencyContact.name, 80) ?? null,
+        relationship: cleanText(b.emergencyContact.relationship, 40) ?? null,
+        phone: cleanText(b.emergencyContact.phone, 30) ?? null,
+      };
+    }
+    member.childProfile = next;
+    member.markModified('childProfile');
+    for (const key of ['bloodType', 'genotype', 'allergies', 'gender'] as const) {
+      if (typeof b[key] === 'string') member[key] = b[key].trim().slice(0, 120);
+    }
+    await member.save();
+    return res.json({ success: true, profile: childProfilePayload(member) });
+  } catch (err) {
+    console.error('[PATCH /family/:id/child-profile] ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Could not save the child profile' });
+  }
+});
+
+// POST /api/v1/family/:id/vaccinations — a guardian records a dose. Always unverified.
+app.post('/api/v1/family/:id/vaccinations', async (req: Request, res: Response) => {
+  try {
+    const member = await loadManagedChild(req, res);
+    if (!member) return;
+    const b = req.body || {};
+    const dose = scheduleDoseByCode(String(b.vaccineCode || ''));
+    if (!dose) return res.status(400).json({ success: false, message: 'Choose a vaccine from the list' });
+    const administeredDate = isoDate(b.administeredDate);
+    if (!administeredDate) return res.status(400).json({ success: false, message: 'Enter the date as YYYY-MM-DD' });
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    if (administeredDate > tomorrow) return res.status(400).json({ success: false, message: 'The date cannot be in the future' });
+    const dob = isoDate(member.dateOfBirth || (member.dob ? String(member.dob).split('T')[0] : ''));
+    if (dob && administeredDate < dob) {
+      return res.status(400).json({ success: false, message: 'The date is before the child was born' });
+    }
+    const expiryDate = b.expiryDate ? isoDate(b.expiryDate) : undefined;
+    if (b.expiryDate && !expiryDate) return res.status(400).json({ success: false, message: 'Enter the expiry date as YYYY-MM-DD' });
+
+    const created = await ChildVaccination.create({
+      memberId: member._id,
+      ownerId: getAuthUserId(req),
+      vaccineCode: dose.code,
+      vaccineName: `${dose.vaccine}${dose.doseNumber ? ` (dose ${dose.doseNumber})` : ''}`,
+      administeredDate,
+      facility: cleanText(b.facility, 120),
+      provider: cleanText(b.provider, 120),
+      lotNumber: cleanText(b.lotNumber, 60),
+      manufacturer: cleanText(b.manufacturer, 80),
+      expiryDate,
+      site: cleanText(b.site, 40),
+      route: cleanText(b.route, 40) || dose.route,
+      reaction: cleanText(b.reaction, 300),
+      notes: cleanText(b.notes, 300),
+      verification: 'caregiver_reported',
+      scheduleVersion: IMMUNIZATION_SCHEDULE.version,
+    });
+    return res.status(201).json({ success: true, vaccination: vaccinationPayload(created) });
+  } catch (err: any) {
+    if (err?.code === 11000) {
+      return res.status(409).json({ success: false, message: 'This dose is already recorded for this child' });
+    }
+    console.error('[POST /family/:id/vaccinations] ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Could not save the vaccination' });
+  }
+});
+
+// DELETE /api/v1/family/:id/vaccinations/:vid — guardians can remove only their own unverified entries.
+app.delete('/api/v1/family/:id/vaccinations/:vid', async (req: Request, res: Response) => {
+  try {
+    const member = await loadManagedChild(req, res);
+    if (!member) return;
+    if (!mongoose.isValidObjectId(req.params.vid)) return res.status(400).json({ success: false, message: 'Invalid record' });
+    const record: any = await ChildVaccination.findOne({ _id: req.params.vid, memberId: member._id });
+    if (!record) return res.status(404).json({ success: false, message: 'Vaccination not found' });
+    if (record.verification === 'provider_verified') {
+      return res.status(403).json({ success: false, message: 'A provider verified this dose. Ask the clinic to correct it.' });
+    }
+    await record.deleteOne();
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[DELETE /family/:id/vaccinations/:vid] ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Could not remove the vaccination' });
+  }
+});
+
+// POST /api/v1/family/:id/vaccinations/:vid/verify — provider side, admin secret.
+// Body: { verifiedBy, source }. Only this route can set provider_verified.
+app.post('/api/v1/family/:id/vaccinations/:vid/verify', requireAdminSecret, async (req: Request, res: Response) => {
+  try {
+    const { id, vid } = req.params;
+    if (!mongoose.isValidObjectId(id) || !mongoose.isValidObjectId(vid)) {
+      return res.status(400).json({ success: false, message: 'Invalid id' });
+    }
+    const verifiedBy = cleanText(req.body?.verifiedBy, 120);
+    if (!verifiedBy) return res.status(400).json({ success: false, message: 'verifiedBy is required' });
+    const updated = await ChildVaccination.findOneAndUpdate(
+      { _id: vid, memberId: id },
+      {
+        $set: {
+          verification: 'provider_verified',
+          verifiedBy,
+          verifiedAt: new Date(),
+          verificationSource: cleanText(req.body?.source, 160) || 'Provider confirmation',
+        },
+      },
+      { new: true }
+    );
+    if (!updated) return res.status(404).json({ success: false, message: 'Vaccination not found' });
+    return res.json({ success: true, vaccination: vaccinationPayload(updated) });
+  } catch (err) {
+    console.error('[POST /family/:id/vaccinations/:vid/verify] ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Could not verify the vaccination' });
+  }
+});
+
+// POST /api/v1/family/:id/growth — a measurement. DELETE removes the guardian's own entry.
+app.post('/api/v1/family/:id/growth', async (req: Request, res: Response) => {
+  try {
+    const member = await loadManagedChild(req, res);
+    if (!member) return;
+    const b = req.body || {};
+    const measuredOn = isoDate(b.measuredOn);
+    if (!measuredOn) return res.status(400).json({ success: false, message: 'Enter the date as YYYY-MM-DD' });
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    if (measuredOn > tomorrow) return res.status(400).json({ success: false, message: 'The date cannot be in the future' });
+    const weightKg = cleanNumber(b.weightKg, 0.3, 150);
+    const lengthCm = cleanNumber(b.lengthCm, 20, 220);
+    const headCircumferenceCm = cleanNumber(b.headCircumferenceCm, 20, 70);
+    if (weightKg === undefined && lengthCm === undefined && headCircumferenceCm === undefined) {
+      return res.status(400).json({ success: false, message: 'Enter at least one valid measurement' });
+    }
+    const created = await ChildGrowth.create({
+      memberId: member._id,
+      ownerId: getAuthUserId(req),
+      measuredOn,
+      weightKg,
+      lengthCm,
+      headCircumferenceCm,
+      source: 'caregiver',
+      notes: cleanText(b.notes, 300),
+    });
+    return res.status(201).json({ success: true, entry: growthPayload(created) });
+  } catch (err) {
+    console.error('[POST /family/:id/growth] ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Could not save the measurement' });
+  }
+});
+
+app.delete('/api/v1/family/:id/growth/:gid', async (req: Request, res: Response) => {
+  try {
+    const member = await loadManagedChild(req, res);
+    if (!member) return;
+    if (!mongoose.isValidObjectId(req.params.gid)) return res.status(400).json({ success: false, message: 'Invalid record' });
+    const removed = await ChildGrowth.findOneAndDelete({ _id: req.params.gid, memberId: member._id, source: 'caregiver' });
+    if (!removed) return res.status(404).json({ success: false, message: 'Measurement not found' });
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[DELETE /family/:id/growth/:gid] ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Could not remove the measurement' });
   }
 });
 

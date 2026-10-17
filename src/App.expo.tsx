@@ -54,6 +54,7 @@ import { LinkedAccountsModal } from "./modals/LinkedAccountsModal";
 import { NotificationSettingsModal } from "./modals/NotificationSettingsModal";
 
 import { FamilyAccessModal } from "./modals/FamilyAccessModal";
+import { ChildProfileModal } from "./modals/ChildProfileModal";
 
 import { AddFamilyMemberModal } from "./modals/AddFamilyMemberModal";
 
@@ -217,6 +218,12 @@ function MainWelliApp() {
 
       if (state.showPersonalInfo) {
         app.actions.closePersonalInfo();
+
+        return true;
+      }
+
+      if (state.showChildProfile) {
+        app.actions.closeChildProfile();
 
         return true;
       }
@@ -395,6 +402,8 @@ function MainWelliApp() {
           )}
 
           {Boolean(state.showFamilyAccess) && <FamilyAccessModal app={app} />}
+
+          {Boolean(state.showChildProfile) && <ChildProfileModal app={app} />}
 
           {Boolean(state.showAddFamilyMember) && (
             <AddFamilyMemberModal app={app} />

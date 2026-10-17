@@ -141,6 +141,25 @@ export interface FamilyMember {
   avatarUrl?: string;
   isChild?: boolean;
   isElderly?: boolean;
+  childProfile?: ChildProfileDetails;
+}
+
+// Birth, location and emergency details held on a child's profile.
+export interface ChildProfileDetails {
+  preferredName?: string | null;
+  birthRegistrationNo?: string | null;
+  birthFacility?: string | null;
+  gestationalAgeWeeks?: number | null;
+  birthWeightKg?: number | null;
+  birthLengthCm?: number | null;
+  deliveryMode?: 'Vaginal' | 'Caesarean' | 'Assisted' | null;
+  birthNotes?: string | null;
+  address?: string | null;
+  community?: string | null;
+  state?: string | null;
+  lga?: string | null;
+  criticalAlerts?: string | null;
+  emergencyContact?: { name?: string | null; relationship?: string | null; phone?: string | null };
 }
 
 export interface Doctor {
