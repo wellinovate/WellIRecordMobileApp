@@ -1103,6 +1103,10 @@ export interface IStaffUser extends Document {
   status: 'active' | 'disabled';
   mustChangePassword: boolean;
   tokenVersion: number;
+  mfaEnabled: boolean;
+  mfaSecretEnc?: string;
+  mfaRecovery: string[];
+  mfaLastStep: number;
   failedAttempts: number;
   lockedUntil?: Date;
   lastLoginAt?: Date;
@@ -1119,6 +1123,10 @@ const StaffUserSchema = new Schema<IStaffUser>(
     status: { type: String, enum: ['active', 'disabled'], default: 'active' },
     mustChangePassword: { type: Boolean, default: true },
     tokenVersion: { type: Number, default: 0 },
+    mfaEnabled: { type: Boolean, default: false },
+    mfaSecretEnc: { type: String },
+    mfaRecovery: { type: [String], default: [] },
+    mfaLastStep: { type: Number, default: -1 },
     failedAttempts: { type: Number, default: 0 },
     lockedUntil: { type: Date },
     lastLoginAt: { type: Date },

@@ -35,7 +35,7 @@ describe('staff roles', () => {
 describe('staff tokens', () => {
   const user = { id: 'abc123', role: 'clinician' as const, tokenVersion: 3 };
   it('round-trips', () => {
-    assert.deepEqual(verifyStaffToken(SECRET, signStaffToken(SECRET, user)), { sid: 'abc123', role: 'clinician', tv: 3 });
+    assert.deepEqual(verifyStaffToken(SECRET, signStaffToken(SECRET, user)), { sid: 'abc123', role: 'clinician', tv: 3, mfa: true });
   });
   it('a staff token is not a valid patient token and a patient token is not a staff token', () => {
     const staffToken = signStaffToken(SECRET, user);
@@ -97,5 +97,41 @@ describe('legacy admin secret', () => {
   it('says so when no secret is configured', async () => {
     delete process.env.ADMIN_SECRET;
     assert.equal((await run({ 'x-admin-secret': 'anything' })).status, 503);
+  });
+});
+
+import { allowedBeforeMfa, mfaRequired, signMfaChallenge, verifyMfaChallenge } from '../staff';
+
+describe('staff MFA tokens and gating', () => {
+  const user = { id: 'abc123', role: 'clinician' as const, tokenVersion: 1 };
+  it('a session token carries whether MFA passed', () => {
+    assert.equal(verifyStaffToken(SECRET, signStaffToken(SECRET, user, true))!.mfa, true);
+    assert.equal(verifyStaffToken(SECRET, signStaffToken(SECRET, user, false))!.mfa, false);
+  });
+  it('a password-step challenge is not a session, and a session is not a challenge', () => {
+    const challenge = signMfaChallenge(SECRET, 'abc123');
+    assert.equal(verifyMfaChallenge(SECRET, challenge), 'abc123');
+    assert.equal(verifyStaffToken(SECRET, challenge), null);
+    assert.equal(verifyMfaChallenge(SECRET, signStaffToken(SECRET, user, true)), null);
+    assert.equal(verifyMfaChallenge('other', challenge), null);
+    assert.equal(verifyMfaChallenge(SECRET, undefined), null);
+  });
+  it('before MFA is set up only the setup, profile and password paths work', () => {
+    assert.equal(allowedBeforeMfa('/staff/mfa/setup'), true);
+    assert.equal(allowedBeforeMfa('/staff/mfa/enable'), true);
+    assert.equal(allowedBeforeMfa('/staff/me'), true);
+    assert.equal(allowedBeforeMfa('/staff/auth/change-password'), true);
+    assert.equal(allowedBeforeMfa('/facility/child/lookup'), false);
+    assert.equal(allowedBeforeMfa('/family/123/custody'), false);
+    assert.equal(allowedBeforeMfa('/staff/users'), false);
+  });
+  it('is required unless switched off', () => {
+    const saved = process.env.STAFF_MFA_REQUIRED;
+    delete process.env.STAFF_MFA_REQUIRED;
+    assert.equal(mfaRequired(), true);
+    process.env.STAFF_MFA_REQUIRED = 'false';
+    assert.equal(mfaRequired(), false);
+    if (saved === undefined) delete process.env.STAFF_MFA_REQUIRED;
+    else process.env.STAFF_MFA_REQUIRED = saved;
   });
 });
