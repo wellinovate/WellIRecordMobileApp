@@ -38,6 +38,8 @@ import {
 } from './models';
 import { createWellipayRouter } from './wellipayPartner';
 import { IMMUNIZATION_SCHEDULE, scheduleDoseByCode } from './data/immunizationSchedule';
+import { createChildDevelopmentRouter } from './childDevelopment';
+import { createChildReminderRouter, startChildReminderSweep, type ReminderDeps } from './childReminders';
 import { auditChild, createChildAccessRouter, effectivePerms, resolveChildAccess, type PermKey } from './childAccess';
 
 const app = express();
@@ -557,6 +559,29 @@ async function sendWelliSms(phone: string, message: string): Promise<void> {
   });
   const data: any = await response.json();
   if (!(data.code === 'ok' || data.message?.includes('Successfully'))) throw new Error(`SMS rejected: ${JSON.stringify(data)}`);
+}
+
+// Sends a WhatsApp message through Termii's WhatsApp channel. Off unless
+// WHATSAPP_REMINDERS_ENABLED=true. Not tested against a live Termii account:
+// business-initiated WhatsApp messages usually need an approved sender and
+// template, so confirm that with Termii before switching it on.
+async function sendWelliWhatsApp(phone: string, message: string): Promise<void> {
+  if (process.env.WHATSAPP_REMINDERS_ENABLED !== 'true') throw new Error('WhatsApp is not switched on');
+  if (!TERMII_API_KEY || TERMII_API_KEY === 'TL_TEST_KEY') throw new Error('WhatsApp is not configured');
+  const response = await fetch('https://api.ng.termii.com/api/sms/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      api_key: TERMII_API_KEY,
+      to: String(phone).replace(/[^0-9]/g, '').replace(/^0/, '234'),
+      from: process.env.TERMII_WHATSAPP_SENDER || 'WelliRecord',
+      sms: message,
+      type: 'plain',
+      channel: 'whatsapp',
+    }),
+  });
+  const data: any = await response.json();
+  if (!(data.code === 'ok' || data.message?.includes('Successfully'))) throw new Error(`WhatsApp rejected: ${JSON.stringify(data)}`);
 }
 
 // 2. Termii Nigerian SMS OTP Dispatch
@@ -2173,6 +2198,22 @@ app.patch('/api/v1/family/:id/child-profile', async (req: Request, res: Response
         phone: cleanText(b.emergencyContact.phone, 30) ?? null,
       };
     }
+    if (b.school && typeof b.school === 'object') {
+      const sc = b.school;
+      next.school = {
+        name: cleanText(sc.name, 120) ?? null,
+        className: cleanText(sc.className, 40) ?? null,
+        teacherName: cleanText(sc.teacherName, 80) ?? null,
+        contactPhone: cleanText(sc.contactPhone, 30) ?? null,
+        healthNotes: cleanText(sc.healthNotes, 300) ?? null,
+        include: {
+          emergencyContact: Boolean(sc.include?.emergencyContact),
+          allergies: Boolean(sc.include?.allergies),
+          conditions: Boolean(sc.include?.conditions),
+          immunizations: Boolean(sc.include?.immunizations),
+        },
+      };
+    }
     member.childProfile = next;
     member.markModified('childProfile');
     for (const key of ['bloodType', 'genotype', 'allergies', 'gender'] as const) {
@@ -2302,9 +2343,16 @@ app.post('/api/v1/family/:id/growth', async (req: Request, res: Response) => {
     if (weightKg === undefined && lengthCm === undefined && headCircumferenceCm === undefined) {
       return res.status(400).json({ success: false, message: 'Enter at least one valid measurement' });
     }
+    const clientId = typeof b.clientId === 'string' && /^[\w-]{8,64}$/.test(b.clientId) ? b.clientId : undefined;
+    if (clientId) {
+      // A retry after a lost response returns the entry that already exists.
+      const existing = await ChildGrowth.findOne({ memberId: member._id, clientId });
+      if (existing) return res.status(200).json({ success: true, entry: growthPayload(existing) });
+    }
     const created = await ChildGrowth.create({
       memberId: member._id,
       ownerId: getAuthUserId(req),
+      clientId,
       measuredOn,
       weightKg,
       lengthCm,
@@ -2335,6 +2383,19 @@ app.delete('/api/v1/family/:id/growth/:gid', async (req: Request, res: Response)
   }
 });
 
+const smsConfigured = () => Boolean(TERMII_API_KEY && TERMII_API_KEY !== 'TL_TEST_KEY');
+const reminderDeps: ReminderDeps = {
+  getAuthUserId,
+  sendSms: sendWelliSms,
+  sendWhatsapp: sendWelliWhatsApp,
+  push: async (userId, title, body) => {
+    await dispatchPushNotification({ userId, type: 'immunization', emoji: '💉', tint: '#ede9fe', title, body, categoryLabel: 'Vaccines' });
+  },
+  availability: () => ({ sms: smsConfigured(), whatsapp: smsConfigured() && process.env.WHATSAPP_REMINDERS_ENABLED === 'true' }),
+};
+app.use('/api/v1', createChildDevelopmentRouter(getAuthUserId));
+app.use('/api/v1', createChildReminderRouter(reminderDeps));
+startChildReminderSweep(reminderDeps);
 app.use(
   '/api/v1',
   createChildAccessRouter({

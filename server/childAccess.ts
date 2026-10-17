@@ -16,7 +16,22 @@ export type Perms = Record<PermKey, boolean>;
 const ALL: Perms = { viewRecords: true, addRecords: true, bookAppointments: true, receiveReminders: true, manageGuardians: true };
 const NONE: Perms = { viewRecords: false, addRecords: false, bookAppointments: false, receiveReminders: false, manageGuardians: false };
 
-export const RELATIONSHIPS = ['Mother', 'Father', 'Legal guardian', 'Caregiver', 'Other'] as const;
+// 'Self' is the child's own account, used for the move to adulthood.
+export const RELATIONSHIPS = ['Mother', 'Father', 'Legal guardian', 'Caregiver', 'Other', 'Self'] as const;
+// Own-account access opens at 13. Full handover (becoming primary) opens at the age of majority, 18.
+export const TEEN_ACCESS_AGE = 13;
+export const MAJORITY_AGE = 18;
+
+export function childAgeYears(member: any, now = new Date()): number | null {
+  const raw = member?.dateOfBirth || (member?.dob ? String(member.dob).split('T')[0] : '');
+  if (typeof raw !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+  const dob = new Date(`${raw}T00:00:00Z`);
+  if (Number.isNaN(dob.getTime())) return null;
+  let age = now.getUTCFullYear() - dob.getUTCFullYear();
+  const beforeBirthday = now.getUTCMonth() < dob.getUTCMonth() || (now.getUTCMonth() === dob.getUTCMonth() && now.getUTCDate() < dob.getUTCDate());
+  if (beforeBirthday) age -= 1;
+  return age;
+}
 
 export function effectivePerms(g: any): Perms {
   if (!g || g.status !== 'active') return { ...NONE };
@@ -106,6 +121,12 @@ const clean = (v: unknown, max = 120): string | undefined => {
 };
 const MAX_GUARDIANS = 6;
 
+// Before 18 the child's own account can look but not manage other guardians.
+function limitSelf(perms: Perms, relationship: string, age: number | null): Perms {
+  if (relationship === 'Self' && (age === null || age < MAJORITY_AGE)) return { ...perms, manageGuardians: false };
+  return perms;
+}
+
 function pickPermissions(input: any, base: Partial<Perms> = {}, canGrantManage: boolean): Perms {
   const out: Perms = { ...NONE, viewRecords: true, receiveReminders: true, ...base };
   for (const k of PERMISSION_KEYS) {
@@ -182,6 +203,7 @@ export function createChildAccessRouter(deps: ChildAccessDeps) {
       return res.json({
         success: true,
         you: { role: a.role, permissions: a.perms, locked: a.locked },
+        transition: { ageYears: childAgeYears(a.member), teenAccessAge: TEEN_ACCESS_AGE, majorityAge: MAJORITY_AGE },
         primary: { name: await actorName(String(a.member.accountId || a.member.userId || '')) },
         custodyLock: a.member.custodyLock?.active ? { orderReference: a.member.custodyLock.orderReference || '', note: a.member.custodyLock.note || '' } : null,
         guardians: visible.map(guardianPayload),
@@ -207,6 +229,11 @@ export function createChildAccessRouter(deps: ChildAccessDeps) {
       if (!relationship || !displayName) {
         return res.status(400).json({ success: false, message: 'Choose a relationship and enter a name' });
       }
+      const age = childAgeYears(a.member);
+      if (relationship === 'Self') {
+        if (age === null) return res.status(400).json({ success: false, message: 'Add a date of birth before inviting the child to their own account' });
+        if (age < TEEN_ACCESS_AGE) return res.status(400).json({ success: false, message: `Own-account access opens at ${TEEN_ACCESS_AGE}` });
+      }
       const email = clean(b.email, 120)?.toLowerCase();
       const phone = clean(b.phone, 30);
       if (email && !email.includes('@')) return res.status(400).json({ success: false, message: 'Enter a valid email address' });
@@ -224,7 +251,7 @@ export function createChildAccessRouter(deps: ChildAccessDeps) {
         inviteCodeHash: sha(code),
         inviteExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         status: 'pending',
-        permissions: pickPermissions(b.permissions, {}, a.role === 'primary'),
+        permissions: limitSelf(pickPermissions(b.permissions, {}, a.role === 'primary'), relationship, age),
         invitedBy: a.actorId,
       });
       const inviter = await actorName(a.actorId);
@@ -294,7 +321,7 @@ export function createChildAccessRouter(deps: ChildAccessDeps) {
       }
       if (b.permissions) {
         const current = g.permissions?.toObject ? g.permissions.toObject() : g.permissions;
-        g.permissions = pickPermissions(b.permissions, current, a.role === 'primary');
+        g.permissions = limitSelf(pickPermissions(b.permissions, current, a.role === 'primary'), g.relationship, childAgeYears(a.member));
       }
       await g.save();
       await auditChild(a.member._id, a.actorId, role(a), 'guardian_updated', g.displayName);
@@ -369,6 +396,12 @@ export function createChildAccessRouter(deps: ChildAccessDeps) {
       const g: any = mongoose.isValidObjectId(gid) ? await ChildGuardian.findOne({ _id: gid, childId: a.member._id, status: 'active' }) : null;
       if (!g || !g.accountId) return res.status(400).json({ success: false, message: 'Choose a guardian who has joined' });
       if (g.restriction?.active) return res.status(409).json({ success: false, message: 'Clear the restriction on this guardian before transferring' });
+      if (g.relationship === 'Self') {
+        const age = childAgeYears(a.member);
+        if (age === null || age < MAJORITY_AGE) {
+          return res.status(400).json({ success: false, message: `Full handover opens at ${MAJORITY_AGE}. Until then the child can have their own view access.` });
+        }
+      }
       const email = await accountEmail(g.accountId);
       if (!email) return res.status(422).json({ success: false, message: 'That guardian has no email on their account' });
       const code = newCode(6);

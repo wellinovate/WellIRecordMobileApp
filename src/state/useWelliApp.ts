@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Linking } from 'react-native';
+import { Alert, AppState as RNAppState, Linking } from 'react-native';
 import {
   CONSENT_SCOPES,
   LINKED_ACCOUNTS,
@@ -32,6 +32,7 @@ import { pharmacyService } from '../services/pharmacyService';
 import { profileService } from '../services/profileService';
 import { familyService } from '../services/familyService';
 import { childHealthService } from '../services/childHealthService';
+import { childOfflineQueue, clearChildOfflineData } from '../utils/childOfflineQueue';
 import { facilityService } from '../services/facilityService';
 import { pointsFromProvider, latestProviderLogs, type VitalPoint } from '../utils/vitalsSeries';
 import { careService, type AppointmentItem } from '../services/careService';
@@ -347,6 +348,16 @@ export function useWelliApp() {
   const patch = (updater: Updater) => {
     setState((prev) => ({ ...prev, ...(typeof updater === 'function' ? updater(prev) : updater) }));
   };
+
+  // Send child entries saved while offline when the user signs in and whenever the app returns to the foreground.
+  useEffect(() => {
+    if (!state.isAuthenticated) return;
+    childOfflineQueue.flush().catch(() => {});
+    const sub = RNAppState.addEventListener('change', (next) => {
+      if (next === 'active') childOfflineQueue.flush().catch(() => {});
+    });
+    return () => sub.remove();
+  }, [state.isAuthenticated]);
 
   useEffect(() => {
     (async () => {
@@ -1318,6 +1329,7 @@ export function useWelliApp() {
                 showToast('Could not delete your account. Check your connection and try again.');
                 return;
               }
+              await clearChildOfflineData();
               patch({
                 isAuthenticated: false,
                 user: null,
@@ -1343,6 +1355,7 @@ export function useWelliApp() {
         showToast('Could not delete your account. Check your connection and try again.');
         return;
       }
+      await clearChildOfflineData();
       patch({
         isAuthenticated: false,
         user: null,
@@ -1999,6 +2012,7 @@ export function useWelliApp() {
       hapticFeedback.light();
       await authService.logout();
       setAuthToken(null);
+      await clearChildOfflineData();
       patch({
         isAuthenticated: false,
         user: null,

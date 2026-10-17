@@ -4,6 +4,7 @@ import { useTheme } from '../theme/ThemeContext';
 import {
   GUARDIAN_RELATIONSHIPS,
   PERMISSION_LABELS,
+  RELATIONSHIP_LABEL,
   childHealthService,
   type AuditEntry,
   type Guardian,
@@ -30,6 +31,7 @@ const ACTION_LABEL: Record<string, string> = {
   transfer_requested: 'Started a transfer',
   transfer_cancelled: 'Cancelled the transfer',
   transfer_completed: 'Transferred primary responsibility',
+  reminder_prefs_updated: 'Changed reminder settings',
   custody_locked: 'Guardian changes locked by staff',
   custody_unlocked: 'Lock lifted by staff',
 };
@@ -39,10 +41,12 @@ const when = (iso: string) =>
 
 export function ChildAccessPanel({
   memberId,
+  childName,
   toast,
   onFamilyChanged,
 }: {
   memberId: string;
+  childName: string;
   toast: (message: string) => void;
   onFamilyChanged: () => void;
 }) {
@@ -190,7 +194,7 @@ export function ChildAccessPanel({
           <View style={{ flex: 1 }}>
             <Text style={[styles.name, { color: theme.text }]}>{g.displayName}</Text>
             <Text style={[styles.sub, { color: theme.muted }]}>
-              {g.relationship}{g.identityVerified ? ' · identity checked' : ''}
+              {RELATIONSHIP_LABEL[g.relationship] || g.relationship}{g.identityVerified ? ' · identity checked' : ''}
             </Text>
           </View>
           <View style={[styles.chip, { borderColor: color }]}>
@@ -272,6 +276,27 @@ export function ChildAccessPanel({
         </View>
       )}
 
+      {isPrimary && (() => {
+        const t = data.transition;
+        const age = t.ageYears;
+        const hasSelf = data.guardians.some((g) => g.relationship === 'Self' && g.status === 'active');
+        let body: string;
+        if (age === null) body = `Add ${childName}'s date of birth in Details to see the options for moving to their own account.`;
+        else if (age < t.teenAccessAge) body = `${childName} is ${age}. Their own account can be linked from age ${t.teenAccessAge}. Nothing to do yet.`;
+        else if (age < t.majorityAge) body = `${childName} is ${age}. You can invite ${childName} to see their own record with view access. You stay the primary guardian until they turn ${t.majorityAge}.`;
+        else body = hasSelf
+          ? `${childName} is ${age} and has their own account linked. Open their entry below and choose "Make primary guardian" to hand over. You stay on as a guardian and ${childName} decides what you can see.`
+          : `${childName} is ${age}. Invite ${childName} with their own account, then hand over primary responsibility. You stay on as a guardian and ${childName} decides what you can see.`;
+        return (
+          <View style={card}>
+            <Text style={[styles.groupTitle, { color: theme.text }]}>Moving to their own account</Text>
+            <Text style={[styles.sub, { color: theme.muted }]}>{body}</Text>
+            {age !== null && age >= t.teenAccessAge && !hasSelf && !locked &&
+              btn(`Invite ${childName}`, () => setInvite({ displayName: childName, relationship: 'Self', email: '', phone: '' }))}
+          </View>
+        );
+      })()}
+
       <Text style={[styles.groupTitle, { color: theme.text }]}>Guardians</Text>
       {data.guardians.length === 0 && <Text style={[styles.sub, { color: theme.muted }]}>No other guardians yet.</Text>}
       {data.guardians.map(guardianCard)}
@@ -295,12 +320,12 @@ export function ChildAccessPanel({
           {input(invite.displayName, (v) => setInvite((i) => i && { ...i, displayName: v }), 'Their name')}
           <Text style={[styles.label, { color: theme.muted }]}>RELATIONSHIP</Text>
           <View style={styles.chipRow}>
-            {GUARDIAN_RELATIONSHIPS.map((r) => {
+            {GUARDIAN_RELATIONSHIPS.filter((r) => r !== 'Self' || (data.transition.ageYears ?? -1) >= data.transition.teenAccessAge).map((r) => {
               const on = invite.relationship === r;
               return (
                 <TouchableOpacity key={r} accessibilityRole="button" onPress={() => setInvite((i) => i && { ...i, relationship: r })}
                   style={[styles.pick, { borderColor: on ? '#082F67' : theme.border, backgroundColor: on ? '#082F67' : theme.surface }]}>
-                  <Text style={{ color: on ? '#fff' : theme.text, fontSize: 13, fontWeight: '600' }}>{r}</Text>
+                  <Text style={{ color: on ? '#fff' : theme.text, fontSize: 13, fontWeight: '600' }}>{RELATIONSHIP_LABEL[r] || r}</Text>
                 </TouchableOpacity>
               );
             })}

@@ -248,10 +248,112 @@ const ChildVaccinationSchema = new Schema<IChildVaccination>(
 );
 ChildVaccinationSchema.index({ memberId: 1, vaccineCode: 1 }, { unique: true });
 
+// How one adult wants to hear about one child's vaccines. SMS and WhatsApp
+// need an explicit opt-in, stored with the time it was given.
+export interface IReminderPreference extends Document {
+  childId: mongoose.Types.ObjectId;
+  accountId: string;
+  push: boolean;
+  sms: boolean;
+  whatsapp: boolean;
+  phone?: string;
+  smsConsentAt?: Date | null;
+  whatsappConsentAt?: Date | null;
+}
+
+const ReminderPreferenceSchema = new Schema<IReminderPreference>(
+  {
+    childId: { type: Schema.Types.ObjectId, required: true },
+    accountId: { type: String, required: true },
+    push: { type: Boolean, default: true },
+    sms: { type: Boolean, default: false },
+    whatsapp: { type: Boolean, default: false },
+    phone: { type: String },
+    smsConsentAt: { type: Date, default: null },
+    whatsappConsentAt: { type: Date, default: null },
+  },
+  { timestamps: true }
+);
+ReminderPreferenceSchema.index({ childId: 1, accountId: 1 }, { unique: true });
+
+// One row per reminder attempt, so a reminder is never sent twice.
+export interface IReminderLog extends Document {
+  childId: mongoose.Types.ObjectId;
+  accountId: string;
+  channel: 'push' | 'sms' | 'whatsapp';
+  key: string;
+  status: 'pending' | 'sent' | 'failed' | 'skipped';
+  attempts: number;
+  error?: string;
+}
+
+const ReminderLogSchema = new Schema<IReminderLog>(
+  {
+    childId: { type: Schema.Types.ObjectId, required: true },
+    accountId: { type: String, required: true },
+    channel: { type: String, enum: ['push', 'sms', 'whatsapp'], required: true },
+    key: { type: String, required: true },
+    status: { type: String, enum: ['pending', 'sent', 'failed', 'skipped'], default: 'pending' },
+    attempts: { type: Number, default: 0 },
+    error: { type: String },
+  },
+  { timestamps: true }
+);
+ReminderLogSchema.index({ childId: 1, accountId: 1, channel: 1, key: 1 }, { unique: true });
+// Keep a year of history.
+ReminderLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 365 * 24 * 60 * 60 });
+
+export interface IChildMilestone extends Document {
+  childId: mongoose.Types.ObjectId;
+  code: string;
+  status: 'achieved' | 'not_yet' | 'unsure';
+  notes?: string;
+  recordedBy: string;
+  catalogueVersion: string;
+}
+
+const ChildMilestoneSchema = new Schema<IChildMilestone>(
+  {
+    childId: { type: Schema.Types.ObjectId, required: true, index: true },
+    code: { type: String, required: true },
+    status: { type: String, enum: ['achieved', 'not_yet', 'unsure'], required: true },
+    notes: { type: String },
+    recordedBy: { type: String, required: true },
+    catalogueVersion: { type: String },
+  },
+  { timestamps: true }
+);
+ChildMilestoneSchema.index({ childId: 1, code: 1 }, { unique: true });
+
+// Vision, hearing, dental and developmental screening visits.
+export interface IChildScreening extends Document {
+  childId: mongoose.Types.ObjectId;
+  kind: 'developmental' | 'vision' | 'hearing' | 'dental';
+  date: string;
+  result: 'no_concerns' | 'follow_up_advised' | 'unsure';
+  facility?: string;
+  notes?: string;
+  recordedBy: string;
+}
+
+const ChildScreeningSchema = new Schema<IChildScreening>(
+  {
+    childId: { type: Schema.Types.ObjectId, required: true, index: true },
+    kind: { type: String, enum: ['developmental', 'vision', 'hearing', 'dental'], required: true },
+    date: { type: String, required: true },
+    result: { type: String, enum: ['no_concerns', 'follow_up_advised', 'unsure'], required: true },
+    facility: { type: String },
+    notes: { type: String },
+    recordedBy: { type: String, required: true },
+  },
+  { timestamps: true }
+);
+
 export interface IChildGrowth extends Document {
   memberId: mongoose.Types.ObjectId;
   ownerId: string;
   measuredOn: string;
+  clientId?: string;
   weightKg?: number;
   lengthCm?: number;
   headCircumferenceCm?: number;
@@ -265,6 +367,8 @@ const ChildGrowthSchema = new Schema<IChildGrowth>(
     memberId: { type: Schema.Types.ObjectId, required: true, index: true },
     ownerId: { type: String, required: true, index: true },
     measuredOn: { type: String, required: true },
+    // Set by the app so a retry after a lost response does not add the entry twice.
+    clientId: { type: String },
     weightKg: { type: Number },
     lengthCm: { type: Number },
     headCircumferenceCm: { type: Number },
@@ -273,6 +377,7 @@ const ChildGrowthSchema = new Schema<IChildGrowth>(
   },
   { timestamps: true }
 );
+ChildGrowthSchema.index({ memberId: 1, clientId: 1 }, { unique: true, partialFilterExpression: { clientId: { $type: 'string' } } });
 
 // 3. Health Record Model & Subdocuments
 export interface ILabBiomarker {
@@ -978,3 +1083,11 @@ export const ChildGuardian: Model<IChildGuardian> =
   mongoose.models.ChildGuardian || mongoose.model<IChildGuardian>('ChildGuardian', ChildGuardianSchema);
 export const ChildAuditLog: Model<IChildAuditLog> =
   mongoose.models.ChildAuditLog || mongoose.model<IChildAuditLog>('ChildAuditLog', ChildAuditLogSchema);
+export const ChildMilestone: Model<IChildMilestone> =
+  mongoose.models.ChildMilestone || mongoose.model<IChildMilestone>('ChildMilestone', ChildMilestoneSchema);
+export const ChildScreening: Model<IChildScreening> =
+  mongoose.models.ChildScreening || mongoose.model<IChildScreening>('ChildScreening', ChildScreeningSchema);
+export const ReminderPreference: Model<IReminderPreference> =
+  mongoose.models.ReminderPreference || mongoose.model<IReminderPreference>('ReminderPreference', ReminderPreferenceSchema);
+export const ReminderLog: Model<IReminderLog> =
+  mongoose.models.ReminderLog || mongoose.model<IReminderLog>('ReminderLog', ReminderLogSchema);
