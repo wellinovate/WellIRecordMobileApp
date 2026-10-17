@@ -1,0 +1,306 @@
+// Staff web pages served by this backend: /clinic and /admin/orders.
+// Both sign in with a staff account (password, then the authenticator code) and call the normal
+// API with the staff token. No shared secret is typed into either page. The token is held in page
+// memory only, so closing the tab signs out.
+import crypto from 'crypto';
+import type { Request, Response } from 'express';
+
+const STYLE = String.raw`
+*{box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#F8FAFC;margin:0;padding:24px;color:#0F172A}
+.wrap{max-width:760px;margin:0 auto}
+h1{font-size:20px;margin:0 0 4px}h2{font-size:16px;margin:0 0 10px}
+.sub{color:#64748B;font-size:13px;margin-bottom:20px}
+.card{background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:16px;margin-bottom:16px}
+label{display:block;font-size:12.5px;font-weight:600;margin:10px 0 4px}
+input,select,textarea{width:100%;padding:9px 11px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;font-family:inherit}
+button{background:#041E42;color:#fff;border:0;padding:10px 16px;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;margin-top:12px}
+button.alt{background:#fff;color:#041E42;border:1px solid #CBD5E1}
+button.ok{background:#059669}button.no{background:#fff;color:#B91C1C;border:1px solid #FECACA}
+.err{color:#B91C1C;font-size:13px;margin-top:8px}
+.msg{font-size:13px;padding:9px 12px;border-radius:8px;margin-bottom:12px}
+.msg.good{background:#ECFDF5;color:#065F46;border:1px solid #A7F3D0}
+.msg.bad{background:#FEF2F2;color:#991B1B;border:1px solid #FECACA}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.mono{font-family:ui-monospace,Menlo,monospace;font-size:15px;background:#F1F5F9;padding:8px 10px;border-radius:8px;word-break:break-all}
+.item{border-top:1px solid #EEF2F6;padding:8px 0;font-size:13.5px}
+.tag{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:999px;margin-left:6px}
+.tag.v{background:#DCFCE7;color:#166534}.tag.p{background:#FEF3C7;color:#92400E}
+.nt{margin-top:0}.sp{margin-left:8px}details{margin-top:10px}#rcodes{white-space:pre-line}#list{margin-top:14px}.hide{display:none}.top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.muted{color:#64748B;font-size:12.5px}
+@media(max-width:560px){.row{grid-template-columns:1fr}}
+`;
+
+// Sign-in flow shared by both pages. Calls window.onSignedIn(staff) once a full session exists.
+const AUTH_HTML = String.raw`
+<div id="auth">
+  <div class="card" id="v-login">
+    <h2>Staff sign-in</h2>
+    <label for="em">Email</label><input id="em" type="email" autocomplete="username">
+    <label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password">
+    <button id="b-login">Continue</button><div class="err" id="e-login"></div>
+  </div>
+  <div class="card hide" id="v-mfa">
+    <h2>Second step</h2>
+    <p class="muted">Enter the 6-digit code from your authenticator app.</p>
+    <label for="mc">Code</label><input id="mc" inputmode="numeric" autocomplete="one-time-code" maxlength="8">
+    <button id="b-mfa">Sign in</button>
+    <details><summary class="muted">Lost your phone? Use a recovery code</summary>
+      <label for="rc">Recovery code</label><input id="rc" autocomplete="off">
+      <button class="alt" id="b-rec">Use recovery code</button></details>
+    <div class="err" id="e-mfa"></div>
+  </div>
+  <div class="card hide" id="v-pass">
+    <h2>Choose a new password</h2>
+    <p class="muted">Your password was set by an admin. Pick one only you know (at least 12 characters).</p>
+    <label for="p0">Current password</label><input id="p0" type="password" autocomplete="current-password">
+    <label for="p1">New password</label><input id="p1" type="password" autocomplete="new-password">
+    <button id="b-pass">Change password</button><div class="err" id="e-pass"></div>
+  </div>
+  <div class="card hide" id="v-setup">
+    <h2>Set up your authenticator</h2>
+    <p class="muted">Add a new account in an authenticator app (Google Authenticator, Microsoft Authenticator, Authy). Choose "enter a setup key" and type this key. Time-based, 6 digits.</p>
+    <div class="mono" id="sk"></div>
+    <p class="muted">On a phone you can also <a id="sl" href="#">open the key in your authenticator</a>.</p>
+    <label for="sc">First code from the app</label><input id="sc" inputmode="numeric" maxlength="8">
+    <button id="b-setup">Turn on</button><div class="err" id="e-setup"></div>
+  </div>
+  <div class="card hide" id="v-codes">
+    <h2>Save your recovery codes</h2>
+    <p class="muted">Each code works once if you lose your phone. They are shown only now. Store them somewhere safe, not on the same phone.</p>
+    <div class="mono" id="rcodes"></div>
+    <button id="b-codes">I have saved them</button>
+  </div>
+</div>`;
+
+const AUTH_JS = String.raw`
+var S={token:null,staff:null,mfaToken:null};
+function $(i){return document.getElementById(i)}
+function show(id){['v-login','v-mfa','v-pass','v-setup','v-codes'].forEach(function(v){$(v).classList.toggle('hide',v!==id)})}
+function say(id,t){$(id).textContent=t||''}
+async function api(path,opts){
+  opts=opts||{};var h={'Content-Type':'application/json'};
+  if(S.token)h['Authorization']='Bearer '+S.token;
+  var r=await fetch('/api/v1'+path,{method:opts.method||'GET',headers:h,body:opts.body?JSON.stringify(opts.body):undefined});
+  var d={};try{d=await r.json()}catch(e){}
+  d._status=r.status;return d;
+}
+function signedIn(d){
+  S.token=d.token;S.staff=d.staff;
+  if(S.staff.mustChangePassword){show('v-pass');return}
+  if(d.mfaSetupRequired&&!S.staff.mfaEnabled){startSetup();return}
+  $('auth').classList.add('hide');window.onSignedIn(S.staff);
+}
+async function startSetup(){
+  show('v-setup');var d=await api('/staff/mfa/setup',{method:'POST',body:{}});
+  if(!d.success){say('e-setup',d.message||'Could not start setup');return}
+  $('sk').textContent=d.secret;$('sl').setAttribute('href',d.otpauthUrl);
+}
+$('b-login').onclick=async function(){
+  say('e-login','');
+  var d=await api('/staff/auth/login',{method:'POST',body:{email:$('em').value,password:$('pw').value}});
+  if(!d.success){say('e-login',d.message||'Could not sign in');return}
+  $('pw').value='';
+  if(d.mfaRequired){S.mfaToken=d.mfaToken;show('v-mfa');return}
+  signedIn(d);
+};
+async function mfaStep(body){
+  say('e-mfa','');body.mfaToken=S.mfaToken;
+  var d=await api('/staff/auth/mfa',{method:'POST',body:body});
+  if(!d.success){say('e-mfa',d.message||'That code is not right.');return}
+  signedIn(d);
+}
+$('b-mfa').onclick=function(){mfaStep({code:$('mc').value})};
+$('b-rec').onclick=function(){mfaStep({recoveryCode:$('rc').value})};
+$('b-pass').onclick=async function(){
+  say('e-pass','');
+  var d=await api('/staff/auth/change-password',{method:'POST',body:{currentPassword:$('p0').value,newPassword:$('p1').value}});
+  if(!d.success){say('e-pass',d.message||'Could not change the password');return}
+  $('p0').value='';$('p1').value='';
+  S.token=d.token;S.staff=d.staff;
+  if(!S.staff.mfaEnabled){startSetup();return}
+  $('auth').classList.add('hide');window.onSignedIn(S.staff);
+};
+$('b-setup').onclick=async function(){
+  say('e-setup','');
+  var d=await api('/staff/mfa/enable',{method:'POST',body:{code:$('sc').value}});
+  if(!d.success){say('e-setup',d.message||'That code is not right.');return}
+  S.token=d.token;S.staff=d.staff;
+  $('rcodes').textContent=d.recoveryCodes.join('\n');show('v-codes');
+};
+$('b-codes').onclick=function(){$('rcodes').textContent='';$('auth').classList.add('hide');window.onSignedIn(S.staff)};
+function signOut(){S.token=null;S.staff=null;location.reload()}
+`;
+
+const CLINIC_HTML = String.raw`
+<div class="wrap">
+  <div class="top"><div><h1>WelliRecord clinic</h1><div class="sub">Open a child's record with the WelliID and the code the parent gives you.</div></div>
+    <div id="who" class="muted hide"></div></div>
+  ${'__AUTH__'}
+  <div id="app" class="hide">
+    <div id="note" class="msg hide"></div>
+    <div class="card" id="open">
+      <h2>Open a record</h2>
+      <div class="row">
+        <div><label for="wr">WelliID</label><input id="wr" autocomplete="off"></div>
+        <div><label for="cd">Parent's code (8 characters)</label><input id="cd" autocomplete="off" maxlength="12"></div>
+      </div>
+      <button id="b-open">Open record</button><button class="alt sp" id="b-out">Sign out</button>
+      <div class="err" id="e-open"></div>
+    </div>
+    <div id="rec" class="hide">
+      <div class="card">
+        <div class="top"><h2 id="cn"></h2><button class="alt nt" id="b-close">Close record</button></div>
+        <div class="muted" id="cm"></div>
+        <div class="muted" id="ce"></div>
+      </div>
+      <div class="card"><h2>Vaccinations</h2><div id="vl"></div></div>
+      <div class="card"><h2>Measurements</h2><div id="gl"></div></div>
+      <div class="card" id="f-vax">
+        <h2>Record a vaccine</h2>
+        <label for="vc">Vaccine</label><select id="vc"></select>
+        <div class="row">
+          <div><label for="vd">Date given (YYYY-MM-DD)</label><input id="vd" placeholder="2026-10-17"></div>
+          <div><label for="vl2">Batch or lot number</label><input id="vl2"></div>
+          <div><label for="vm">Manufacturer</label><input id="vm"></div>
+          <div><label for="ve">Expiry date (YYYY-MM-DD)</label><input id="ve"></div>
+          <div><label for="vs">Site</label><input id="vs" placeholder="left thigh"></div>
+          <div><label for="vr">Reaction, if any</label><input id="vr"></div>
+        </div>
+        <p class="muted">If the parent already recorded this dose, saving confirms it with your values.</p>
+        <button id="b-vax">Save vaccine</button><div class="err" id="e-vax"></div>
+      </div>
+      <div class="card" id="f-gr">
+        <h2>Record a measurement</h2>
+        <div class="row">
+          <div><label for="gd">Date measured (YYYY-MM-DD)</label><input id="gd" placeholder="2026-10-17"></div>
+          <div><label for="gw">Weight (kg)</label><input id="gw" inputmode="decimal"></div>
+          <div><label for="gl2">Length or height (cm)</label><input id="gl2" inputmode="decimal"></div>
+          <div><label for="gh">Head circumference (cm)</label><input id="gh" inputmode="decimal"></div>
+        </div>
+        <label for="gn">Notes</label><input id="gn">
+        <button id="b-gr">Save measurement</button><div class="err" id="e-gr"></div>
+      </div>
+    </div>
+  </div>
+</div>`;
+
+const CLINIC_JS = String.raw`
+var cur={wrId:'',code:''};
+function add(parent,tag,text,cls){var e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;parent.appendChild(e);return e}
+function note(t,good){var n=$('note');n.textContent=t;n.className='msg '+(good?'good':'bad');setTimeout(function(){n.className='msg hide'},6000)}
+window.onSignedIn=async function(staff){
+  $('app').classList.remove('hide');$('who').classList.remove('hide');
+  $('who').textContent=staff.name+' ('+staff.role.replace('_',' ')+')';
+  if(['admin','clinician','records_officer'].indexOf(staff.role)<0){
+    $('open').classList.add('hide');note('This account cannot open child records. Ask an admin for the clinician or records officer role.',false);return}
+  var s=await fetch('/api/v1/immunization/schedule').then(function(r){return r.json()}).catch(function(){return null});
+  if(s&&s.success){
+    var sel=$('vc');s.schedule.doses.forEach(function(d){var o=document.createElement('option');o.value=d.code;o.textContent=d.vaccine+(d.doseNumber?' dose '+d.doseNumber:'');sel.appendChild(o)});
+    if(s.schedule.reviewStatus!=='reviewed')note('The vaccine list is waiting for clinical review. Check each dose against the national schedule.',false);
+  }
+};
+$('b-out').onclick=signOut;
+async function openRec(){
+  say('e-open','');
+  var d=await api('/facility/child/lookup',{method:'POST',body:{wrId:cur.wrId,code:cur.code}});
+  if(!d.success){say('e-open',d.message||'Could not open the record');return false}
+  render(d);return true;
+}
+$('b-open').onclick=async function(){
+  cur.wrId=$('wr').value.trim();cur.code=$('cd').value.trim();
+  if(await openRec()){$('cd').value=''}
+};
+$('b-close').onclick=function(){cur={wrId:'',code:''};$('rec').classList.add('hide');$('open').classList.remove('hide');$('wr').value=''};
+function render(d){
+  $('open').classList.add('hide');$('rec').classList.remove('hide');
+  $('cn').textContent=d.child.name;
+  $('cm').textContent='WelliID '+(d.child.wrId||'')+' · Born '+(d.child.dateOfBirth||'unknown');
+  $('ce').textContent='Allergies: '+(d.child.allergies||'none recorded')+' · Code valid until '+new Date(d.expiresAt).toLocaleString();
+  var vl=$('vl');vl.textContent='';var gl=$('gl');gl.textContent='';
+  var res=(d.bundle.entry||[]).map(function(e){return e.resource});
+  var imm=res.filter(function(r){return r.resourceType==='Immunization'}).sort(function(a,b){return String(a.occurrenceDateTime).localeCompare(String(b.occurrenceDateTime))});
+  if(!imm.length)add(vl,'div','None recorded.','muted');
+  imm.forEach(function(r){var i=add(vl,'div',null,'item');add(i,'span',(r.occurrenceDateTime||'')+'  '+r.vaccineCode.text);
+    add(i,'span',r.primarySource?'Confirmed':'Reported by parent','tag '+(r.primarySource?'v':'p'));
+    var bits=[r.lotNumber&&'lot '+r.lotNumber,r.manufacturer&&r.manufacturer.display,r.location&&r.location.display].filter(Boolean).join(' · ');
+    if(bits)add(i,'div',bits,'muted')});
+  var obs=res.filter(function(r){return r.resourceType==='Observation'}).sort(function(a,b){return String(b.effectiveDateTime).localeCompare(String(a.effectiveDateTime))});
+  if(!obs.length)add(gl,'div','None recorded.','muted');
+  obs.forEach(function(r){var i=add(gl,'div',null,'item');add(i,'span',r.effectiveDateTime+'  '+r.code.text+': '+r.valueQuantity.value+' '+r.valueQuantity.unit);
+    var v=(r.meta&&r.meta.tag||[]).some(function(t){return /provider/.test(t.code||'')});
+    add(i,'span',v?'Clinic':'Parent','tag '+(v?'v':'p'))});
+}
+async function save(path,body,errId,okText,clear){
+  say(errId,'');body.wrId=cur.wrId;body.code=cur.code;
+  var d=await api(path,{method:'POST',body:body});
+  if(!d.success){say(errId,d.message||'Could not save');return}
+  clear.forEach(function(i){$(i).value=''});note(okText,true);openRec();
+}
+$('b-vax').onclick=function(){save('/facility/child/vaccinations',{vaccineCode:$('vc').value,administeredDate:$('vd').value.trim(),lotNumber:$('vl2').value,manufacturer:$('vm').value,expiryDate:$('ve').value.trim(),site:$('vs').value,reaction:$('vr').value},'e-vax','Vaccine saved. The parent has been told.',['vd','vl2','vm','ve','vs','vr'])};
+$('b-gr').onclick=function(){save('/facility/child/growth',{measuredOn:$('gd').value.trim(),weightKg:$('gw').value,lengthCm:$('gl2').value,headCircumferenceCm:$('gh').value,notes:$('gn').value},'e-gr','Measurement saved. The parent has been told.',['gd','gw','gl2','gh','gn'])};
+`;
+
+const ORDERS_HTML = String.raw`
+<div class="wrap">
+  <div class="top"><div><h1>Medication order review</h1><div class="sub">Orders pending pharmacist approval.</div></div><div id="who" class="muted hide"></div></div>
+  ${'__AUTH__'}
+  <div id="app" class="hide">
+    <div id="note" class="msg hide"></div>
+    <button class="alt" id="b-ref">Refresh</button> <button class="alt" id="b-out">Sign out</button>
+    <div id="list"></div>
+  </div>
+</div>`;
+
+const ORDERS_JS = String.raw`
+function add(parent,tag,text,cls){var e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;parent.appendChild(e);return e}
+function note(t,good){var n=$('note');n.textContent=t;n.className='msg '+(good?'good':'bad');setTimeout(function(){n.className='msg hide'},5000)}
+window.onSignedIn=function(staff){
+  $('app').classList.remove('hide');$('who').classList.remove('hide');$('who').textContent=staff.name+' ('+staff.role.replace('_',' ')+')';load();
+};
+$('b-out').onclick=signOut;$('b-ref').onclick=function(){load()};
+async function load(){
+  var l=$('list');l.textContent='Loading...';
+  var d=await api('/pharmacy/orders/pending');
+  l.textContent='';
+  if(!d.success){add(l,'div',d.message||'Could not load orders.','msg bad');return}
+  if(!d.orders.length){add(l,'div','No orders pending review.','muted');return}
+  d.orders.forEach(function(o){
+    var c=add(l,'div',null,'card');
+    add(c,'h2',o.medicationName||'Unnamed medication');
+    add(c,'div','Submitted '+(o.createdAt?new Date(o.createdAt).toLocaleString():''),'muted');
+    add(c,'div','Dosage: '+(o.dosage||'-')+' · Quantity: '+(o.quantity||1));
+    add(c,'div','Delivery: '+(o.deliveryAddress||'-')+' ('+(o.deliveryType||'home')+')');
+    if(o.notes)add(c,'div','Notes: '+o.notes);
+    var a=add(c,'button','Approve','ok');a.onclick=function(){decide(o._id,'approve')};
+    var r=add(c,'button','Reject','no');r.className='no sp';r.onclick=function(){decide(o._id,'reject')};
+  });
+}
+async function decide(id,what){
+  var body={};
+  if(what==='approve'){if(!confirm('Approve this order?'))return}
+  else{var why=prompt('Reason for rejection (required):');if(!why||!why.trim())return;body.reason=why}
+  var d=await api('/pharmacy/orders/'+encodeURIComponent(id)+'/'+what,{method:'POST',body:body});
+  if(d.success){note(what==='approve'?'Order approved.':'Order rejected.',true);load()}else note(d.message||'Failed.',false);
+}
+`;
+
+function page(title: string, body: string, js: string, nonce: string) {
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="robots" content="noindex">
+<title>${title}</title><style nonce="${nonce}">${STYLE}</style></head><body>${body.replace('__AUTH__', AUTH_HTML)}
+<script nonce="${nonce}">${AUTH_JS}${js}</script></body></html>`;
+}
+
+function send(res: Response, title: string, body: string, js: string) {
+  const nonce = crypto.randomBytes(16).toString('base64');
+  res.setHeader(
+    'Content-Security-Policy',
+    `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`
+  );
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.type('html').send(page(title, body, js, nonce));
+}
+
+export const clinicPage = (_req: Request, res: Response) => send(res, 'WelliRecord clinic', CLINIC_HTML, CLINIC_JS);
+export const ordersPage = (_req: Request, res: Response) => send(res, 'WelliRecord order review', ORDERS_HTML, ORDERS_JS);

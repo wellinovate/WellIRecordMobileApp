@@ -75,15 +75,17 @@ describe('legacy admin secret', () => {
     return { status, nexted, staff: req.staff };
   };
 
-  it('works while allowed and records the caller as legacy', async () => {
+  it('works only when switched on, and records the caller as legacy', async () => {
     process.env.ADMIN_SECRET = 'a-long-shared-secret';
-    delete process.env.ALLOW_LEGACY_ADMIN_SECRET;
+    process.env.ALLOW_LEGACY_ADMIN_SECRET = 'true';
     const r = await run({ 'x-admin-secret': 'a-long-shared-secret' }, ['pharmacist']);
     assert.equal(r.nexted, true);
     assert.equal(r.staff.legacy, true);
   });
-  it('is refused once switched off', async () => {
+  it('is refused by default and when set to false', async () => {
     process.env.ADMIN_SECRET = 'a-long-shared-secret';
+    delete process.env.ALLOW_LEGACY_ADMIN_SECRET;
+    assert.equal((await run({ 'x-admin-secret': 'a-long-shared-secret' })).nexted, false);
     process.env.ALLOW_LEGACY_ADMIN_SECRET = 'false';
     const r = await run({ 'x-admin-secret': 'a-long-shared-secret' });
     assert.equal(r.nexted, false);
