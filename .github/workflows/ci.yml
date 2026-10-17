@@ -24,6 +24,8 @@ jobs:
         run: npx tsc --noEmit -p tsconfig.app.json
       - name: Lint
         run: npm run lint
+      - name: Install server packages (root tests import server code)
+        run: npm ci --no-audit --no-fund --prefix server
       - name: Tests
         run: npm test
       - name: Check that Metro bundles for Android
