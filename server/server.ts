@@ -4,6 +4,8 @@
  */
 
 import { clinicPage, ordersPage } from './consolePages';
+import { deleteClerkIdentity, eraseChildData } from './accountErasure';
+import { accountDeletionPage } from './publicPages';
 import crypto from 'crypto';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
@@ -3128,6 +3130,7 @@ app.post('/api/v1/pharmacy/orders/:id/reject', staff.requireStaff('pharmacist'),
 // the staff token; see server/consolePages.ts. /admin/orders no longer takes the shared secret.
 app.get('/admin/orders', ordersPage);
 app.get('/clinic', clinicPage);
+app.get('/account-deletion', accountDeletionPage);
 
 // 5. Pre-signed Encrypted S3 Upload URL Generator
 app.post('/api/v1/records/upload-url', (req: Request, res: Response) => {
@@ -4994,6 +4997,7 @@ app.delete('/api/v1/auth/account', async (req: Request, res: Response) => {
     const phoneNumber = decoded?.phoneNumber || req.body?.phoneNumber || req.body?.phone;
 
     let deletedSomething = false;
+    let erasedEmail: string | undefined = typeof email === 'string' ? email : undefined;
 
     if (mongoose.connection.readyState === 1) {
       let targetUser: any = null;
@@ -5037,6 +5041,7 @@ app.delete('/api/v1/auth/account', async (req: Request, res: Response) => {
       }
 
       // Collect all candidate ObjectIds associated with this identity
+      erasedEmail = targetUser?.email || targetAccount?.email || erasedEmail;
       const candidateIds: any[] = [];
       if (userId && mongoose.Types.ObjectId.isValid(userId)) candidateIds.push(new mongoose.Types.ObjectId(userId));
       if (targetUser?._id) candidateIds.push(targetUser._id);
@@ -5064,6 +5069,7 @@ app.delete('/api/v1/auth/account', async (req: Request, res: Response) => {
         if (candidateIds.length > 0) {
           await Profile.deleteMany({ $or: [{ userId: { $in: candidateIds } }, { accountId: { $in: candidateIds } }] });
           await UserProfile.deleteMany({ $or: [{ accountId: { $in: candidateIds } }, { userId: { $in: candidateIds } }] });
+          await eraseChildData(candidateIds); // children's vaccines, growth, guardians, logs, clinic codes, reminders
           await FamilyMember.deleteMany({ $or: [{ accountId: { $in: candidateIds } }, { userId: { $in: candidateIds } }] });
           await HealthRecord.deleteMany({ $or: [{ userId: { $in: candidateIds } }, { familyMemberId: { $in: candidateIds } }] });
           await Prescription.deleteMany({ $or: [{ accountId: { $in: candidateIds } }, { userId: { $in: candidateIds } }, { familyMemberId: { $in: candidateIds } }] });
@@ -5081,8 +5087,13 @@ app.delete('/api/v1/auth/account', async (req: Request, res: Response) => {
       });
     }
 
+    // Sign-in identity at Clerk (Google/Apple). Best effort: the local data is already gone.
+    const signInIdentity = await deleteClerkIdentity(typeof erasedEmail === 'string' ? erasedEmail : undefined);
+    if (signInIdentity === 'failed') console.error('[DELETE /auth/account] Could not remove the Clerk identity for an erased account');
+
     return res.json({
       success: true,
+      signInIdentity,
       message: 'Account and associated patient vault records successfully erased in compliance with NDPR.',
     });
   } catch (err: any) {
