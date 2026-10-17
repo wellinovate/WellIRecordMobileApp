@@ -142,6 +142,15 @@ export interface FamilyMember {
   isChild?: boolean;
   isElderly?: boolean;
   childProfile?: ChildProfileDetails;
+  /** True when another guardian added this child to my account. */
+  sharedWithMe?: boolean;
+  myPermissions?: {
+    viewRecords: boolean;
+    addRecords: boolean;
+    bookAppointments: boolean;
+    receiveReminders: boolean;
+    manageGuardians: boolean;
+  };
 }
 
 // Birth, location and emergency details held on a child's profile.

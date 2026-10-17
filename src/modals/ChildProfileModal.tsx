@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import QRCode from 'react-native-qrcode-svg';
 import { ModalHeader } from '../components/ModalHeader';
+import { ChildAccessPanel } from './ChildAccessPanel';
 import { useTheme } from '../theme/ThemeContext';
 import type { WelliApp } from '../state/useWelliApp';
 import {
@@ -35,12 +36,13 @@ import {
   type Vaccination,
 } from '../utils/immunization';
 
-type Tab = 'overview' | 'vaccines' | 'growth' | 'details';
+type Tab = 'overview' | 'vaccines' | 'growth' | 'details' | 'access';
 const TABS: { key: Tab; label: string }[] = [
   { key: 'overview', label: 'Overview' },
   { key: 'vaccines', label: 'Vaccines' },
   { key: 'growth', label: 'Growth' },
   { key: 'details', label: 'Details' },
+  { key: 'access', label: 'Access' },
 ];
 
 const DELIVERY = ['Vaginal', 'Caesarean', 'Assisted'] as const;
@@ -78,6 +80,8 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
   const memberId = state.childProfileMemberId;
   const member = state.familyMembers.find((f) => f.id === memberId);
   const guardian = state.familyMembers[0];
+  // A guardian added by someone else only gets what the primary guardian granted.
+  const canAdd = !member?.sharedWithMe || Boolean(member?.myPermissions?.addRecords);
 
   const [tab, setTab] = useState<Tab>('overview');
   const [schedule, setSchedule] = useState<ImmunizationSchedule | null>(null);
@@ -493,15 +497,15 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
                     ? `Verified by ${row.record.verifiedBy || 'a provider'}${row.record.verifiedAt ? ` on ${formatDisplayDate(String(row.record.verifiedAt).slice(0, 10))}` : ''}.`
                     : 'Reported by you. A clinic can confirm it at the next visit.'}
                 </Text>
-                {row.record.verification !== 'provider_verified' &&
+                {canAdd && row.record.verification !== 'provider_verified' &&
                   button('Remove this dose', () => removeVaccination(row.record!), 'alt')}
               </>
-            ) : (
+            ) : canAdd ? (
               button('Record this dose', () => {
                 setVaxCode(row.dose.code);
                 setVax({ ...EMPTY_VAX, administeredDate: todayIso() });
               }, 'alt')
-            )}
+            ) : null}
           </View>
         )}
       </View>
@@ -585,9 +589,9 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
             {button('Cancel', () => setGrowthForm(null), 'alt')}
           </View>
         </View>
-      ) : (
+      ) : canAdd ? (
         button('Add a measurement', () => setGrowthForm({ ...EMPTY_GROWTH, measuredOn: todayIso() }))
-      )}
+      ) : null}
       <Text style={[styles.sub, { color: theme.muted }]}>
         Growth charts and clinician alerts are not available yet. Show these numbers at your child's well-child visit.
       </Text>
@@ -600,7 +604,7 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
           </Text>
           {g.notes ? <Text style={[styles.sub, { color: theme.muted }]}>{g.notes}</Text> : null}
           <Text style={[styles.sub, { color: theme.muted }]}>Entered by {g.source === 'clinic' ? 'a clinic' : 'a guardian'}</Text>
-          {g.source === 'caregiver' && (
+          {canAdd && g.source === 'caregiver' && (
             <TouchableOpacity onPress={() => removeGrowth(g)} style={styles.link}>
               <Text style={[styles.linkText, { color: '#b91c1c' }]}>Remove</Text>
             </TouchableOpacity>
@@ -652,7 +656,11 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
       {field('community', 'Community')}
       {field('state', 'State')}
       {field('lga', 'Local government area')}
-      <View style={{ marginTop: 8 }}>{button('Save details', saveDetails)}</View>
+      {canAdd ? (
+        <View style={{ marginTop: 8 }}>{button('Save details', saveDetails)}</View>
+      ) : (
+        <Text style={[styles.sub, { color: theme.muted }]}>The primary guardian has not given you permission to edit these details.</Text>
+      )}
     </View>
   );
 
@@ -691,6 +699,14 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
             vaccines()
           ) : tab === 'growth' ? (
             growth()
+          ) : tab === 'access' && memberId ? (
+            <ChildAccessPanel
+              memberId={memberId}
+              toast={actions.showToast}
+              onFamilyChanged={() => {
+                actions.reloadFamily().finally(() => actions.closeChildProfile());
+              }}
+            />
           ) : (
             detailsTab()
           )}

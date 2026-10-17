@@ -20,6 +20,7 @@ import {
   UserProfile,
   FamilyMember,
   ChildVaccination,
+  ChildGuardian,
   ChildGrowth,
   HealthRecord,
   Prescription,
@@ -37,6 +38,7 @@ import {
 } from './models';
 import { createWellipayRouter } from './wellipayPartner';
 import { IMMUNIZATION_SCHEDULE, scheduleDoseByCode } from './data/immunizationSchedule';
+import { auditChild, createChildAccessRouter, effectivePerms, resolveChildAccess, type PermKey } from './childAccess';
 
 const app = express();
 // Render sits behind a proxy. Without this every request shares the proxy's IP
@@ -188,7 +190,7 @@ function getAuthUserId(req: Request): string | null {
 }
 
 // Verify that the authenticated caller owns the target account or dependent
-async function callerCanAccessOwner(authUserId: string, targetOwnerId: string): Promise<boolean> {
+async function callerCanAccessOwner(authUserId: string, targetOwnerId: string, guardianPerm: PermKey | false = false): Promise<boolean> {
   if (!authUserId || !targetOwnerId) return false;
   if (targetOwnerId === authUserId || targetOwnerId === 'me') return true;
   if (mongoose.connection.readyState !== 1) return false;
@@ -216,7 +218,18 @@ async function callerCanAccessOwner(authUserId: string, targetOwnerId: string): 
   }
 
   const isDependent = await FamilyMember.exists({ $or: conditions });
-  return Boolean(isDependent);
+  if (isDependent) return true;
+
+  // A guardian added to a child may read, only where the route opts in and
+  // their effective permissions (after any custody restriction) allow it.
+  if (guardianPerm && mongoose.isValidObjectId(targetOwnerId)) {
+    const g: any = await ChildGuardian.findOne({ childId: targetOwnerId, accountId: authUserId, status: 'active' });
+    if (g && effectivePerms(g)[guardianPerm]) {
+      if (guardianPerm === 'viewRecords') await auditChild(targetOwnerId, authUserId, 'guardian', 'records_viewed', '', 30);
+      return true;
+    }
+  }
+  return false;
 }
 
 // Opaque, unguessable public lookup token for 'bridge' (QR / share-link)
@@ -1447,7 +1460,7 @@ app.get(['/api/v1/profile/me', '/api/v1/profile'], async (req: Request, res: Res
     const { userId, accountId } = req.query;
     const targetAccountId = (accountId || userId || authUserId) as string;
 
-    const canAccess = await callerCanAccessOwner(authUserId, targetAccountId);
+    const canAccess = await callerCanAccessOwner(authUserId, targetAccountId, 'viewRecords');
     if (!canAccess) {
       return res.status(403).json({ success: false, message: 'Access denied to requested profile' });
     }
@@ -1523,6 +1536,21 @@ app.get(['/api/v1/family/list', '/api/v1/family'], async (req: Request, res: Res
       conditions.push({ userId: targetId });
 
       familyMembers = await FamilyMember.find({ $or: conditions }).sort({ createdAt: 1 });
+
+      // Children other people added me to as a guardian.
+      const joined: any[] = await ChildGuardian.find({ accountId: String(targetId), status: 'active' });
+      const perms = new Map<string, any>();
+      for (const g of joined) {
+        const eff = effectivePerms(g);
+        if (eff.viewRecords) perms.set(String(g.childId), eff);
+      }
+      if (perms.size) {
+        const shared: any[] = await FamilyMember.find({ _id: { $in: [...perms.keys()] } }).sort({ createdAt: 1 });
+        for (const m of shared) {
+          m._shared = perms.get(String(m._id));
+          familyMembers.push(m);
+        }
+      }
     }
 
     console.log(`[FAMILY LIST] Found ${familyMembers.length} dependents for ${authUserId || queryUserId}`);
@@ -1549,6 +1577,8 @@ app.get(['/api/v1/family/list', '/api/v1/family'], async (req: Request, res: Res
         linkedAccountId: m.linkedAccountId?.toString() || null,
         wrId: m.wrId || null,
         childProfile: m.childProfile || null,
+        sharedWithMe: Boolean(m._shared),
+        myPermissions: m._shared || null,
         createdAt: m.createdAt,
         updatedAt: m.updatedAt,
       })),
@@ -2011,27 +2041,35 @@ const cleanNumber = (v: unknown, min: number, max: number): number | undefined =
   return Number.isFinite(n) && n >= min && n <= max ? n : undefined;
 };
 
-// Loads a dependent the signed-in caller manages. Sends the error response itself.
-async function loadManagedChild(req: Request, res: Response): Promise<any | null> {
+// Loads a child the signed-in caller may act on, checking one permission.
+// The primary guardian has every permission. Sends the error response itself.
+async function loadManagedChild(req: Request, res: Response, need: PermKey = 'viewRecords'): Promise<any | null> {
   const authUserId = getAuthUserId(req);
   if (!authUserId) {
     res.status(401).json({ success: false, message: 'Authentication required' });
     return null;
   }
-  const id = req.params.id;
-  if (!mongoose.isValidObjectId(id) || mongoose.connection.readyState !== 1) {
+  if (!mongoose.isValidObjectId(req.params.id) || mongoose.connection.readyState !== 1) {
     res.status(400).json({ success: false, message: 'Invalid family member' });
     return null;
   }
-  const member: any = await FamilyMember.findById(id);
-  const owns =
-    member && (String(member.accountId || '') === authUserId || String(member.userId || '') === authUserId);
-  if (!owns) {
+  const access = await resolveChildAccess(authUserId, req.params.id);
+  if (!access) {
     res.status(404).json({ success: false, message: 'Family member not found' });
     return null;
   }
-  return member;
+  if (!access.perms[need]) {
+    res.status(403).json({ success: false, message: 'You do not have permission to do this' });
+    return null;
+  }
+  (req as any).childAccess = access;
+  return access.member;
 }
+
+const logChild = (req: Request, member: any, action: string, detail = '', dedupeMinutes = 0) => {
+  const a = (req as any).childAccess;
+  return auditChild(member._id, a?.actorId || 'unknown', a?.role || 'guardian', action, detail, dedupeMinutes);
+};
 
 function childProfilePayload(member: any) {
   return {
@@ -2087,6 +2125,7 @@ app.get('/api/v1/family/:id/child-profile', async (req: Request, res: Response) 
   try {
     const member = await loadManagedChild(req, res);
     if (!member) return;
+    await logChild(req, member, 'profile_viewed', '', 30);
     if (!member.wrId) {
       member.wrId = generateWelliRecordId();
       await member.save();
@@ -2110,7 +2149,7 @@ app.get('/api/v1/family/:id/child-profile', async (req: Request, res: Response) 
 // PATCH /api/v1/family/:id/child-profile — birth, location and emergency details.
 app.patch('/api/v1/family/:id/child-profile', async (req: Request, res: Response) => {
   try {
-    const member = await loadManagedChild(req, res);
+    const member = await loadManagedChild(req, res, 'addRecords');
     if (!member) return;
     const b = req.body || {};
     const next: Record<string, any> = { ...(member.childProfile || {}) };
@@ -2140,6 +2179,7 @@ app.patch('/api/v1/family/:id/child-profile', async (req: Request, res: Response
       if (typeof b[key] === 'string') member[key] = b[key].trim().slice(0, 120);
     }
     await member.save();
+    await logChild(req, member, 'details_updated');
     return res.json({ success: true, profile: childProfilePayload(member) });
   } catch (err) {
     console.error('[PATCH /family/:id/child-profile] ERROR:', err);
@@ -2150,7 +2190,7 @@ app.patch('/api/v1/family/:id/child-profile', async (req: Request, res: Response
 // POST /api/v1/family/:id/vaccinations — a guardian records a dose. Always unverified.
 app.post('/api/v1/family/:id/vaccinations', async (req: Request, res: Response) => {
   try {
-    const member = await loadManagedChild(req, res);
+    const member = await loadManagedChild(req, res, 'addRecords');
     if (!member) return;
     const b = req.body || {};
     const dose = scheduleDoseByCode(String(b.vaccineCode || ''));
@@ -2184,6 +2224,7 @@ app.post('/api/v1/family/:id/vaccinations', async (req: Request, res: Response) 
       verification: 'caregiver_reported',
       scheduleVersion: IMMUNIZATION_SCHEDULE.version,
     });
+    await logChild(req, member, 'vaccination_added', created.vaccineName);
     return res.status(201).json({ success: true, vaccination: vaccinationPayload(created) });
   } catch (err: any) {
     if (err?.code === 11000) {
@@ -2197,7 +2238,7 @@ app.post('/api/v1/family/:id/vaccinations', async (req: Request, res: Response) 
 // DELETE /api/v1/family/:id/vaccinations/:vid — guardians can remove only their own unverified entries.
 app.delete('/api/v1/family/:id/vaccinations/:vid', async (req: Request, res: Response) => {
   try {
-    const member = await loadManagedChild(req, res);
+    const member = await loadManagedChild(req, res, 'addRecords');
     if (!member) return;
     if (!mongoose.isValidObjectId(req.params.vid)) return res.status(400).json({ success: false, message: 'Invalid record' });
     const record: any = await ChildVaccination.findOne({ _id: req.params.vid, memberId: member._id });
@@ -2206,6 +2247,7 @@ app.delete('/api/v1/family/:id/vaccinations/:vid', async (req: Request, res: Res
       return res.status(403).json({ success: false, message: 'A provider verified this dose. Ask the clinic to correct it.' });
     }
     await record.deleteOne();
+    await logChild(req, member, 'vaccination_removed', record.vaccineName);
     return res.json({ success: true });
   } catch (err) {
     console.error('[DELETE /family/:id/vaccinations/:vid] ERROR:', err);
@@ -2236,6 +2278,7 @@ app.post('/api/v1/family/:id/vaccinations/:vid/verify', requireAdminSecret, asyn
       { new: true }
     );
     if (!updated) return res.status(404).json({ success: false, message: 'Vaccination not found' });
+    await auditChild(id, 'staff', 'admin', 'vaccination_verified', `${updated.vaccineName} by ${verifiedBy}`);
     return res.json({ success: true, vaccination: vaccinationPayload(updated) });
   } catch (err) {
     console.error('[POST /family/:id/vaccinations/:vid/verify] ERROR:', err);
@@ -2246,7 +2289,7 @@ app.post('/api/v1/family/:id/vaccinations/:vid/verify', requireAdminSecret, asyn
 // POST /api/v1/family/:id/growth — a measurement. DELETE removes the guardian's own entry.
 app.post('/api/v1/family/:id/growth', async (req: Request, res: Response) => {
   try {
-    const member = await loadManagedChild(req, res);
+    const member = await loadManagedChild(req, res, 'addRecords');
     if (!member) return;
     const b = req.body || {};
     const measuredOn = isoDate(b.measuredOn);
@@ -2269,6 +2312,7 @@ app.post('/api/v1/family/:id/growth', async (req: Request, res: Response) => {
       source: 'caregiver',
       notes: cleanText(b.notes, 300),
     });
+    await logChild(req, member, 'growth_added', measuredOn);
     return res.status(201).json({ success: true, entry: growthPayload(created) });
   } catch (err) {
     console.error('[POST /family/:id/growth] ERROR:', err);
@@ -2278,17 +2322,35 @@ app.post('/api/v1/family/:id/growth', async (req: Request, res: Response) => {
 
 app.delete('/api/v1/family/:id/growth/:gid', async (req: Request, res: Response) => {
   try {
-    const member = await loadManagedChild(req, res);
+    const member = await loadManagedChild(req, res, 'addRecords');
     if (!member) return;
     if (!mongoose.isValidObjectId(req.params.gid)) return res.status(400).json({ success: false, message: 'Invalid record' });
     const removed = await ChildGrowth.findOneAndDelete({ _id: req.params.gid, memberId: member._id, source: 'caregiver' });
     if (!removed) return res.status(404).json({ success: false, message: 'Measurement not found' });
+    await logChild(req, member, 'growth_removed', removed.measuredOn);
     return res.json({ success: true });
   } catch (err) {
     console.error('[DELETE /family/:id/growth/:gid] ERROR:', err);
     return res.status(500).json({ success: false, message: 'Could not remove the measurement' });
   }
 });
+
+app.use(
+  '/api/v1',
+  createChildAccessRouter({
+    getAuthUserId,
+    requireAdminSecret,
+    limiter: passwordResetLimiter,
+    sendEmail: async (to, subject, text) => {
+      const r = await sendWelliEmail({ to, subject, text, html: `<p>${text}</p>` });
+      if (!r.success) throw new Error('email not sent');
+    },
+    sendSms: sendWelliSms,
+    notify: async (userId, title, body) => {
+      await dispatchPushNotification({ userId, type: 'system', title, body, categoryLabel: 'Family' });
+    },
+  })
+);
 
 // 4. Fetch Health Records (MongoDB)
 app.get('/api/v1/records', async (req: Request, res: Response) => {
@@ -2302,7 +2364,7 @@ app.get('/api/v1/records', async (req: Request, res: Response) => {
   const ownerId = rawOwnerId === 'me' ? authUserId : rawOwnerId;
 
   try {
-    const canAccess = await callerCanAccessOwner(authUserId, ownerId);
+    const canAccess = await callerCanAccessOwner(authUserId, ownerId, 'viewRecords');
     if (!canAccess) {
       return res.status(403).json({ success: false, message: 'Access denied to requested records' });
     }
@@ -2523,7 +2585,7 @@ app.get('/api/v1/pharmacy/prescriptions', async (req: Request, res: Response) =>
   const ownerId = rawOwnerId === 'me' ? authUserId : rawOwnerId;
 
   try {
-    const canAccess = await callerCanAccessOwner(authUserId, ownerId);
+    const canAccess = await callerCanAccessOwner(authUserId, ownerId, 'viewRecords');
     if (!canAccess) {
       return res.status(403).json({ success: false, message: 'Access denied to requested prescriptions' });
     }
@@ -3975,7 +4037,7 @@ app.post('/api/v1/appointments/requests', appointmentLimiter, async (req: Reques
   }
 
   try {
-    if (familyMemberId && !(await callerCanAccessOwner(authUserId, String(familyMemberId)))) {
+    if (familyMemberId && !(await callerCanAccessOwner(authUserId, String(familyMemberId), 'bookAppointments'))) {
       return res.status(403).json({ success: false, message: 'You cannot book for this family member' });
     }
 

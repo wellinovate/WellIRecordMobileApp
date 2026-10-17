@@ -31,6 +31,7 @@ import { recordsService } from '../services/recordsService';
 import { pharmacyService } from '../services/pharmacyService';
 import { profileService } from '../services/profileService';
 import { familyService } from '../services/familyService';
+import { childHealthService } from '../services/childHealthService';
 import { facilityService } from '../services/facilityService';
 import { pointsFromProvider, latestProviderLogs, type VitalPoint } from '../utils/vitalsSeries';
 import { careService, type AppointmentItem } from '../services/careService';
@@ -158,6 +159,8 @@ export function mapRemoteFamilyMember(m: any): FamilyMember {
     wrId: m.wrId || undefined,
     memberId: m.wrId || undefined,
     childProfile: m.childProfile || undefined,
+    sharedWithMe: Boolean(m.sharedWithMe),
+    myPermissions: m.myPermissions || undefined,
   };
 }
 
@@ -778,6 +781,17 @@ export function useWelliApp() {
     }).catch(() => {});
   };
 
+  // Re-reads the family list, including children other guardians shared with me.
+  const reloadFamilyNow = async () => {
+    const remote = await familyService.fetchFamilyMembers();
+    patch((s) => ({
+      familyMembers: [
+        s.familyMembers.find((member) => member.id === 'me') || s.familyMembers[0],
+        ...remote.map(mapRemoteFamilyMember),
+      ],
+    }));
+  };
+
   const refreshAuthenticatedFamily = () => {
     familyService.fetchFamilyMembers().then((remoteFamily) => {
       if (!Array.isArray(remoteFamily) || remoteFamily.length === 0) return;
@@ -969,6 +983,18 @@ export function useWelliApp() {
     closeEmergency: () => patch({ showEmergency: false }),
     openFamilyAccess: () => patch({ showFamilyAccess: true }),
     closeFamilyAccess: () => patch({ showFamilyAccess: false }),
+    reloadFamily: reloadFamilyNow,
+    acceptGuardianInvite: async (code: string): Promise<boolean> => {
+      try {
+        await childHealthService.acceptInvite(code);
+        await reloadFamilyNow();
+        showToast('You now have access to this child');
+        return true;
+      } catch (err: any) {
+        showToast(err?.message || 'Could not use that code');
+        return false;
+      }
+    },
     openChildProfile: (memberId: string) => patch({ showChildProfile: true, childProfileMemberId: memberId }),
     closeChildProfile: () => patch({ showChildProfile: false, childProfileMemberId: null }),
     // Copies saved child details back into the family list so other screens agree.
