@@ -34,6 +34,6 @@ Service providers that process data for us: Clerk (sign-in), the hosting and dat
 
 ## Known gaps before you submit
 
-- The privacy policy text inside the app (`PrivacyPolicyModal`) still says to contact support to delete an account. Update it to match the in-app deletion.
+- The in-app policy text now describes in-app deletion. Make sure wellirecord.com/privacy says the same.
 - Confirm the exact permissions in the built manifest (location comes from the expo-location plugin).
 - The Data Safety form is your declaration. Counsel should read it with the NDPA pack.
