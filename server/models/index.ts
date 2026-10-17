@@ -66,6 +66,8 @@ export interface IFamilyMember extends Document {
   linkedAccountId?: mongoose.Types.ObjectId | null;
   wrId?: string;
   childProfile?: Record<string, any>;
+  custodyLock?: Record<string, any>;
+  pendingTransfer?: Record<string, any>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -94,9 +96,105 @@ const FamilyMemberSchema = new Schema<IFamilyMember>(
     wrId: { type: String, index: true, sparse: true },
     // Child identity, birth and emergency details. Whitelisted in the route.
     childProfile: { type: Schema.Types.Mixed },
+    // Set only through the admin-secret route. Blocks guardian management and transfer.
+    custodyLock: { type: Schema.Types.Mixed },
+    // { toAccountId, guardianId, codeHash, expiresAt, attempts, requestedBy }
+    pendingTransfer: { type: Schema.Types.Mixed },
   },
   { timestamps: true }
 );
+
+// Another adult who helps manage a child. The primary guardian is the
+// FamilyMember's accountId; everyone else is a row here.
+export interface IChildGuardian extends Document {
+  childId: mongoose.Types.ObjectId;
+  accountId?: string;
+  displayName: string;
+  relationship: string;
+  inviteEmail?: string;
+  invitePhone?: string;
+  inviteCodeHash?: string;
+  inviteExpiresAt?: Date;
+  status: 'pending' | 'active' | 'revoked';
+  permissions: {
+    viewRecords: boolean;
+    addRecords: boolean;
+    bookAppointments: boolean;
+    receiveReminders: boolean;
+    manageGuardians: boolean;
+  };
+  restriction?: {
+    active: boolean;
+    level: 'blocked' | 'view_only';
+    reason?: string;
+    orderReference?: string;
+    setBy?: string;
+    setAt?: Date;
+  };
+  identityVerified: boolean;
+  invitedBy: string;
+  acceptedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const ChildGuardianSchema = new Schema<IChildGuardian>(
+  {
+    childId: { type: Schema.Types.ObjectId, required: true, index: true },
+    accountId: { type: String, index: true },
+    displayName: { type: String, required: true },
+    relationship: { type: String, required: true },
+    inviteEmail: { type: String, lowercase: true, trim: true },
+    invitePhone: { type: String },
+    inviteCodeHash: { type: String, index: true },
+    inviteExpiresAt: { type: Date },
+    status: { type: String, enum: ['pending', 'active', 'revoked'], default: 'pending' },
+    permissions: {
+      viewRecords: { type: Boolean, default: true },
+      addRecords: { type: Boolean, default: false },
+      bookAppointments: { type: Boolean, default: false },
+      receiveReminders: { type: Boolean, default: true },
+      manageGuardians: { type: Boolean, default: false },
+    },
+    restriction: {
+      active: { type: Boolean, default: false },
+      level: { type: String, enum: ['blocked', 'view_only'] },
+      reason: { type: String },
+      orderReference: { type: String },
+      setBy: { type: String },
+      setAt: { type: Date },
+    },
+    // Set by a staff check (admin route), never by the guardian.
+    identityVerified: { type: Boolean, default: false },
+    invitedBy: { type: String, required: true },
+    acceptedAt: { type: Date },
+  },
+  { timestamps: true }
+);
+
+// Who did what to a child's profile.
+export interface IChildAuditLog extends Document {
+  childId: mongoose.Types.ObjectId;
+  actorId: string;
+  actorName: string;
+  actorRole: 'primary' | 'guardian' | 'admin' | 'system';
+  action: string;
+  detail?: string;
+  createdAt: Date;
+}
+
+const ChildAuditLogSchema = new Schema<IChildAuditLog>(
+  {
+    childId: { type: Schema.Types.ObjectId, required: true, index: true },
+    actorId: { type: String, required: true },
+    actorName: { type: String, required: true },
+    actorRole: { type: String, enum: ['primary', 'guardian', 'admin', 'system'], required: true },
+    action: { type: String, required: true },
+    detail: { type: String },
+  },
+  { timestamps: { createdAt: true, updatedAt: false } }
+);
+ChildAuditLogSchema.index({ childId: 1, createdAt: -1 });
 
 // Child vaccination records. A guardian can add a dose, but only a provider
 // (admin-secret route) can mark it verified.
@@ -875,3 +973,8 @@ export const ChildVaccination: Model<IChildVaccination> =
   mongoose.models.ChildVaccination || mongoose.model<IChildVaccination>('ChildVaccination', ChildVaccinationSchema);
 export const ChildGrowth: Model<IChildGrowth> =
   mongoose.models.ChildGrowth || mongoose.model<IChildGrowth>('ChildGrowth', ChildGrowthSchema);
+
+export const ChildGuardian: Model<IChildGuardian> =
+  mongoose.models.ChildGuardian || mongoose.model<IChildGuardian>('ChildGuardian', ChildGuardianSchema);
+export const ChildAuditLog: Model<IChildAuditLog> =
+  mongoose.models.ChildAuditLog || mongoose.model<IChildAuditLog>('ChildAuditLog', ChildAuditLogSchema);

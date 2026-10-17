@@ -51,6 +51,9 @@ export function FamilyAccessModal({ app }: { app: WelliApp }) {
   const [draftBloodType, setDraftBloodType] = useState('');
   const [draftGenotype, setDraftGenotype] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showInviteCode, setShowInviteCode] = useState(false);
+  const [inviteCode, setInviteCode] = useState('');
+  const [joining, setJoining] = useState(false);
 
   // Visual Date Picker Modal State
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -160,6 +163,48 @@ export function FamilyAccessModal({ app }: { app: WelliApp }) {
               <Text style={styles.addBtnText}>Add Family Member</Text>
             </TouchableOpacity>
 
+            {showInviteCode ? (
+              <View style={styles.inviteBox}>
+                <Text style={styles.memberName}>Enter your invite code</Text>
+                <Text style={styles.memberSub}>Another guardian sent you a code to help look after a child.</Text>
+                <TextInput
+                  value={inviteCode}
+                  onChangeText={(v) => setInviteCode(v.toUpperCase())}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  placeholder="e.g. K7M2QX9A"
+                  placeholderTextColor="#94a3b8"
+                  style={styles.inviteInput}
+                  accessibilityLabel="Invite code"
+                />
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  disabled={joining || inviteCode.trim().length < 6}
+                  onPress={async () => {
+                    setJoining(true);
+                    const ok = await actions.acceptGuardianInvite(inviteCode);
+                    setJoining(false);
+                    if (ok) {
+                      setInviteCode('');
+                      setShowInviteCode(false);
+                    }
+                  }}
+                  style={[styles.addBtn, { marginBottom: 0, opacity: joining || inviteCode.trim().length < 6 ? 0.6 : 1 }]}
+                >
+                  <Text style={styles.addBtnText}>{joining ? 'Checking...' : 'Join'}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => setShowInviteCode(true)}
+                accessibilityRole="button"
+                style={styles.inviteLink}
+              >
+                <Text style={styles.childProfileBtnText}>I have an invite code</Text>
+              </TouchableOpacity>
+            )}
+
             {/* Primary Owner Card */}
             <Text style={styles.sectionHeader}>Account Owner</Text>
             <View style={styles.memberCard}>
@@ -189,7 +234,7 @@ export function FamilyAccessModal({ app }: { app: WelliApp }) {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.memberName}>{f.name}</Text>
                     <Text style={styles.memberSub}>
-                      {f.relationship || 'Dependent'}{f.relationship === 'Caregiver' ? ' • Care helper' : ' • Guardian Managed'}
+                      {f.relationship || 'Dependent'}{f.sharedWithMe ? ' • Shared with you' : f.relationship === 'Caregiver' ? ' • Care helper' : ' • Guardian Managed'}
                     </Text>
                     {f.dob ? <Text style={styles.memberDob}>DOB: {f.dob}</Text> : null}
                     {f.relationship === 'Child' ? (
@@ -205,7 +250,7 @@ export function FamilyAccessModal({ app }: { app: WelliApp }) {
                     ) : null}
                   </View>
 
-                  <TouchableOpacity
+                  {f.sharedWithMe ? null : <TouchableOpacity
                     activeOpacity={0.7}
                     onPress={() => handleDelete(f.id, f.name)}
                     style={styles.removeBtn}
@@ -220,7 +265,7 @@ export function FamilyAccessModal({ app }: { app: WelliApp }) {
                         strokeLinejoin="round"
                       />
                     </Svg>
-                  </TouchableOpacity>
+                  </TouchableOpacity>}
                 </View>
               ))
             )}
@@ -676,6 +721,9 @@ const styles = StyleSheet.create({
   selectWrapper: {
     marginBottom: 16,
   },
+  inviteLink: { alignSelf: 'center', minHeight: 44, justifyContent: 'center', marginBottom: 8 },
+  inviteBox: { gap: 8, padding: 14, borderRadius: 14, backgroundColor: '#F1F5F9', marginBottom: 16 },
+  inviteInput: { borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 12, backgroundColor: '#fff', paddingHorizontal: 12, minHeight: 48, fontSize: 18, letterSpacing: 3, fontWeight: '700', color: '#0f172a' },
   childProfileBtn: {
     marginTop: 8,
     alignSelf: 'flex-start',

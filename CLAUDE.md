@@ -93,7 +93,18 @@ A child is a `FamilyMember` with relationship `Child`. `ChildProfileModal` (open
 - The immunization schedule is data in `server/data/immunizationSchedule.ts`, with a `version` and a `reviewStatus`. It stays `pending_clinical_review` until a clinician checks each row against the official NPHCDA schedule and sets `reviewedBy` and `reviewedOn`. Do not copy dose timing into the app. Statuses are computed in `src/utils/immunization.ts`.
 - A guardian can only create `caregiver_reported` doses. A clinic confirms one with `POST /api/v1/family/:id/vaccinations/:vid/verify` (header `x-admin-secret`, body `verifiedBy`, optional `source`). Guardians cannot delete verified doses.
 - The QR code holds the WelliID only.
-- Not built yet: multiple guardians and permissions, custody restrictions, access audit log, WHO growth charts, developmental milestones, reminders by SMS or WhatsApp, offline capture, school profile.
+- Not built yet: WHO growth charts, developmental milestones, reminders by SMS or WhatsApp, offline capture, school profile, adolescent transition.
+
+## Guardians and access
+
+The primary guardian is `FamilyMember.accountId`. Other adults are `ChildGuardian` rows. All checks go through `server/childAccess.ts`: `resolveChildAccess` and `effectivePerms`. A custody restriction (`blocked` or `view_only`) always overrides a guardian's grants.
+
+- Permissions: `viewRecords`, `addRecords`, `bookAppointments`, `receiveReminders`, `manageGuardians`. Enforced on the child routes, on records and prescription reads (opt-in third argument of `callerCanAccessOwner`) and on appointment booking. Other write routes stay primary-only.
+- Invite: `POST /family/:id/guardians` returns a one-time 8 character code (hashed at rest, 7 days). The invited adult enters it with `POST /family/guardians/accept`.
+- Transfer: `POST /family/:id/transfer` emails a code to the target's own account email. The target accepts with `POST /family/:id/transfer/accept`. The previous primary stays on as a guardian without `manageGuardians`.
+- Custody lock (staff, header `x-admin-secret`): `POST /family/:id/custody` with `action` lock or unlock. While locked, guardian changes and transfers return 423. `POST /family/:id/guardians/:gid/verify-identity` records a staff identity check.
+- Access log: `ChildAuditLog`, written by `auditChild`. `GET /family/:id/audit` is limited to the primary guardian and guardians who manage guardians. Views are deduplicated per 30 minutes.
+- The app cannot verify a court order. Restrictions record the reason and reference for staff review.
 
 ## Rules for changes
 
