@@ -28,6 +28,7 @@ export interface StaffContext {
   id: string;
   name: string;
   role: StaffRole;
+  organization?: string;
   legacy: boolean;
   mustChangePassword: boolean;
 }
@@ -120,7 +121,7 @@ export function createStaff(deps: StaffDeps) {
         if (!user || user.status !== 'active' || user.tokenVersion !== decoded.tv) {
           return { error: 401, message: 'Your session has ended. Sign in again.' };
         }
-        return { id: String(user._id), name: user.name, role: user.role, legacy: false, mustChangePassword: user.mustChangePassword };
+        return { id: String(user._id), name: user.name, role: user.role, organization: user.organization || undefined, legacy: false, mustChangePassword: user.mustChangePassword };
       }
     }
     if (req.headers['x-admin-secret']) {

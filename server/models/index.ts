@@ -1152,6 +1152,41 @@ const StaffActionLogSchema = new Schema<IStaffActionLog>(
 );
 StaffActionLogSchema.index({ createdAt: -1 });
 
+// A guardian's consent for a clinic to see and add to one child's record, for a short time.
+export interface IChildFacilityGrant extends Document {
+  childId: mongoose.Types.ObjectId;
+  codeHash: string;
+  createdBy: string;
+  createdByName: string;
+  expiresAt: Date;
+  revokedAt?: Date;
+  uses: { staffId: string; staffName: string; organization?: string; action: string; at: Date }[];
+}
+
+const ChildFacilityGrantSchema = new Schema<IChildFacilityGrant>(
+  {
+    childId: { type: Schema.Types.ObjectId, required: true, index: true },
+    codeHash: { type: String, required: true, index: true },
+    createdBy: { type: String, required: true },
+    createdByName: { type: String, required: true },
+    expiresAt: { type: Date, required: true },
+    revokedAt: { type: Date },
+    uses: [
+      {
+        _id: false,
+        staffId: String,
+        staffName: String,
+        organization: String,
+        action: String,
+        at: Date,
+      },
+    ],
+  },
+  { timestamps: true }
+);
+// Remove a week after it expires.
+ChildFacilityGrantSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 7 * 24 * 60 * 60 });
+
 // App crash and error reports. No user id or token is stored. Kept for 30 days.
 export interface IClientError extends Document {
   name: string;
@@ -1184,3 +1219,5 @@ export const StaffUser: Model<IStaffUser> =
   mongoose.models.StaffUser || mongoose.model<IStaffUser>('StaffUser', StaffUserSchema);
 export const StaffActionLog: Model<IStaffActionLog> =
   mongoose.models.StaffActionLog || mongoose.model<IStaffActionLog>('StaffActionLog', StaffActionLogSchema);
+export const ChildFacilityGrant: Model<IChildFacilityGrant> =
+  mongoose.models.ChildFacilityGrant || mongoose.model<IChildFacilityGrant>('ChildFacilityGrant', ChildFacilityGrantSchema);

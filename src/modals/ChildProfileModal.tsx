@@ -16,6 +16,7 @@ import QRCode from 'react-native-qrcode-svg';
 import { ModalHeader } from '../components/ModalHeader';
 import { ChildAccessPanel } from './ChildAccessPanel';
 import { ChildReminderCard } from './ChildReminderCard';
+import { FacilityCodeCard } from './FacilityCodeCard';
 import { DevelopmentPanel } from './DevelopmentPanel';
 import { SchoolProfileCard } from './SchoolProfileCard';
 import { useTheme } from '../theme/ThemeContext';
@@ -420,6 +421,19 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
   };
 
   // The text goes to the share sheet, so the guardian picks the app. Nothing is sent to a service from here.
+  const exportRecord = async () => {
+    if (!memberId) return;
+    setBusy(true);
+    try {
+      const json = await childHealthService.exportFhir(memberId);
+      await Share.share({ message: json, title: `${name} health record (FHIR)` });
+    } catch (err) {
+      fail(err, 'Could not export the record. Check your connection and try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const shareText = (text: string, title: string) => Share.share({ message: text, title }).catch(() => {});
 
   // ----- small view helpers -----
@@ -564,6 +578,11 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
           ))}
           <View style={{ height: 8 }} />
           {button('Share emergency card', () => shareText(emergencyText(), 'Emergency card'), 'alt')}
+          <View style={{ height: 8 }} />
+          {button('Export full record (FHIR)', exportRecord, 'alt')}
+          <Text style={[styles.fine, { color: theme.mutedLight }]}>
+            A standard file other health systems can read. It goes to the app you choose from the share sheet.
+          </Text>
           <TouchableOpacity onPress={() => setTab('details')} style={styles.link}>
             <Text style={styles.linkText}>Edit these details</Text>
           </TouchableOpacity>
@@ -868,6 +887,7 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
             <DevelopmentPanel memberId={memberId} dob={dob} canAdd={canAdd} toast={actions.showToast} />
           ) : tab === 'access' && memberId ? (
             <>
+            <FacilityCodeCard memberId={memberId} childName={name} toast={actions.showToast} />
             <ChildReminderCard memberId={memberId} toast={actions.showToast} />
             <ChildAccessPanel
               memberId={memberId}

@@ -41,6 +41,8 @@ import {
 import { createWellipayRouter } from './wellipayPartner';
 import { IMMUNIZATION_SCHEDULE, scheduleDoseByCode } from './data/immunizationSchedule';
 import { createChildDevelopmentRouter } from './childDevelopment';
+import { createChildFacilityRouter } from './childFacility';
+import { childToFhirBundle } from './fhir';
 import { createChildReminderRouter, startChildReminderSweep, type ReminderDeps } from './childReminders';
 import { auditChild, createChildAccessRouter, effectivePerms, resolveChildAccess, type PermKey } from './childAccess';
 
@@ -2177,6 +2179,31 @@ app.get('/api/v1/family/:id/child-profile', async (req: Request, res: Response) 
   }
 });
 
+// GET /api/v1/family/:id/fhir — the child's record as a FHIR R4 Bundle (Patient, Immunization,
+// Observation, AllergyIntolerance). Same permission as viewing the profile. Written to the access log.
+app.get('/api/v1/family/:id/fhir', async (req: Request, res: Response) => {
+  try {
+    const member = await loadManagedChild(req, res);
+    if (!member) return;
+    const [vaccinations, growth] = await Promise.all([
+      ChildVaccination.find({ memberId: member._id }).sort({ administeredDate: 1 }),
+      ChildGrowth.find({ memberId: member._id }).sort({ measuredOn: -1 }),
+    ]);
+    await logChild(req, member, 'record_exported', 'FHIR');
+    const profile = childProfilePayload(member);
+    const bundle = childToFhirBundle(
+      { ...profile, id: String(member._id) },
+      vaccinations.map((v: any) => ({ ...v.toObject(), id: String(v._id) })),
+      growth.map((g: any) => ({ ...g.toObject(), id: String(g._id) }))
+    );
+    res.type('application/fhir+json');
+    return res.send(JSON.stringify(bundle));
+  } catch (err) {
+    console.error('[GET /family/:id/fhir] ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Could not export the record' });
+  }
+});
+
 // PATCH /api/v1/family/:id/child-profile — birth, location and emergency details.
 app.patch('/api/v1/family/:id/child-profile', async (req: Request, res: Response) => {
   try {
@@ -2401,6 +2428,18 @@ const reminderDeps: ReminderDeps = {
 };
 app.use('/api/v1', createChildDevelopmentRouter(getAuthUserId));
 app.use('/api/v1', createChildReminderRouter(reminderDeps));
+app.use(
+  '/api/v1',
+  createChildFacilityRouter({
+    getAuthUserId,
+    requireStaff: staff.requireStaff,
+    limiter: passwordResetLimiter,
+    codeSecret: JWT_SECRET,
+    notify: async (userId, title, body) => {
+      await dispatchPushNotification({ userId, type: 'system', title, body, categoryLabel: 'Family' });
+    },
+  })
+);
 
 // App crash reports. Anonymous by design: no token or user id is read or stored.
 const clientErrorLimiter = rateLimit({

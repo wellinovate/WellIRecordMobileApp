@@ -94,13 +94,14 @@ export async function auditChild(
   action: string,
   detail = '',
   dedupeMinutes = 0,
+  label?: string,
 ): Promise<void> {
   try {
     if (dedupeMinutes > 0) {
       const since = new Date(Date.now() - dedupeMinutes * 60 * 1000);
       if (await ChildAuditLog.exists({ childId, actorId, action, createdAt: { $gte: since } })) return;
     }
-    const name = actorRole === 'admin' ? 'WelliRecord staff' : actorRole === 'system' ? 'WelliRecord' : await actorName(actorId);
+    const name = label ? label : actorRole === 'admin' ? 'WelliRecord staff' : actorRole === 'system' ? 'WelliRecord' : await actorName(actorId);
     await ChildAuditLog.create({ childId, actorId, actorName: name, actorRole, action, detail: detail.slice(0, 300) });
   } catch (err) {
     console.warn('[ChildAudit] could not write:', err);
