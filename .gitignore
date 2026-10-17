@@ -31,3 +31,4 @@ web-build/
 *.njsproj
 *.sln
 *.sw?
+docs/review/data.json
