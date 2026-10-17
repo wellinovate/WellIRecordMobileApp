@@ -48,6 +48,8 @@ export interface VaccinationInput {
 }
 
 export interface GrowthInput {
+  /** Lets the server ignore a retry of the same entry. */
+  clientId?: string;
   measuredOn: string;
   weightKg?: string;
   lengthCm?: string;
@@ -114,7 +116,31 @@ export interface AuditEntry {
   detail: string;
 }
 
+export interface ReminderSettings {
+  push: boolean;
+  sms: boolean;
+  whatsapp: boolean;
+  phone: string;
+  smsConsentAt: string | null;
+  whatsappConsentAt: string | null;
+}
+
+export interface ReminderState {
+  preferences: ReminderSettings;
+  availability: { sms: boolean; whatsapp: boolean };
+  upcoming: { kind: 'due_soon' | 'due' | 'overdue'; count: number }[];
+}
+
 export const childHealthService = {
+  async fetchReminders(memberId: string): Promise<ReminderState> {
+    return apiClient.get<ReminderState>(`/family/${memberId}/reminders`);
+  },
+
+  async saveReminders(memberId: string, data: { push: boolean; sms: boolean; whatsapp: boolean; phone?: string }): Promise<ReminderSettings> {
+    const res = await apiClient.put<{ preferences: ReminderSettings }>(`/family/${memberId}/reminders`, data);
+    return res.preferences;
+  },
+
   async fetchMilestoneCatalogue(): Promise<MilestoneCatalogue> {
     const res = await apiClient.get<{ catalogue: MilestoneCatalogue }>('/development/milestones');
     return res.catalogue;

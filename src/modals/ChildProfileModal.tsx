@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import QRCode from 'react-native-qrcode-svg';
 import { ModalHeader } from '../components/ModalHeader';
 import { ChildAccessPanel } from './ChildAccessPanel';
+import { ChildReminderCard } from './ChildReminderCard';
 import { DevelopmentPanel } from './DevelopmentPanel';
 import { SchoolProfileCard } from './SchoolProfileCard';
 import { useTheme } from '../theme/ThemeContext';
@@ -24,6 +25,7 @@ import {
   type ChildProfileBundle,
   type GrowthEntry,
 } from '../services/childHealthService';
+import { childCache, childOfflineQueue, isNetworkError, type QueueItem } from '../utils/childOfflineQueue';
 import {
   STATUS_COLOR,
   STATUS_LABEL,
@@ -92,6 +94,8 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [savedAt, setSavedAt] = useState<number | null>(null); // set when showing a saved copy
+  const [queue, setQueue] = useState<QueueItem[]>([]);
 
   const [vaxCode, setVaxCode] = useState<string | null>(null);
   const [vax, setVax] = useState(EMPTY_VAX);
@@ -111,12 +115,46 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
       ]);
       setSchedule(sch);
       setBundle(data);
+      setSavedAt(null);
+      childCache.set(memberId, { bundle: data, schedule: sch, savedAt: Date.now() }).catch(() => {});
     } catch (err: any) {
-      setError(err?.message || 'Could not load this profile. Check your connection and try again.');
+      const cached = isNetworkError(err) ? await childCache.get(memberId) : null;
+      if (cached) {
+        setSchedule(cached.schedule);
+        setBundle(cached.bundle);
+        setSavedAt(cached.savedAt);
+      } else {
+        setError(err?.message || 'Could not load this profile. Check your connection and try again.');
+      }
     } finally {
       setLoading(false);
     }
   }, [memberId]);
+
+  const refreshQueue = useCallback(async () => {
+    if (!memberId) return;
+    setQueue(await childOfflineQueue.list(memberId));
+  }, [memberId]);
+
+  useEffect(() => {
+    refreshQueue();
+    return childOfflineQueue.subscribe(() => {
+      refreshQueue();
+    });
+  }, [refreshQueue]);
+
+  const syncNow = async () => {
+    setBusy(true);
+    try {
+      const sent = await childOfflineQueue.flush();
+      await load();
+      await refreshQueue();
+      if (sent > 0) actions.showToast(sent === 1 ? '1 entry synced' : `${sent} entries synced`);
+      else actions.showToast('Still waiting for a connection');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   useEffect(() => {
     load();
@@ -154,9 +192,65 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
     setDraftReady(true);
   }, [profile, draftReady]);
 
+  // Entries saved on this phone and not yet sent. They show with a "Waiting to sync" label.
+  const pending = useMemo(() => queue.filter((q) => !q.blockedReason), [queue]);
+  const blocked = useMemo(() => queue.filter((q) => q.blockedReason), [queue]);
+  const pendingIds = useMemo(() => new Set(queue.map((q) => q.id)), [queue]);
+
+  const vaccinations: Vaccination[] = useMemo(() => {
+    const server = bundle?.vaccinations || [];
+    const taken = new Set(server.map((v) => v.vaccineCode));
+    const local = queue
+      .filter((q) => q.kind === 'vaccination' && !taken.has(q.payload.vaccineCode))
+      .map((q): Vaccination => {
+        const p = q.payload as any;
+        const dose = schedule?.doses.find((d) => d.code === p.vaccineCode);
+        return {
+          id: q.id,
+          vaccineCode: p.vaccineCode,
+          vaccineName: dose?.vaccine || p.vaccineCode,
+          administeredDate: p.administeredDate || '',
+          facility: p.facility || '',
+          provider: p.provider || '',
+          lotNumber: p.lotNumber || '',
+          manufacturer: p.manufacturer || '',
+          expiryDate: p.expiryDate || '',
+          site: p.site || '',
+          route: dose?.route || '',
+          reaction: p.reaction || '',
+          notes: '',
+          verification: 'caregiver_reported',
+          verifiedBy: '',
+          verifiedAt: null,
+          verificationSource: '',
+        };
+      });
+    return [...server, ...local];
+  }, [bundle, queue, schedule]);
+
+  const growthEntries: GrowthEntry[] = useMemo(() => {
+    const server = bundle?.growth || [];
+    const local = queue
+      .filter((q) => q.kind === 'growth')
+      .map((q): GrowthEntry => {
+        const p = q.payload as any;
+        const num = (v: unknown) => (v === '' || v == null || Number.isNaN(Number(v)) ? null : Number(v));
+        return {
+          id: q.id,
+          measuredOn: p.measuredOn,
+          weightKg: num(p.weightKg),
+          lengthCm: num(p.lengthCm),
+          headCircumferenceCm: num(p.headCircumferenceCm),
+          source: 'caregiver',
+          notes: p.notes || '',
+        };
+      });
+    return [...server, ...local].sort((x, y) => y.measuredOn.localeCompare(x.measuredOn));
+  }, [bundle, queue]);
+
   const rows: DoseRow[] = useMemo(
-    () => (schedule && bundle ? buildDoseRows(schedule, dob, bundle.vaccinations) : []),
-    [schedule, bundle, dob],
+    () => (schedule && bundle ? buildDoseRows(schedule, dob, vaccinations) : []),
+    [schedule, bundle, dob, vaccinations],
   );
   const counts = useMemo(() => summarize(rows), [rows]);
   const routine = rows.filter((r) => r.dose.track === 'routine');
@@ -178,11 +272,18 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
     setBusy(true);
     setError(null);
     try {
-      const saved = await childHealthService.addVaccination(memberId, { vaccineCode: vaxCode, ...vax });
-      setBundle((b) => (b ? { ...b, vaccinations: [...b.vaccinations, saved] } : b));
+      const input = { vaccineCode: vaxCode, ...vax };
+      try {
+        const saved = await childHealthService.addVaccination(memberId, input);
+        setBundle((b) => (b ? { ...b, vaccinations: [...b.vaccinations, saved] } : b));
+        actions.showToast('Dose saved. It stays unverified until a clinic confirms it.');
+      } catch (err) {
+        if (!isNetworkError(err)) throw err;
+        await childOfflineQueue.addVaccination(memberId, input);
+        actions.showToast('No connection. Saved on this phone and will sync when you are online.');
+      }
       setVaxCode(null);
       setVax(EMPTY_VAX);
-      actions.showToast('Dose saved. It stays unverified until a clinic confirms it.');
     } catch (err) {
       fail(err, 'Could not save this dose.');
     } finally {
@@ -199,6 +300,10 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
         style: 'destructive',
         onPress: async () => {
           try {
+            if (pendingIds.has(v.id)) {
+              await childOfflineQueue.remove(v.id);
+              return;
+            }
             await childHealthService.removeVaccination(memberId, v.id);
             setBundle((b) => (b ? { ...b, vaccinations: b.vaccinations.filter((x) => x.id !== v.id) } : b));
           } catch (err) {
@@ -214,8 +319,14 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
     setBusy(true);
     setError(null);
     try {
-      const saved = await childHealthService.addGrowth(memberId, growthForm);
-      setBundle((b) => (b ? { ...b, growth: [saved, ...b.growth].sort((x, y) => y.measuredOn.localeCompare(x.measuredOn)) } : b));
+      try {
+        const saved = await childHealthService.addGrowth(memberId, growthForm);
+        setBundle((b) => (b ? { ...b, growth: [saved, ...b.growth].sort((x, y) => y.measuredOn.localeCompare(x.measuredOn)) } : b));
+      } catch (err) {
+        if (!isNetworkError(err)) throw err;
+        await childOfflineQueue.addGrowth(memberId, growthForm);
+        actions.showToast('No connection. Saved on this phone and will sync when you are online.');
+      }
       setGrowthForm(null);
     } catch (err) {
       fail(err, 'Could not save this measurement.');
@@ -233,6 +344,10 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
         style: 'destructive',
         onPress: async () => {
           try {
+            if (pendingIds.has(g.id)) {
+              await childOfflineQueue.remove(g.id);
+              return;
+            }
             await childHealthService.removeGrowth(memberId, g.id);
             setBundle((b) => (b ? { ...b, growth: b.growth.filter((x) => x.id !== g.id) } : b));
           } catch (err) {
@@ -376,10 +491,41 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
       </View>
     ) : null;
 
+  const syncBanner =
+    savedAt || queue.length > 0 ? (
+      <View style={[styles.banner, { borderColor: '#f59e0b', marginBottom: 12, gap: 6 }]}>
+        {savedAt ? (
+          <Text style={styles.bannerText}>
+            Showing the copy saved on {new Date(savedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Lagos' })}. It may be out of date.
+          </Text>
+        ) : null}
+        {pending.length > 0 ? (
+          <Text style={styles.bannerText}>
+            {pending.length === 1 ? '1 entry is' : `${pending.length} entries are`} saved on this phone and waiting to sync.
+          </Text>
+        ) : null}
+        {blocked.map((b) => (
+          <View key={b.id} style={{ gap: 2 }}>
+            <Text style={styles.bannerText}>
+              {b.kind === 'vaccination' ? 'A vaccine dose' : 'A measurement'} could not be saved: {b.blockedReason}
+            </Text>
+            <TouchableOpacity onPress={() => childOfflineQueue.remove(b.id)} style={styles.link}>
+              <Text style={[styles.linkText, { color: '#b91c1c' }]}>Discard this entry</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+        {pending.length > 0 || savedAt ? (
+          <TouchableOpacity accessibilityRole="button" disabled={busy} onPress={syncNow} style={styles.link}>
+            <Text style={styles.linkText}>Sync now</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    ) : null;
+
   // ----- tabs -----
   const overview = () => {
     const ec = details.emergencyContact;
-    const latest = bundle?.growth[0];
+    const latest = growthEntries[0];
     return (
       <View style={{ gap: 12 }}>
         <View style={card}>
@@ -498,7 +644,9 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
                 <Text style={[styles.sub, { color }]}>
                   {row.record.verification === 'provider_verified'
                     ? `Verified by ${row.record.verifiedBy || 'a provider'}${row.record.verifiedAt ? ` on ${formatDisplayDate(String(row.record.verifiedAt).slice(0, 10))}` : ''}.`
-                    : 'Reported by you. A clinic can confirm it at the next visit.'}
+                    : pendingIds.has(row.record.id)
+                      ? 'Waiting to sync. Saved on this phone until you are online.'
+                      : 'Reported by you. A clinic can confirm it at the next visit.'}
                 </Text>
                 {canAdd && row.record.verification !== 'provider_verified' &&
                   button('Remove this dose', () => removeVaccination(row.record!), 'alt')}
@@ -598,15 +746,15 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
       <Text style={[styles.sub, { color: theme.muted }]}>
         Growth charts and clinician alerts are not available yet. Show these numbers at your child's well-child visit.
       </Text>
-      {(bundle?.growth || []).length === 0 && <Text style={[styles.sub, { color: theme.muted }]}>No measurements yet.</Text>}
-      {(bundle?.growth || []).map((g) => (
+      {growthEntries.length === 0 && <Text style={[styles.sub, { color: theme.muted }]}>No measurements yet.</Text>}
+      {growthEntries.map((g) => (
         <View key={g.id} style={[styles.doseCard, { borderColor: theme.border, backgroundColor: theme.surface }]}>
           <Text style={[styles.name, { color: theme.text }]}>{formatDisplayDate(g.measuredOn)}</Text>
           <Text style={[styles.sub, { color: theme.text }]}>
             {[g.weightKg != null && `${g.weightKg} kg`, g.lengthCm != null && `${g.lengthCm} cm`, g.headCircumferenceCm != null && `head ${g.headCircumferenceCm} cm`].filter(Boolean).join(' · ')}
           </Text>
           {g.notes ? <Text style={[styles.sub, { color: theme.muted }]}>{g.notes}</Text> : null}
-          <Text style={[styles.sub, { color: theme.muted }]}>Entered by {g.source === 'clinic' ? 'a clinic' : 'a guardian'}</Text>
+          <Text style={[styles.sub, { color: theme.muted }]}>{pendingIds.has(g.id) ? 'Waiting to sync' : `Entered by ${g.source === 'clinic' ? 'a clinic' : 'a guardian'}`}</Text>
           {canAdd && g.source === 'caregiver' && (
             <TouchableOpacity onPress={() => removeGrowth(g)} style={styles.link}>
               <Text style={[styles.linkText, { color: '#b91c1c' }]}>Remove</Text>
@@ -705,6 +853,7 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
         </ScrollView>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {!!error && <Text style={styles.error}>{error}</Text>}
+          {syncBanner}
           {loading ? (
             <ActivityIndicator style={{ marginTop: 40 }} />
           ) : !bundle ? (
@@ -718,6 +867,8 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
           ) : tab === 'development' && memberId ? (
             <DevelopmentPanel memberId={memberId} dob={dob} canAdd={canAdd} toast={actions.showToast} />
           ) : tab === 'access' && memberId ? (
+            <>
+            <ChildReminderCard memberId={memberId} toast={actions.showToast} />
             <ChildAccessPanel
               memberId={memberId}
               childName={name}
@@ -726,6 +877,7 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
                 actions.reloadFamily().finally(() => actions.closeChildProfile());
               }}
             />
+            </>
           ) : (
             detailsTab()
           )}

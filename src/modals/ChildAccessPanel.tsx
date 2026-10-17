@@ -31,6 +31,7 @@ const ACTION_LABEL: Record<string, string> = {
   transfer_requested: 'Started a transfer',
   transfer_cancelled: 'Cancelled the transfer',
   transfer_completed: 'Transferred primary responsibility',
+  reminder_prefs_updated: 'Changed reminder settings',
   custody_locked: 'Guardian changes locked by staff',
   custody_unlocked: 'Lock lifted by staff',
 };
