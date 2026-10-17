@@ -40,6 +40,6 @@ describe('staff pages', () => {
   }
   it('clinic page writes through the clinic endpoints', () => {
     const { body } = render(clinicPage);
-    for (const p of ['/facility/child/lookup', '/facility/child/vaccinations', '/facility/child/growth']) assert.ok(body.includes(p), p);
+    for (const p of ['/staff/users', '/staff/actions', '/reset-mfa', '/facility/child/lookup', '/facility/child/vaccinations', '/facility/child/growth']) assert.ok(body.includes(p), p);
   });
 });
