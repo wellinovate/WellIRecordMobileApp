@@ -19,8 +19,9 @@ import { Avatar } from '../components/Avatar';
 import { BLOOD_TYPES, GENDER_OPTIONS, GENOTYPES } from '../data/mockData';
 import { hapticFeedback } from '../utils/haptics';
 import type { WelliApp } from '../state/useWelliApp';
+import { FAMILY_RELATIONSHIPS } from '../constants/relationships';
 
-const RELATIONSHIPS = ['Child', 'Spouse', 'Parent', 'Other'];
+const RELATIONSHIPS = FAMILY_RELATIONSHIPS;
 
 const MONTH_NAMES = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -188,7 +189,7 @@ export function FamilyAccessModal({ app }: { app: WelliApp }) {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.memberName}>{f.name}</Text>
                     <Text style={styles.memberSub}>
-                      {f.relationship || 'Dependent'} • Guardian Managed
+                      {f.relationship || 'Dependent'}{f.relationship === 'Caregiver' ? ' • Care helper' : ' • Guardian Managed'}
                     </Text>
                     {f.dob ? <Text style={styles.memberDob}>DOB: {f.dob}</Text> : null}
                   </View>
