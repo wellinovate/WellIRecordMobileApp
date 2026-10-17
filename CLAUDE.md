@@ -93,7 +93,7 @@ A child is a `FamilyMember` with relationship `Child`. `ChildProfileModal` (open
 - The immunization schedule is data in `server/data/immunizationSchedule.ts`, with a `version` and a `reviewStatus`. It stays `pending_clinical_review` until a clinician checks each row against the official NPHCDA schedule and sets `reviewedBy` and `reviewedOn`. Do not copy dose timing into the app. Statuses are computed in `src/utils/immunization.ts`.
 - A guardian can only create `caregiver_reported` doses. A clinic confirms one with `POST /api/v1/family/:id/vaccinations/:vid/verify` (header `x-admin-secret`, body `verifiedBy`, optional `source`). Guardians cannot delete verified doses.
 - The QR code holds the WelliID only.
-- Not built yet: WHO growth charts, reminders by SMS or WhatsApp, offline capture.
+- Not built yet: WHO growth charts.
 
 ## Guardians and access
 
@@ -111,6 +111,12 @@ The primary guardian is `FamilyMember.accountId`. Other adults are `ChildGuardia
 - Milestones: catalogue in `server/data/milestones.ts` (CDC Learn the Signs. Act Early, 2 months to 5 years), versioned, `pending_clinical_review` until a Nigerian paediatrician signs it off. Guardians answer yes, not yet or not sure per milestone. A "not yet" for an age the child has reached only produces a prompt to talk to a clinician. The app never gives a result or diagnosis. Routes live in `server/childDevelopment.ts`; screening visits (developmental, vision, hearing, dental) are logged there too.
 - School profile: stored on `childProfile.school`. Nothing is sent to a school. The guardian ticks what to include and shares or prints a summary through the system share sheet or print dialog (`SchoolProfileCard`). Each share is written to the access log.
 - Moving to their own account: `Self` is a guardian relationship for the child's own account. It can be invited from 13 (`TEEN_ACCESS_AGE`) with view access and without `manageGuardians`. Transfer to a `Self` guardian is refused before 18 (`MAJORITY_AGE`). Both ages and the age check are in `server/childAccess.ts`.
+
+## Reminders and offline capture
+
+- Reminders: `server/childReminders.ts`. An hourly sweep (first run 2 minutes after start) works out which scheduled doses are due soon, due or overdue for each child and sends one message per guardian, channel and period. `ReminderLog` has a unique key so a reminder is never sent twice, and expires after a year. Messages go out 8am to 8pm Lagos time and contain the child's name and a dose count, not vaccine names. Only guardians with `receiveReminders` and no `blocked` restriction are messaged.
+- Channels per guardian (`ReminderPreference`, `GET/PUT /family/:id/reminders`): app notification (default on), SMS and WhatsApp. SMS and WhatsApp need a valid Nigerian mobile number and are off until the guardian turns them on, which records a consent time. SMS needs `TERMII_API_KEY`. WhatsApp also needs `WHATSAPP_REMINDERS_ENABLED=true` (optional `TERMII_WHATSAPP_SENDER`). The WhatsApp path has not been tested against Termii, and the sender and template need Termii/Meta approval first. The app disables the switches when the server reports a channel unavailable.
+- Offline capture: `src/utils/childOfflineQueue.ts`. A vaccine dose or growth measurement that fails with a network error is stored on the phone and shown as "Waiting to sync". It is sent at sign-in, when the app returns to the foreground, or from "Sync now". Growth entries carry a `clientId` so a retry never duplicates; a 409 on a dose means it is already saved. An entry the server refuses (4xx) stays in the list with the reason until the guardian discards it. The last loaded profile is cached per child for reading offline. Milestones and the access log need a connection. Queue and cache are cleared on sign out and account deletion.
 
 ## Rules for changes
 
