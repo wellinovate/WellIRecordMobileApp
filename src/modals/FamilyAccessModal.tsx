@@ -192,6 +192,17 @@ export function FamilyAccessModal({ app }: { app: WelliApp }) {
                       {f.relationship || 'Dependent'}{f.relationship === 'Caregiver' ? ' • Care helper' : ' • Guardian Managed'}
                     </Text>
                     {f.dob ? <Text style={styles.memberDob}>DOB: {f.dob}</Text> : null}
+                    {f.relationship === 'Child' ? (
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        onPress={() => actions.openChildProfile(f.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Open ${f.name}'s health profile`}
+                        style={styles.childProfileBtn}
+                      >
+                        <Text style={styles.childProfileBtnText}>Health profile and vaccines</Text>
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
 
                   <TouchableOpacity
@@ -665,6 +676,16 @@ const styles = StyleSheet.create({
   selectWrapper: {
     marginBottom: 16,
   },
+  childProfileBtn: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    minHeight: 36,
+    justifyContent: 'center',
+    borderRadius: 10,
+    backgroundColor: '#E1E8F4',
+  },
+  childProfileBtnText: { color: '#315B90', fontSize: 12, fontWeight: '700' },
   relationshipRow: {
     flexDirection: 'row',
     gap: 8,

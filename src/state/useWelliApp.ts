@@ -11,6 +11,7 @@ import type {
   FamilyMember,
   HealthRecord,
   ImmunizationMilestone,
+  ChildProfileDetails,
   Notification,
   PrescriptionItem,
   RecordType,
@@ -62,6 +63,8 @@ export interface AppState {
   consentExpiry: ShareExpiry;
   consentPurpose: string;
   showFamilyAccess: boolean;
+  showChildProfile: boolean;
+  childProfileMemberId: string | null;
   showAddFamilyMember: boolean;
   newMemberName: string;
   newMemberRelationship: string;
@@ -127,6 +130,35 @@ export interface AppState {
   showVaultExport: boolean;
   facilitiesList: CareFacility[];
   toast: string | null;
+}
+
+// Turns a family member returned by the API into the app's FamilyMember shape.
+export function mapRemoteFamilyMember(m: any): FamilyMember {
+  return {
+    id: m.id || m._id,
+    name: m.fullName || m.name,
+    initials: m.initials,
+    role: 'dependent' as const,
+    relationship: m.relationship || 'Dependent',
+    dob: m.dateOfBirth || m.dob || '',
+    gender: m.gender || '',
+    bloodType: m.bloodType || '',
+    genotype: m.genotype || '',
+    height: m.height || '',
+    weight: m.weight || '',
+    allergies: m.allergies || '',
+    conditions: m.conditions || '',
+    contact: formatEmergencyContact(m) || m.contact || '',
+    emergencyContacts: m.emergencyContacts || [],
+    email: m.email || '',
+    phone: m.phone || '',
+    address: m.address || m.childProfile?.address || '',
+    insuranceProvider: m.insuranceProvider || '',
+    insuranceId: m.insuranceId || '',
+    wrId: m.wrId || undefined,
+    memberId: m.wrId || undefined,
+    childProfile: m.childProfile || undefined,
+  };
 }
 
 // Helper to format emergency contact array/object from Atlas userprofiles into display string
@@ -232,6 +264,8 @@ const initialState: AppState = {
   consentExpiry: '24h',
   consentPurpose: '',
   showFamilyAccess: false,
+  showChildProfile: false,
+  childProfileMemberId: null,
   showAddFamilyMember: false,
   newMemberName: '',
   newMemberRelationship: '',
@@ -536,28 +570,7 @@ export function useWelliApp() {
               patch((s) => ({
                 familyMembers: [
                   s.familyMembers[0], // primary user
-                  ...remoteFamily.map((m: any) => ({
-                    id: m.id || m._id,
-                    name: m.fullName || m.name,
-                    initials: m.initials,
-                    role: 'dependent' as const,
-                    relationship: m.relationship || 'Dependent',
-                    dob: m.dateOfBirth || m.dob || '',
-                    gender: m.gender || '',
-                    bloodType: m.bloodType || '',
-                    genotype: m.genotype || '',
-                    height: m.height || '',
-                    weight: m.weight || '',
-                    allergies: m.allergies || '',
-                    conditions: m.conditions || '',
-                    contact: formatEmergencyContact(m) || m.contact || '',
-                    emergencyContacts: m.emergencyContacts || [],
-                    email: m.email || '',
-                    phone: m.phone || '',
-                    address: m.address || '',
-                    insuranceProvider: m.insuranceProvider || '',
-                    insuranceId: m.insuranceId || '',
-                  })),
+                  ...remoteFamily.map(mapRemoteFamilyMember),
                 ],
               }));
             }
@@ -772,28 +785,7 @@ export function useWelliApp() {
       patch((s) => ({
         familyMembers: [
           s.familyMembers.find((member) => member.id === 'me') || s.familyMembers[0],
-          ...remoteFamily.map((member: any) => ({
-            id: member.id || member._id,
-            name: member.fullName || member.name,
-            initials: member.initials,
-            role: 'dependent' as const,
-            relationship: member.relationship || 'Dependent',
-            dob: member.dateOfBirth || member.dob || '',
-            gender: member.gender || '',
-            bloodType: member.bloodType || '',
-            genotype: member.genotype || '',
-            height: member.height || '',
-            weight: member.weight || '',
-            allergies: member.allergies || '',
-            conditions: member.conditions || '',
-            contact: formatEmergencyContact(member) || member.contact || '',
-            emergencyContacts: member.emergencyContacts || [],
-            email: member.email || '',
-            phone: member.phone || '',
-            address: member.address || '',
-            insuranceProvider: member.insuranceProvider || '',
-            insuranceId: member.insuranceId || '',
-          })),
+          ...remoteFamily.map(mapRemoteFamilyMember),
         ],
       }));
     }).catch(() => {});
@@ -977,6 +969,30 @@ export function useWelliApp() {
     closeEmergency: () => patch({ showEmergency: false }),
     openFamilyAccess: () => patch({ showFamilyAccess: true }),
     closeFamilyAccess: () => patch({ showFamilyAccess: false }),
+    openChildProfile: (memberId: string) => patch({ showChildProfile: true, childProfileMemberId: memberId }),
+    closeChildProfile: () => patch({ showChildProfile: false, childProfileMemberId: null }),
+    // Copies saved child details back into the family list so other screens agree.
+    applyChildProfile: (
+      memberId: string,
+      profile: { wrId?: string | null; gender?: string; bloodType?: string; genotype?: string; allergies?: string; childProfile?: ChildProfileDetails },
+    ) =>
+      patch((s) => ({
+        familyMembers: s.familyMembers.map((f) =>
+          f.id === memberId
+            ? {
+                ...f,
+                wrId: profile.wrId || f.wrId,
+                memberId: profile.wrId || f.memberId,
+                gender: profile.gender ?? f.gender,
+                bloodType: profile.bloodType ?? f.bloodType,
+                genotype: profile.genotype ?? f.genotype,
+                allergies: profile.allergies ?? f.allergies,
+                address: profile.childProfile?.address || f.address,
+                childProfile: profile.childProfile ?? f.childProfile,
+              }
+            : f,
+        ),
+      })),
     openAddFamilyMember: () =>
       patch({
         showAddFamilyMember: true,
@@ -1032,28 +1048,7 @@ export function useWelliApp() {
             patch((s) => ({
               familyMembers: [
                 s.familyMembers[0], // primary user
-                ...remoteFamily.map((m: any) => ({
-                  id: m.id || m._id,
-                  name: m.fullName || m.name,
-                  initials: m.initials,
-                  role: 'dependent' as const,
-                  relationship: m.relationship || 'Dependent',
-                  dob: m.dateOfBirth || m.dob || '',
-                  gender: m.gender || '',
-                  bloodType: m.bloodType || '',
-                  genotype: m.genotype || '',
-                  height: m.height || '',
-                  weight: m.weight || '',
-                  allergies: m.allergies || '',
-                  conditions: m.conditions || '',
-                  contact: formatEmergencyContact(m) || m.contact || '',
-                  emergencyContacts: m.emergencyContacts || [],
-                  email: m.email || '',
-                  phone: m.phone || '',
-                  address: m.address || '',
-                  insuranceProvider: m.insuranceProvider || '',
-                  insuranceId: m.insuranceId || '',
-                })),
+                ...remoteFamily.map(mapRemoteFamilyMember),
               ],
               showAddFamilyMember: false,
               newMemberName: '',

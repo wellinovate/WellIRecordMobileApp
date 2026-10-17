@@ -64,6 +64,8 @@ export interface IFamilyMember extends Document {
   allergies?: string;
   phone?: string;
   linkedAccountId?: mongoose.Types.ObjectId | null;
+  wrId?: string;
+  childProfile?: Record<string, any>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -89,6 +91,87 @@ const FamilyMemberSchema = new Schema<IFamilyMember>(
     allergies: { type: String },
     phone: { type: String },
     linkedAccountId: { type: Schema.Types.ObjectId, default: null },
+    wrId: { type: String, index: true, sparse: true },
+    // Child identity, birth and emergency details. Whitelisted in the route.
+    childProfile: { type: Schema.Types.Mixed },
+  },
+  { timestamps: true }
+);
+
+// Child vaccination records. A guardian can add a dose, but only a provider
+// (admin-secret route) can mark it verified.
+export interface IChildVaccination extends Document {
+  memberId: mongoose.Types.ObjectId;
+  ownerId: string;
+  vaccineCode: string;
+  vaccineName: string;
+  administeredDate: string;
+  facility?: string;
+  provider?: string;
+  lotNumber?: string;
+  manufacturer?: string;
+  expiryDate?: string;
+  site?: string;
+  route?: string;
+  reaction?: string;
+  notes?: string;
+  verification: 'caregiver_reported' | 'provider_verified';
+  verifiedBy?: string;
+  verifiedAt?: Date;
+  verificationSource?: string;
+  scheduleVersion?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const ChildVaccinationSchema = new Schema<IChildVaccination>(
+  {
+    memberId: { type: Schema.Types.ObjectId, required: true, index: true },
+    ownerId: { type: String, required: true, index: true },
+    vaccineCode: { type: String, required: true },
+    vaccineName: { type: String, required: true },
+    administeredDate: { type: String, required: true },
+    facility: { type: String },
+    provider: { type: String },
+    lotNumber: { type: String },
+    manufacturer: { type: String },
+    expiryDate: { type: String },
+    site: { type: String },
+    route: { type: String },
+    reaction: { type: String },
+    notes: { type: String },
+    verification: { type: String, enum: ['caregiver_reported', 'provider_verified'], default: 'caregiver_reported' },
+    verifiedBy: { type: String },
+    verifiedAt: { type: Date },
+    verificationSource: { type: String },
+    scheduleVersion: { type: String },
+  },
+  { timestamps: true }
+);
+ChildVaccinationSchema.index({ memberId: 1, vaccineCode: 1 }, { unique: true });
+
+export interface IChildGrowth extends Document {
+  memberId: mongoose.Types.ObjectId;
+  ownerId: string;
+  measuredOn: string;
+  weightKg?: number;
+  lengthCm?: number;
+  headCircumferenceCm?: number;
+  source: 'caregiver' | 'clinic';
+  notes?: string;
+  createdAt: Date;
+}
+
+const ChildGrowthSchema = new Schema<IChildGrowth>(
+  {
+    memberId: { type: Schema.Types.ObjectId, required: true, index: true },
+    ownerId: { type: String, required: true, index: true },
+    measuredOn: { type: String, required: true },
+    weightKg: { type: Number },
+    lengthCm: { type: Number },
+    headCircumferenceCm: { type: Number },
+    source: { type: String, enum: ['caregiver', 'clinic'], default: 'caregiver' },
+    notes: { type: String },
   },
   { timestamps: true }
 );
@@ -787,3 +870,8 @@ const AccessGrantSchema = new Schema(
 );
 export const AccessGrant: Model<any> =
   mongoose.models.AccessGrant || mongoose.model('AccessGrant', AccessGrantSchema, 'accessgrants');
+
+export const ChildVaccination: Model<IChildVaccination> =
+  mongoose.models.ChildVaccination || mongoose.model<IChildVaccination>('ChildVaccination', ChildVaccinationSchema);
+export const ChildGrowth: Model<IChildGrowth> =
+  mongoose.models.ChildGrowth || mongoose.model<IChildGrowth>('ChildGrowth', ChildGrowthSchema);
