@@ -6,6 +6,7 @@
 import { apiClient } from './apiClient';
 import type { ChildProfileDetails } from '../data/types';
 import type { ImmunizationSchedule, Vaccination } from '../utils/immunization';
+import type { MilestoneCatalogue, MilestoneRecord, MilestoneStatus, Screening, ScreeningInput } from '../utils/development';
 
 export interface GrowthEntry {
   id: string;
@@ -77,7 +78,8 @@ export const PERMISSION_LABELS: { key: keyof GuardianPerms; label: string; hint:
   { key: 'manageGuardians', label: 'Manage guardians', hint: 'Invite and remove other guardians' },
 ];
 
-export const GUARDIAN_RELATIONSHIPS = ['Mother', 'Father', 'Legal guardian', 'Caregiver', 'Other'] as const;
+export const GUARDIAN_RELATIONSHIPS = ['Mother', 'Father', 'Legal guardian', 'Caregiver', 'Other', 'Self'] as const;
+export const RELATIONSHIP_LABEL: Record<string, string> = { Self: 'The child (own account)' };
 
 export interface Guardian {
   id: string;
@@ -97,6 +99,7 @@ export interface Guardian {
 export interface GuardiansResponse {
   you: { role: 'primary' | 'guardian'; permissions: GuardianPerms; locked: boolean };
   primary: { name: string };
+  transition: { ageYears: number | null; teenAccessAge: number; majorityAge: number };
   custodyLock: { orderReference: string; note: string } | null;
   guardians: Guardian[];
   pendingTransfer: { guardianId: string; expiresAt: string } | null;
@@ -112,6 +115,37 @@ export interface AuditEntry {
 }
 
 export const childHealthService = {
+  async fetchMilestoneCatalogue(): Promise<MilestoneCatalogue> {
+    const res = await apiClient.get<{ catalogue: MilestoneCatalogue }>('/development/milestones');
+    return res.catalogue;
+  },
+
+  async fetchDevelopment(memberId: string): Promise<{ milestones: MilestoneRecord[]; screenings: Screening[] }> {
+    return apiClient.get(`/family/${memberId}/development`);
+  },
+
+  async setMilestone(memberId: string, code: string, status: MilestoneStatus): Promise<MilestoneRecord> {
+    const res = await apiClient.put<{ milestone: MilestoneRecord }>(`/family/${memberId}/milestones/${code}`, { status });
+    return res.milestone;
+  },
+
+  async clearMilestone(memberId: string, code: string): Promise<void> {
+    await apiClient.delete(`/family/${memberId}/milestones/${code}`);
+  },
+
+  async addScreening(memberId: string, data: ScreeningInput): Promise<Screening> {
+    const res = await apiClient.post<{ screening: Screening }>(`/family/${memberId}/screenings`, data);
+    return res.screening;
+  },
+
+  async removeScreening(memberId: string, screeningId: string): Promise<void> {
+    await apiClient.delete(`/family/${memberId}/screenings/${screeningId}`);
+  },
+
+  async logSchoolShared(memberId: string, items: string[]): Promise<void> {
+    await apiClient.post(`/family/${memberId}/school/shared`, { items }).catch(() => {});
+  },
+
   async listGuardians(memberId: string): Promise<GuardiansResponse> {
     return apiClient.get<GuardiansResponse>(`/family/${memberId}/guardians`);
   },

@@ -248,6 +248,52 @@ const ChildVaccinationSchema = new Schema<IChildVaccination>(
 );
 ChildVaccinationSchema.index({ memberId: 1, vaccineCode: 1 }, { unique: true });
 
+export interface IChildMilestone extends Document {
+  childId: mongoose.Types.ObjectId;
+  code: string;
+  status: 'achieved' | 'not_yet' | 'unsure';
+  notes?: string;
+  recordedBy: string;
+  catalogueVersion: string;
+}
+
+const ChildMilestoneSchema = new Schema<IChildMilestone>(
+  {
+    childId: { type: Schema.Types.ObjectId, required: true, index: true },
+    code: { type: String, required: true },
+    status: { type: String, enum: ['achieved', 'not_yet', 'unsure'], required: true },
+    notes: { type: String },
+    recordedBy: { type: String, required: true },
+    catalogueVersion: { type: String },
+  },
+  { timestamps: true }
+);
+ChildMilestoneSchema.index({ childId: 1, code: 1 }, { unique: true });
+
+// Vision, hearing, dental and developmental screening visits.
+export interface IChildScreening extends Document {
+  childId: mongoose.Types.ObjectId;
+  kind: 'developmental' | 'vision' | 'hearing' | 'dental';
+  date: string;
+  result: 'no_concerns' | 'follow_up_advised' | 'unsure';
+  facility?: string;
+  notes?: string;
+  recordedBy: string;
+}
+
+const ChildScreeningSchema = new Schema<IChildScreening>(
+  {
+    childId: { type: Schema.Types.ObjectId, required: true, index: true },
+    kind: { type: String, enum: ['developmental', 'vision', 'hearing', 'dental'], required: true },
+    date: { type: String, required: true },
+    result: { type: String, enum: ['no_concerns', 'follow_up_advised', 'unsure'], required: true },
+    facility: { type: String },
+    notes: { type: String },
+    recordedBy: { type: String, required: true },
+  },
+  { timestamps: true }
+);
+
 export interface IChildGrowth extends Document {
   memberId: mongoose.Types.ObjectId;
   ownerId: string;
@@ -978,3 +1024,7 @@ export const ChildGuardian: Model<IChildGuardian> =
   mongoose.models.ChildGuardian || mongoose.model<IChildGuardian>('ChildGuardian', ChildGuardianSchema);
 export const ChildAuditLog: Model<IChildAuditLog> =
   mongoose.models.ChildAuditLog || mongoose.model<IChildAuditLog>('ChildAuditLog', ChildAuditLogSchema);
+export const ChildMilestone: Model<IChildMilestone> =
+  mongoose.models.ChildMilestone || mongoose.model<IChildMilestone>('ChildMilestone', ChildMilestoneSchema);
+export const ChildScreening: Model<IChildScreening> =
+  mongoose.models.ChildScreening || mongoose.model<IChildScreening>('ChildScreening', ChildScreeningSchema);

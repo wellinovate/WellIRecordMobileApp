@@ -93,7 +93,7 @@ A child is a `FamilyMember` with relationship `Child`. `ChildProfileModal` (open
 - The immunization schedule is data in `server/data/immunizationSchedule.ts`, with a `version` and a `reviewStatus`. It stays `pending_clinical_review` until a clinician checks each row against the official NPHCDA schedule and sets `reviewedBy` and `reviewedOn`. Do not copy dose timing into the app. Statuses are computed in `src/utils/immunization.ts`.
 - A guardian can only create `caregiver_reported` doses. A clinic confirms one with `POST /api/v1/family/:id/vaccinations/:vid/verify` (header `x-admin-secret`, body `verifiedBy`, optional `source`). Guardians cannot delete verified doses.
 - The QR code holds the WelliID only.
-- Not built yet: WHO growth charts, developmental milestones, reminders by SMS or WhatsApp, offline capture, school profile, adolescent transition.
+- Not built yet: WHO growth charts, reminders by SMS or WhatsApp, offline capture.
 
 ## Guardians and access
 
@@ -105,6 +105,12 @@ The primary guardian is `FamilyMember.accountId`. Other adults are `ChildGuardia
 - Custody lock (staff, header `x-admin-secret`): `POST /family/:id/custody` with `action` lock or unlock. While locked, guardian changes and transfers return 423. `POST /family/:id/guardians/:gid/verify-identity` records a staff identity check.
 - Access log: `ChildAuditLog`, written by `auditChild`. `GET /family/:id/audit` is limited to the primary guardian and guardians who manage guardians. Views are deduplicated per 30 minutes.
 - The app cannot verify a court order. Restrictions record the reason and reference for staff review.
+
+## Development, school and the move to adulthood
+
+- Milestones: catalogue in `server/data/milestones.ts` (CDC Learn the Signs. Act Early, 2 months to 5 years), versioned, `pending_clinical_review` until a Nigerian paediatrician signs it off. Guardians answer yes, not yet or not sure per milestone. A "not yet" for an age the child has reached only produces a prompt to talk to a clinician. The app never gives a result or diagnosis. Routes live in `server/childDevelopment.ts`; screening visits (developmental, vision, hearing, dental) are logged there too.
+- School profile: stored on `childProfile.school`. Nothing is sent to a school. The guardian ticks what to include and shares or prints a summary through the system share sheet or print dialog (`SchoolProfileCard`). Each share is written to the access log.
+- Moving to their own account: `Self` is a guardian relationship for the child's own account. It can be invited from 13 (`TEEN_ACCESS_AGE`) with view access and without `manageGuardians`. Transfer to a `Self` guardian is refused before 18 (`MAJORITY_AGE`). Both ages and the age check are in `server/childAccess.ts`.
 
 ## Rules for changes
 
