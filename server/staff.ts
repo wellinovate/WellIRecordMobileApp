@@ -4,9 +4,9 @@
 // role, and every staff action is logged against them. Staff tokens are signed
 // with a different key from patient tokens, so one can never pass as the other.
 //
-// The old x-admin-secret header still works while ALLOW_LEGACY_ADMIN_SECRET is
-// not 'false', so the web console and the /admin/orders page keep running until
-// they move over. Each legacy call is logged. Set it to 'false' to switch it off.
+// The old x-admin-secret header is off by default. Set ALLOW_LEGACY_ADMIN_SECRET=true to
+// turn it back on for a caller that has not moved to staff tokens; each legacy call is logged.
+// The one-time /staff/bootstrap call still takes the secret.
 
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
@@ -125,7 +125,7 @@ const clean = (v: unknown, max: number) => String(v ?? '').trim().slice(0, max);
 export function createStaff(deps: StaffDeps) {
   const router = express.Router();
 
-  const legacyAllowed = () => String(process.env.ALLOW_LEGACY_ADMIN_SECRET ?? 'true').toLowerCase() !== 'false';
+  const legacyAllowed = () => String(process.env.ALLOW_LEGACY_ADMIN_SECRET ?? 'false').toLowerCase() === 'true';
 
   function legacySecretOk(req: Request): boolean {
     const expected = process.env.ADMIN_SECRET;
