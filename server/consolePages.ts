@@ -26,7 +26,7 @@ button.ok{background:#059669}button.no{background:#fff;color:#B91C1C;border:1px 
 .item{border-top:1px solid #EEF2F6;padding:8px 0;font-size:13.5px}
 .tag{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:999px;margin-left:6px}
 .tag.v{background:#DCFCE7;color:#166534}.tag.p{background:#FEF3C7;color:#92400E}
-.nt{margin-top:0}.sp{margin-left:8px}details{margin-top:10px}#rcodes{white-space:pre-line}#list{margin-top:14px}.hide{display:none}.top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.nt{margin-top:0}.sp{margin-left:8px}details{margin-top:10px}#rcodes{white-space:pre-line}#list{margin-top:14px}.gap{margin-top:18px}.hide{display:none}.top{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .muted{color:#64748B;font-size:12.5px}
 @media(max-width:560px){.row{grid-template-columns:1fr}}
 `;
@@ -182,6 +182,23 @@ const CLINIC_HTML = String.raw`
         <button id="b-gr">Save measurement</button><div class="err" id="e-gr"></div>
       </div>
     </div>
+
+    <div id="admin" class="hide">
+      <div class="card">
+        <h2>Staff accounts</h2>
+        <div id="sl-list"></div>
+        <h2 class="gap">Add a person</h2>
+        <div class="row">
+          <div><label for="an">Name</label><input id="an"></div>
+          <div><label for="ae">Email</label><input id="ae" type="email"></div>
+          <div><label for="ar">Role</label><select id="ar"><option>clinician</option><option>records_officer</option><option>pharmacist</option><option>admin</option></select></div>
+          <div><label for="ao">Organisation</label><input id="ao"></div>
+        </div>
+        <button id="b-add">Create account</button><div class="err" id="e-add"></div>
+        <div id="temp" class="hide"><p class="muted">Give this one-time password to the person. They must change it at first sign-in. It will not be shown again.</p><div class="mono" id="tp"></div></div>
+      </div>
+      <div class="card"><div class="top"><h2>Recent staff actions</h2><button class="alt nt" id="b-log">Refresh</button></div><div id="log"></div></div>
+    </div>
   </div>
 </div>`;
 
@@ -192,6 +209,7 @@ function note(t,good){var n=$('note');n.textContent=t;n.className='msg '+(good?'
 window.onSignedIn=async function(staff){
   $('app').classList.remove('hide');$('who').classList.remove('hide');
   $('who').textContent=staff.name+' ('+staff.role.replace('_',' ')+')';
+  if(staff.role==='admin')showAdmin();
   if(['admin','clinician','records_officer'].indexOf(staff.role)<0){
     $('open').classList.add('hide');note('This account cannot open child records. Ask an admin for the clinician or records officer role.',false);return}
   var s=await fetch('/api/v1/immunization/schedule').then(function(r){return r.json()}).catch(function(){return null});
@@ -201,6 +219,53 @@ window.onSignedIn=async function(staff){
   }
 };
 $('b-out').onclick=signOut;
+// ----- admin: staff accounts and action log -----
+function showAdmin(){$('admin').classList.remove('hide');loadStaff();loadLog()}
+async function loadStaff(){
+  var d=await api('/staff/users');var l=$('sl-list');l.textContent='';
+  if(!d.success){add(l,'div',d.message||'Could not load staff.','msg bad');return}
+  d.staff.forEach(function(u){
+    var i=add(l,'div',null,'item');
+    add(i,'b',u.name);add(i,'span',' '+u.email+' · '+u.role.replace('_',' ')+(u.organization?' · '+u.organization:''),'muted');
+    add(i,'span',u.status==='active'?'Active':'Disabled','tag '+(u.status==='active'?'v':'p'));
+    add(i,'span',u.mfaEnabled?'MFA on':'MFA off','tag '+(u.mfaEnabled?'v':'p'));
+    var row=add(i,'div');
+    var sel=add(row,'select');['clinician','records_officer','pharmacist','admin'].forEach(function(r){var o=add(sel,'option',r);o.value=r;if(r===u.role)o.selected=true});
+    sel.onchange=function(){act(u,'/staff/users/'+u.id,'PATCH',{role:sel.value},'Role changed. Their open sessions ended.')};
+    var t=add(row,'button',u.status==='active'?'Disable':'Enable','alt sp');
+    t.onclick=function(){act(u,'/staff/users/'+u.id,'PATCH',{status:u.status==='active'?'disabled':'active'},'Account updated.')};
+    var p=add(row,'button','Reset password','alt sp');
+    p.onclick=async function(){if(!confirm('Reset the password for '+u.name+'? Their sessions end.'))return;
+      var r=await api('/staff/users/'+u.id+'/reset-password',{method:'POST',body:{}});
+      if(r.success){tempShow(r.temporaryPassword)}else note(r.message||'Failed.',false)};
+    if(u.mfaEnabled){var m=add(row,'button','Reset MFA','alt sp');
+      m.onclick=function(){if(confirm('Remove the authenticator for '+u.name+'? They set it up again at next sign-in.'))act(u,'/staff/users/'+u.id+'/reset-mfa','POST',{},'MFA reset.')}}
+  });
+}
+function tempShow(pw){$('tp').textContent=pw;$('temp').classList.remove('hide')}
+async function act(u,path,method,body,okText){
+  var r=await api(path,{method:method,body:body});
+  if(r.success){note(okText,true)}else note(r.message||'Failed.',false);
+  loadStaff();loadLog();
+}
+$('b-add').onclick=async function(){
+  say('e-add','');$('temp').classList.add('hide');
+  var r=await api('/staff/users',{method:'POST',body:{name:$('an').value,email:$('ae').value,role:$('ar').value,organization:$('ao').value}});
+  if(!r.success){say('e-add',r.message||'Could not create the account');return}
+  ['an','ae','ao'].forEach(function(i){$(i).value=''});tempShow(r.temporaryPassword);loadStaff();loadLog();
+};
+async function loadLog(){
+  var d=await api('/staff/actions');var l=$('log');l.textContent='';
+  if(!d.success){add(l,'div',d.message||'Could not load the log.','muted');return}
+  if(!d.actions.length)add(l,'div','Nothing yet.','muted');
+  d.actions.slice(0,50).forEach(function(a){
+    var i=add(l,'div',null,'item');
+    add(i,'span',new Date(a.createdAt).toLocaleString()+'  '+a.staffName+' ('+a.role+'): '+a.action);
+    var bits=[a.target,a.detail,a.legacy?'legacy secret':''].filter(Boolean).join(' · ');
+    if(bits)add(i,'div',bits,'muted');
+  });
+}
+$('b-log').onclick=loadLog;
 async function openRec(){
   say('e-open','');
   var d=await api('/facility/child/lookup',{method:'POST',body:{wrId:cur.wrId,code:cur.code}});

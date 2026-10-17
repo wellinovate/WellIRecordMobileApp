@@ -34,6 +34,16 @@ jobs:
   server:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ping:1})'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     defaults:
       run:
         working-directory: server
@@ -49,6 +59,10 @@ jobs:
         run: npx tsc --noEmit
       - name: Tests
         run: npm test
+      - name: Integration tests (real MongoDB)
+        run: npm run test:integration
+        env:
+          MONGODB_URI_TEST: mongodb://127.0.0.1:27017
       - name: Dependency audit (fails on high or critical)
         run: npm audit --omit=dev --audit-level=high
 

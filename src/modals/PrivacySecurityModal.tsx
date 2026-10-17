@@ -316,7 +316,7 @@ export function PrivacySecurityModal({
 
     if (!deletionAcknowledged) {
       actions.showToast(
-        "Confirm that you understand this submits a deletion request",
+        "Confirm that you understand your account will be deleted now",
       );
       return;
     }
@@ -766,7 +766,7 @@ export function PrivacySecurityModal({
               className="mt-5 min-h-[46px] items-center justify-center rounded-xl bg-[#EEF3FA]"
             >
               <Text className="text-[13px] font-semibold text-[#315B90]">
-                Request account deletion
+                Delete account
               </Text>
             </TouchableOpacity>
 
@@ -798,11 +798,11 @@ export function PrivacySecurityModal({
             </Text>
 
             <Text className="mt-3 text-[28px] leading-[34px] font-extrabold text-[#082F67]">
-              Request account deletion
+              Delete account
             </Text>
 
             <Text className="mt-1 text-[13px] leading-[19px] text-slate-500">
-              Review what a request means before continuing.
+              Read what is removed before you continue.
             </Text>
 
             <View className="mt-5 rounded-2xl border border-[#F0CAA0] bg-[#FFF4E7] p-4">
@@ -811,13 +811,12 @@ export function PrivacySecurityModal({
 
                 <View className="flex-1">
                   <Text className="text-[13px] font-bold text-[#A96726]">
-                    This is a request, not instant deletion
+                    Deletion is immediate and cannot be undone
                   </Text>
 
                   <Text className="mt-2 text-[11.5px] leading-[17px] text-[#7C5B38]">
-                    A connected service would confirm identity and review the
-                    request under its published policy. No processing time is
-                    promised.
+                    Your account is erased from our servers as soon as you
+                    confirm. We cannot restore it afterwards.
                   </Text>
                 </View>
               </View>
@@ -825,18 +824,21 @@ export function PrivacySecurityModal({
 
             <View className="mt-4 rounded-2xl bg-[#EEF3FA] p-4">
               <Text className="text-[14px] font-extrabold text-[#082F67]">
-                Consider before requesting
+                What is removed
               </Text>
 
               <Text className="mt-3 text-[11.5px] leading-[17px] text-[#536A84]">
-                Deletion may affect access to your account and
-                patient-uploaded documents. Review-copy copies you need first.
+                Your account, the health records and documents you
+                uploaded, prescriptions, family members, children's vaccines,
+                growth and development entries, sharing links, and the access
+                logs for your children. Save a copy of anything you need first.
               </Text>
 
               <Text className="mt-3 text-[11.5px] leading-[17px] text-[#536A84]">
-                Retention and deletion scope follow the published policy. This
-                does not guarantee deletion of provider clinical or legal
-                records.
+                Records that a clinic or hospital holds in its own
+                systems are not ours to delete and stay with them. Other
+                guardians of a child you added keep no access to data you
+                erased.
               </Text>
             </View>
 
@@ -895,7 +897,7 @@ export function PrivacySecurityModal({
               </View>
 
               <Text className="flex-1 text-[11.5px] leading-[17px] text-[#536A84]">
-                I understand this submits a deletion request.
+                I understand my account and data will be deleted now.
               </Text>
             </TouchableOpacity>
 
@@ -921,7 +923,7 @@ export function PrivacySecurityModal({
                     : "text-slate-400"
                 }`}
               >
-                Request deletion
+                Delete my account
               </Text>
             </TouchableOpacity>
 

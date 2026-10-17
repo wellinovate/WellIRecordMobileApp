@@ -4,10 +4,12 @@
 // vaccine doses as Immunization, growth as Observation (LOINC vital signs) and
 // recorded allergies as AllergyIntolerance. Pure functions, no database access.
 //
-// What it does not claim: vaccine codes are our own schedule codes (a local
-// CodeSystem), not CVX or SNOMED, until a clinician maps them. Whether a dose
+// What it does not claim: our schedule code is always sent. A CVX code is added where
+// data/vaccineCodes.ts has one, and that mapping is pending clinical review. SNOMED is not mapped. Whether a dose
 // was reported by a parent or confirmed by a clinic is carried as a tag and in
 // Immunization.primarySource, so a receiving system can tell them apart.
+
+import { CVX_SYSTEM, cvxFor } from './data/vaccineCodes';
 
 export const SYSTEM = {
   welliId: 'https://welli.record/id/welli-id',
@@ -120,7 +122,13 @@ export function immunizationResource(v: FhirVaccination, patientId: string) {
     id: v.id,
     meta: { tag: [verificationTag(v.verification)] },
     status: 'completed',
-    vaccineCode: { text: v.vaccineName, coding: [{ system: SYSTEM.schedule, code: v.vaccineCode, display: v.vaccineName }] },
+    vaccineCode: {
+      text: v.vaccineName,
+      coding: [
+        { system: SYSTEM.schedule, code: v.vaccineCode, display: v.vaccineName },
+        ...(cvxFor(v.vaccineCode) ? [{ system: CVX_SYSTEM, code: cvxFor(v.vaccineCode)!.cvx, display: cvxFor(v.vaccineCode)!.display }] : []),
+      ],
+    },
     patient: ref('Patient', patientId),
     occurrenceDateTime: v.administeredDate,
     primarySource: verified,

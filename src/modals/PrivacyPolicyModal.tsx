@@ -28,7 +28,7 @@ const SECTIONS = [
   },
   {
     heading: 'Your Rights & Data Portability',
-    body: 'You can download a full copy of your data at any time from Privacy & Security. If you’d like your account deleted, contact WelliRecord support and we’ll process the request.',
+    body: 'You can download a full copy of your data at any time from Privacy & Security. You can delete your account yourself in Profile, Privacy & security, Delete account. Deletion is immediate. If you cannot open the app, email privacy@wellirecord.com.',
   },
   {
     heading: 'Contact Us',

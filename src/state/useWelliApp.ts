@@ -1331,8 +1331,8 @@ export function useWelliApp() {
     requestAccountDeletion: () => {
       hapticFeedback.warning();
       Alert.alert(
-        'Delete Account & Erasure Request',
-        'In compliance with Nigeria Data Protection Regulation (NDPR) Right to Erasure, deleting your account permanently purges all health records, family vault data, and cryptographic keys.\n\nTo request permanent erasure, you can email our Data Protection Officer or wipe this device session now.',
+        'Delete your account?',
+        'This permanently deletes your account and the health data stored on our servers, including family members and children. It cannot be undone.\n\nTo ask the Data Protection Officer a question first, email us.',
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -1344,7 +1344,7 @@ export function useWelliApp() {
             },
           },
           {
-            text: 'Wipe & Sign Out',
+            text: 'Delete my account',
             style: 'destructive',
             onPress: async () => {
               try {
@@ -1366,7 +1366,7 @@ export function useWelliApp() {
                 twoFactorEnabled: false,
                 faceIdEnabled: false,
               });
-              showToast('Account session and cached vault data cleared');
+              showToast('Your account has been deleted');
             },
           },
         ]
