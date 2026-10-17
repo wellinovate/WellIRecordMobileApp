@@ -89,8 +89,32 @@ export function bandOf(metric: ChartMetric, z: number): Band {
   return 'usual';
 }
 
+export const PRETERM_WEEKS = 37;
+export const CORRECT_UNTIL_MONTHS = 24;
+const WEEKS_PER_MONTH = DAYS_PER_MONTH / 7;
+
+/** True when age should be corrected: born before 37 weeks and still under 24 months from birth. */
+export function needsCorrection(ageMonths: number, gestationalAgeWeeks: number | null | undefined): boolean {
+  return (
+    gestationalAgeWeeks != null &&
+    Number.isFinite(gestationalAgeWeeks) &&
+    gestationalAgeWeeks >= 20 &&
+    gestationalAgeWeeks < PRETERM_WEEKS &&
+    ageMonths < CORRECT_UNTIL_MONTHS
+  );
+}
+
+/** Age counted from the due date (40 weeks) instead of the birth date. Can be negative before the due date. */
+export function correctedAge(ageMonths: number, gestationalAgeWeeks: number): number {
+  return ageMonths - (40 - gestationalAgeWeeks) / WEEKS_PER_MONTH;
+}
+
 export interface GrowthPoint {
+  /** The age used to read the chart: corrected when `corrected` is true. */
   ageMonths: number;
+  /** Age from birth, always. */
+  chronologicalMonths: number;
+  corrected: boolean;
   value: number;
   z: number;
   percentile: number;
@@ -104,14 +128,19 @@ export function placeMeasurement(
   dob: string | undefined | null,
   measuredOn: string,
   value: number | null | undefined,
+  options: { gestationalAgeWeeks?: number | null; correct?: boolean } = {},
 ): GrowthPoint | null {
   const sex = sexKey(gender);
-  const age = ageInMonths(dob, measuredOn);
-  if (!sex || age === null || value === null || value === undefined || !Number.isFinite(value) || value <= 0) return null;
+  const chrono = ageInMonths(dob, measuredOn);
+  if (!sex || chrono === null || value === null || value === undefined || !Number.isFinite(value) || value <= 0) return null;
+  const corrected = options.correct !== false && needsCorrection(chrono, options.gestationalAgeWeeks);
+  // Before the due date there is no WHO standard (it starts at term). Those readings are left off.
+  const age = corrected ? correctedAge(chrono, options.gestationalAgeWeeks as number) : chrono;
+  if (age < 0) return null;
   const lms = lmsAt(tableFor(metric, sex, age), age);
   if (!lms) return null;
   const z = zScore(value, lms, metric === 'weight');
-  return { ageMonths: age, value, z, percentile: percentileOf(z), band: bandOf(metric, z) };
+  return { ageMonths: age, chronologicalMonths: chrono, corrected, value, z, percentile: percentileOf(z), band: bandOf(metric, z) };
 }
 
 export const CURVE_Z = [-3, -2, 0, 2, 3] as const;

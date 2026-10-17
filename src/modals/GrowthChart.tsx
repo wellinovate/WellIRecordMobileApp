@@ -30,15 +30,17 @@ export function GrowthChart({ entries, gender, dob, gestationalAgeWeeks }: Props
   const theme = useTheme();
   const [metric, setMetric] = useState<ChartMetric>('weight');
   const sex = sexKey(gender);
+  const [useCorrected, setUseCorrected] = useState(true);
+  const preterm = gestationalAgeWeeks != null && gestationalAgeWeeks < 37;
 
   const points = useMemo(() => {
     const out: GrowthPoint[] = [];
     for (const e of entries) {
-      const p = placeMeasurement(metric, gender, dob, e.measuredOn, e[VALUE_KEY[metric]]);
+      const p = placeMeasurement(metric, gender, dob, e.measuredOn, e[VALUE_KEY[metric]], { gestationalAgeWeeks, correct: useCorrected });
       if (p) out.push(p);
     }
     return out.sort((a, b) => a.ageMonths - b.ageMonths);
-  }, [entries, metric, gender, dob]);
+  }, [entries, metric, gender, dob, gestationalAgeWeeks, useCorrected]);
 
   const lines = useMemo(() => (sex ? curves(metric, sex) : []), [metric, sex]);
 
@@ -56,7 +58,6 @@ export function GrowthChart({ entries, gender, dob, gestationalAgeWeeks }: Props
   const sx = (m: number) => PAD.l + (m / MAX_MONTHS) * (W - PAD.l - PAD.r);
   const sy = (v: number) => H - PAD.b - ((v - yMin) / (yMax - yMin || 1)) * (H - PAD.t - PAD.b);
   const latest = points[points.length - 1];
-  const preterm = gestationalAgeWeeks != null && gestationalAgeWeeks < 37 && latest && latest.ageMonths < 24;
   const unit = METRIC_LABEL[metric].unit;
 
   return (
@@ -65,6 +66,19 @@ export function GrowthChart({ entries, gender, dob, gestationalAgeWeeks }: Props
         <Text style={{ color: theme.muted, fontSize: 12 }}>
           The WHO tables are loaded as published. The wording on this screen is waiting for a clinician to check it.
         </Text>
+      )}
+      {preterm && (
+        <TouchableOpacity
+          onPress={() => setUseCorrected((v) => !v)}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: useCorrected }}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+        >
+          <View style={{ width: 20, height: 20, borderRadius: 4, borderWidth: 1, borderColor: ACCENT, backgroundColor: useCorrected ? ACCENT : 'transparent' }} />
+          <Text style={{ color: theme.text, fontSize: 13, flex: 1 }}>
+            Born at {gestationalAgeWeeks} weeks. Use corrected age until 2 years.
+          </Text>
+        </TouchableOpacity>
       )}
       <View style={{ flexDirection: 'row', gap: 8 }}>
         {METRICS.map((m) => (
@@ -119,9 +133,9 @@ export function GrowthChart({ entries, gender, dob, gestationalAgeWeeks }: Props
             Latest {METRIC_LABEL[metric].title.toLowerCase()}: {latest.value} {unit}, about the {Math.round(latest.percentile)}th percentile
           </Text>
           <Text style={{ color: theme.text, fontSize: 13 }}>{BAND_TEXT[latest.band]}</Text>
-          {preterm && (
+          {latest.corrected && (
             <Text style={{ color: theme.muted, fontSize: 12 }}>
-              Born before 37 weeks. These charts use age from birth and may not suit a baby born early. Your clinic can adjust for this.
+              Read at corrected age ({latest.ageMonths.toFixed(1)} months), counted from the due date because the baby was born early. Age from birth is {latest.chronologicalMonths.toFixed(1)} months.
             </Text>
           )}
         </View>

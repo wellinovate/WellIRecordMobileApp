@@ -8,7 +8,7 @@ Status: `pending_clinical_review` (`WHO_GROWTH_REVIEW` in `src/data/whoGrowth.ts
 2. Length vs height. Lying length is used under 24 months and standing height from 24 months. WHO's 0.7 cm difference at 24 months is tested.
 3. Bands. Within range: -2 to +2 SD. Below/above: beyond 2 SD. Well below/above: beyond 3 SD. Implausible (likely typing error): weight outside -6/+5, length outside -6/+6, head outside -5/+5 SD.
 4. Weight beyond +-3 SD uses WHO's linear adjustment.
-5. No correction for prematurity. Children born before 37 weeks and under 24 months get a note. Decide whether corrected age should be built.
+5. Corrected age. For children born before 37 weeks and under 24 months, age is counted from the due date (40 weeks minus gestational age, subtracted from age). The parent can switch it off. Readings taken before the due date are left off, since the WHO standard starts at term. Confirm the 37-week and 24-month cut-offs, and whether preterm-specific charts are wanted.
 6. Not covered: weight-for-length, BMI-for-age, over 5 years, children with conditions that have their own charts.
 
 ## Wording shown to parents

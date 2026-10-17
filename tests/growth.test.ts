@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { WHO_GROWTH, type GrowthMetric, type GrowthSex } from '../src/data/whoGrowth';
 import {
-  ageInMonths, bandOf, curves, lmsAt, percentileOf, placeMeasurement, sexKey, tableFor, valueAtZ, zScore,
+  ageInMonths, bandOf, correctedAge, curves, needsCorrection, lmsAt, percentileOf, placeMeasurement, sexKey, tableFor, valueAtZ, zScore,
 } from '../src/utils/growth';
 
 const SEXES: GrowthSex[] = ['boys', 'girls'];
@@ -143,5 +143,41 @@ describe('chart curves', () => {
       c.forEach((line) => assert.equal(line.points.length, 61));
       for (let i = 1; i < c.length; i++) assert.ok(c[i].points[30].y > c[i - 1].points[30].y);
     }
+  });
+});
+
+describe('corrected age', () => {
+  it('applies only under 37 weeks and under 24 months', () => {
+    assert.equal(needsCorrection(5, 32), true);
+    assert.equal(needsCorrection(5, 37), false);
+    assert.equal(needsCorrection(5, 40), false);
+    assert.equal(needsCorrection(24, 32), false);
+    assert.equal(needsCorrection(5, null), false);
+    assert.equal(needsCorrection(5, 12), false, 'implausible gestation is ignored');
+  });
+  it('subtracts the weeks missing from 40', () => {
+    // 8 weeks early is about 1.84 months
+    assert.ok(Math.abs(correctedAge(6, 32) - (6 - 8 / (30.4375 / 7))) < 1e-9);
+    assert.ok(Math.abs(correctedAge(6, 32) - 4.16) < 0.01);
+  });
+  it('reads a preterm baby at the corrected age and can be turned off', () => {
+    const dob = '2026-01-01';
+    const on = '2026-05-01'; // about 3.97 months from birth, born at 32 weeks
+    const w = 6.0;
+    const corr = placeMeasurement('weight', 'Female', dob, on, w, { gestationalAgeWeeks: 32 })!;
+    const raw = placeMeasurement('weight', 'Female', dob, on, w, { gestationalAgeWeeks: 32, correct: false })!;
+    assert.equal(corr.corrected, true);
+    assert.equal(raw.corrected, false);
+    assert.ok(corr.ageMonths < raw.ageMonths - 1.5);
+    assert.ok(corr.z > raw.z, 'same weight is further up the chart at the younger age');
+    assert.ok(Math.abs(corr.chronologicalMonths - raw.ageMonths) < 1e-9);
+  });
+  it('leaves off readings taken before the due date', () => {
+    assert.equal(placeMeasurement('weight', 'Male', '2026-01-01', '2026-01-20', 1.8, { gestationalAgeWeeks: 30 }), null);
+  });
+  it('does not change a term baby', () => {
+    const a = placeMeasurement('weight', 'Male', '2026-01-01', '2026-04-01', 6, { gestationalAgeWeeks: 40 })!;
+    const b = placeMeasurement('weight', 'Male', '2026-01-01', '2026-04-01', 6)!;
+    assert.equal(a.z, b.z);
   });
 });
