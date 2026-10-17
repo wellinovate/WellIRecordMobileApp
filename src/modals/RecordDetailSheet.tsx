@@ -1,5 +1,7 @@
 import { useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   Modal,
   ScrollView,
   Text,
@@ -13,6 +15,7 @@ import { RECORD_META } from "../data/mockData";
 import { hapticFeedback } from "../utils/haptics";
 import type { WelliApp } from "../state/useWelliApp";
 import { PdfViewerModal } from "./PdfViewerModal";
+import { printRecord, shareRecord } from "../utils/recordFile";
 
 function BackIcon() {
   return (
@@ -49,6 +52,8 @@ export function RecordDetailSheet({ app }: { app: WelliApp }) {
     title: string;
   } | null>(null);
 
+  const [busy, setBusy] = useState<"share" | "print" | null>(null);
+
   const record = records.find((item) => item.id === state.recordDetailId);
 
   if (!record) return null;
@@ -74,6 +79,45 @@ export function RecordDetailSheet({ app }: { app: WelliApp }) {
     }
 
     actions.showToast("This record has no document attached");
+  };
+
+  const patientName = patient?.name || "Patient";
+  const isFacility = record.source === "facility";
+
+  const sendOut = () => {
+    hapticFeedback.light();
+    Alert.alert(
+      "Send this result?",
+      "It leaves WelliRecord and goes to the app you choose, such as WhatsApp. That app's own privacy terms apply.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Continue",
+          onPress: async () => {
+            setBusy("share");
+            try {
+              await shareRecord(record, patientName);
+            } catch (err: any) {
+              actions.showToast(err?.message || "Could not open the share sheet. Try again.");
+            } finally {
+              setBusy(null);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const print = async () => {
+    hapticFeedback.light();
+    setBusy("print");
+    try {
+      await printRecord(record, patientName);
+    } catch (err: any) {
+      actions.showToast(err?.message || "Could not print this result. Try again.");
+    } finally {
+      setBusy(null);
+    }
   };
 
   return (
@@ -111,7 +155,7 @@ export function RecordDetailSheet({ app }: { app: WelliApp }) {
             </View>
 
             <Text className="mt-3 text-[11px] font-semibold text-[#315B90]">
-              Documents · Patient upload
+              {isFacility ? "Documents · Facility result" : "Documents · Patient upload"}
             </Text>
 
             <Text className="mt-3 text-[28px] leading-[34px] font-extrabold text-[#082F67]">
@@ -133,7 +177,7 @@ export function RecordDetailSheet({ app }: { app: WelliApp }) {
 
                 <View className="flex-1">
                   <Text className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    My document.pdf
+                    {firstAttachment?.name || (isFacility ? "Facility result" : "Document")}
                   </Text>
 
                   <Text className="mt-1 text-[15px] font-extrabold text-[#173B68]">
@@ -172,7 +216,7 @@ export function RecordDetailSheet({ app }: { app: WelliApp }) {
                     Source
                   </Text>
                   <Text className="mt-1 text-[13px] font-semibold text-[#173B68]">
-                    Patient upload
+                    {isFacility ? "Facility result" : "Patient upload"}
                   </Text>
                 </View>
               </View>
@@ -215,11 +259,12 @@ export function RecordDetailSheet({ app }: { app: WelliApp }) {
 
             <View className="mt-4 rounded-2xl border border-[#D7E2F1] bg-[#F3F6FB] p-4">
               <Text className="text-[13px] font-bold text-[#173B68]">
-                Patient-uploaded document
+                {isFacility ? "Sent by your facility" : "Patient-uploaded document"}
               </Text>
               <Text className="mt-2 text-[11.5px] leading-[17px] text-[#536A84]">
-                This record belongs to {patient?.name || "the patient"} and is
-                not automatically treated as a verified clinical result.
+                {isFacility
+                  ? `This result was sent to ${patient?.name || "the patient"}'s record by ${record.provider}.`
+                  : `This record belongs to ${patient?.name || "the patient"} and is not automatically treated as a verified clinical result.`}
               </Text>
             </View>
 
@@ -245,13 +290,33 @@ export function RecordDetailSheet({ app }: { app: WelliApp }) {
             </TouchableOpacity>
 
             <TouchableOpacity
-              activeOpacity={0.75}
-              onPress={actions.downloadRecord}
-              className="mt-3 min-h-[44px] items-center justify-center"
+              activeOpacity={0.8}
+              disabled={busy !== null}
+              onPress={sendOut}
+              className="mt-3 min-h-[48px] items-center justify-center rounded-xl border border-slate-200 bg-white"
             >
-              <Text className="text-[12px] font-semibold text-slate-500">
-                Download document
-              </Text>
+              {busy === "share" ? (
+                <ActivityIndicator />
+              ) : (
+                <Text className="text-[13px] font-semibold text-[#315B90]">
+                  Send via WhatsApp or another app
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.8}
+              disabled={busy !== null}
+              onPress={print}
+              className="mt-3 min-h-[48px] items-center justify-center rounded-xl border border-slate-200 bg-white"
+            >
+              {busy === "print" ? (
+                <ActivityIndicator />
+              ) : (
+                <Text className="text-[13px] font-semibold text-[#315B90]">
+                  Print or save as PDF
+                </Text>
+              )}
             </TouchableOpacity>
           </ScrollView>
         </SafeAreaView>

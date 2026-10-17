@@ -33,7 +33,7 @@ via `.env`, which is gitignored):
 - `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`: required. Release builds throw at launch without it;
   dev builds fall back to the Clerk development instance.
 - `EXPO_PUBLIC_API_URL`: optional override of the backend URL in `src/services/config.ts`.
-- `EXPO_PUBLIC_WELLIPAY_API_URL`: address of the wellipay-api service. Without it the WelliPay screen shows "not available".
+- `EXPO_PUBLIC_WELLIPAY_API_URL`: address of the wellipay-api service. Without it the WelliPay and HMO and coverage screens show "not available". It is read at build time, so set it in EAS and rebuild: `npx eas-cli env:create --name EXPO_PUBLIC_WELLIPAY_API_URL --value https://<wellipay-api host> --environment preview --visibility plaintext` (repeat for `production`). The service's health check is `/healthz`.
 - Server env for video visits (Render): `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`. Without them the token route returns 503.
 - `GOOGLE_MAPS_ANDROID_API_KEY`, `GOOGLE_MAPS_IOS_API_KEY`: read by `app.config.js`.
 
@@ -80,6 +80,10 @@ It completes the visit, files a clinical note in the patient's vault, and notifi
 
 `POST /api/v1/auth/sessions/revoke-others` signs out every other device (account
 `sessionsRevokedAt`, checked in `getAuthUserId`) and returns a fresh token for the caller.
+
+## Password reset
+
+`POST /api/v1/auth/password/forgot` emails a 6-digit code (5 minutes) to any email found in `User` or `Account`. `POST /api/v1/auth/password/reset` writes one bcrypt hash to both records and signs out all other devices. `/auth/login` checks `User` first and falls back to `Account`. `trust proxy` is set so rate limits count per client IP.
 
 ## Rules for changes
 
