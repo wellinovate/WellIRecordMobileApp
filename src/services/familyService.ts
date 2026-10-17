@@ -37,12 +37,9 @@ export const familyService = {
    * Fetches all dependents and family members managed by the authenticated account
    */
   async fetchFamilyMembers(): Promise<FamilyMember[]> {
-    try {
-      const res = await apiClient.get<FamilyListResponse>('/family/list');
-      return res?.familyMembers || [];
-    } catch {
-      return [];
-    }
+    // Errors are thrown on purpose. Returning [] here made a failed request look like "no dependents".
+    const res = await apiClient.get<FamilyListResponse>('/family/list');
+    return res?.familyMembers || [];
   },
 
   /**

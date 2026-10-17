@@ -32,6 +32,10 @@ const ACTION_LABEL: Record<string, string> = {
   transfer_cancelled: 'Cancelled the transfer',
   transfer_completed: 'Transferred primary responsibility',
   reminder_prefs_updated: 'Changed reminder settings',
+  facility_code_created: 'Created a clinic visit code',
+  facility_code_revoked: 'Cancelled a clinic visit code',
+  facility_viewed: 'A clinic opened the record',
+  record_exported: 'Exported the record',
   custody_locked: 'Guardian changes locked by staff',
   custody_unlocked: 'Lock lifted by staff',
 };

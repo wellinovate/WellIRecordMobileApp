@@ -118,6 +118,23 @@ The primary guardian is `FamilyMember.accountId`. Other adults are `ChildGuardia
 - Channels per guardian (`ReminderPreference`, `GET/PUT /family/:id/reminders`): app notification (default on), SMS and WhatsApp. SMS and WhatsApp need a valid Nigerian mobile number and are off until the guardian turns them on, which records a consent time. SMS needs `TERMII_API_KEY`. WhatsApp also needs `WHATSAPP_REMINDERS_ENABLED=true` (optional `TERMII_WHATSAPP_SENDER`). The WhatsApp path has not been tested against Termii, and the sender and template need Termii/Meta approval first. The app disables the switches when the server reports a channel unavailable.
 - Offline capture: `src/utils/childOfflineQueue.ts`. A vaccine dose or growth measurement that fails with a network error is stored on the phone and shown as "Waiting to sync". It is sent at sign-in, when the app returns to the foreground, or from "Sync now". Growth entries carry a `clientId` so a retry never duplicates; a 409 on a dose means it is already saved. An entry the server refuses (4xx) stays in the list with the reason until the guardian discards it. The last loaded profile is cached per child for reading offline. Milestones and the access log need a connection. Queue and cache are cleared on sign out and account deletion.
 
+## Staff accounts
+
+Staff routes (provider and operations side) use per-person accounts in `server/staff.ts`, not a shared secret.
+
+- Roles: `admin`, `clinician`, `pharmacist`, `records_officer`. Admin passes every check. Vaccination confirm: clinician or records officer. Visit summary: clinician. Pharmacy orders: pharmacist. Custody lock and guardian identity check: records officer.
+- First admin: `POST /api/v1/staff/bootstrap` with the `x-admin-secret` header and `{email, name, password}`. It works once, only while no admin exists. After that, an admin signs in with `POST /staff/auth/login` and adds people with `POST /staff/users`. The response holds a one-time temporary password; the person must change it (`POST /staff/auth/change-password`) before anything else.
+- Staff tokens last 8 hours and are signed with a key derived from `JWT_SECRET` but different from patient tokens. Changing a role, disabling an account or changing a password ends open sessions. Five wrong passwords lock the account for 15 minutes.
+- Every non-GET staff call is written to `StaffActionLog`. Recorded names (`verifiedBy`, `setBy`, `authoredBy`) are the signed-in person's own name; typed names are only taken for the legacy secret.
+- Legacy: `x-admin-secret` still works while `ALLOW_LEGACY_ADMIN_SECRET` is not `false`, so the web console and `/admin/orders` keep running. Each use is logged and warned. Move them to staff tokens, then set it to `false`.
+- Server tests: `cd server && npm test`.
+
+## FHIR export and clinic access
+
+- Export: `GET /api/v1/family/:id/fhir` returns a FHIR R4 `collection` Bundle (Patient, AllergyIntolerance, Immunization, Observation for weight, height and head circumference with LOINC codes). Needs `viewRecords`; each export is written to the access log. Built in `server/fhir.ts`. Vaccine codes are our own schedule codes in a local CodeSystem, not CVX or SNOMED, until a clinician maps them. Parent-reported doses have `primarySource: false` and a `caregiver_reported` tag; clinic-confirmed doses have `primarySource: true`. The app's "Export full record (FHIR)" button sends the JSON to the share sheet.
+- Clinic access (`server/childFacility.ts`): a guardian with `manageGuardians` creates an 8 character code for 1 to 72 hours (default 24) in the Access tab. The code is stored as an HMAC and shown once. A clinician or records officer signs in with a staff account and sends the child's WelliID and the code to `POST /facility/child/lookup` (record as a FHIR Bundle), `/facility/child/vaccinations` (adds a `provider_verified` dose or confirms the parent's entry) or `/facility/child/growth` (source `clinic`). Wrong code, unknown WelliID, expired and cancelled codes all return the same 403. A custody lock returns 423. Every use is recorded on the grant and in the child's access log under the staff member's name, and the primary guardian gets a notification for writes.
+- Not built: a clinic-facing screen (the endpoints are for the web console), mapping to CVX/SNOMED, FHIR import into the app, export of an adult's own record.
+
 ## Rules for changes
 
 - Health documents must not be sent to third-party services. Open them in-app or hand the

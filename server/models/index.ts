@@ -1091,3 +1091,133 @@ export const ReminderPreference: Model<IReminderPreference> =
   mongoose.models.ReminderPreference || mongoose.model<IReminderPreference>('ReminderPreference', ReminderPreferenceSchema);
 export const ReminderLog: Model<IReminderLog> =
   mongoose.models.ReminderLog || mongoose.model<IReminderLog>('ReminderLog', ReminderLogSchema);
+
+// Staff accounts for the provider and operations side. Patients never use these.
+export type StaffRole = 'admin' | 'clinician' | 'pharmacist' | 'records_officer';
+export interface IStaffUser extends Document {
+  email: string;
+  name: string;
+  role: StaffRole;
+  organization?: string;
+  passwordHash: string;
+  status: 'active' | 'disabled';
+  mustChangePassword: boolean;
+  tokenVersion: number;
+  failedAttempts: number;
+  lockedUntil?: Date;
+  lastLoginAt?: Date;
+  createdBy?: string;
+}
+
+const StaffUserSchema = new Schema<IStaffUser>(
+  {
+    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    name: { type: String, required: true, trim: true },
+    role: { type: String, enum: ['admin', 'clinician', 'pharmacist', 'records_officer'], required: true },
+    organization: { type: String, trim: true },
+    passwordHash: { type: String, required: true },
+    status: { type: String, enum: ['active', 'disabled'], default: 'active' },
+    mustChangePassword: { type: Boolean, default: true },
+    tokenVersion: { type: Number, default: 0 },
+    failedAttempts: { type: Number, default: 0 },
+    lockedUntil: { type: Date },
+    lastLoginAt: { type: Date },
+    createdBy: { type: String },
+  },
+  { timestamps: true }
+);
+
+// Who did what on the staff side. Kept; it is the record of clinical and custody actions.
+export interface IStaffActionLog extends Document {
+  staffId: string;
+  staffName: string;
+  role: string;
+  action: string;
+  target?: string;
+  detail?: string;
+  legacy: boolean;
+}
+
+const StaffActionLogSchema = new Schema<IStaffActionLog>(
+  {
+    staffId: { type: String, required: true, index: true },
+    staffName: { type: String, required: true },
+    role: { type: String, required: true },
+    action: { type: String, required: true },
+    target: { type: String },
+    detail: { type: String },
+    legacy: { type: Boolean, default: false },
+  },
+  { timestamps: true }
+);
+StaffActionLogSchema.index({ createdAt: -1 });
+
+// A guardian's consent for a clinic to see and add to one child's record, for a short time.
+export interface IChildFacilityGrant extends Document {
+  childId: mongoose.Types.ObjectId;
+  codeHash: string;
+  createdBy: string;
+  createdByName: string;
+  expiresAt: Date;
+  revokedAt?: Date;
+  uses: { staffId: string; staffName: string; organization?: string; action: string; at: Date }[];
+}
+
+const ChildFacilityGrantSchema = new Schema<IChildFacilityGrant>(
+  {
+    childId: { type: Schema.Types.ObjectId, required: true, index: true },
+    codeHash: { type: String, required: true, index: true },
+    createdBy: { type: String, required: true },
+    createdByName: { type: String, required: true },
+    expiresAt: { type: Date, required: true },
+    revokedAt: { type: Date },
+    uses: [
+      {
+        _id: false,
+        staffId: String,
+        staffName: String,
+        organization: String,
+        action: String,
+        at: Date,
+      },
+    ],
+  },
+  { timestamps: true }
+);
+// Remove a week after it expires.
+ChildFacilityGrantSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 7 * 24 * 60 * 60 });
+
+// App crash and error reports. No user id or token is stored. Kept for 30 days.
+export interface IClientError extends Document {
+  name: string;
+  message: string;
+  stack: string;
+  where: string;
+  fatal: boolean;
+  appVersion: string;
+  platform: string;
+  osVersion: string;
+}
+const ClientErrorSchema = new Schema<IClientError>(
+  {
+    name: { type: String, default: 'Error' },
+    message: { type: String, default: '' },
+    stack: { type: String, default: '' },
+    where: { type: String, default: '' },
+    fatal: { type: Boolean, default: false },
+    appVersion: { type: String, default: '' },
+    platform: { type: String, default: '' },
+    osVersion: { type: String, default: '' },
+  },
+  { timestamps: true }
+);
+ClientErrorSchema.index({ createdAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 });
+export const ClientError: Model<IClientError> =
+  mongoose.models.ClientError || mongoose.model<IClientError>('ClientError', ClientErrorSchema);
+
+export const StaffUser: Model<IStaffUser> =
+  mongoose.models.StaffUser || mongoose.model<IStaffUser>('StaffUser', StaffUserSchema);
+export const StaffActionLog: Model<IStaffActionLog> =
+  mongoose.models.StaffActionLog || mongoose.model<IStaffActionLog>('StaffActionLog', StaffActionLogSchema);
+export const ChildFacilityGrant: Model<IChildFacilityGrant> =
+  mongoose.models.ChildFacilityGrant || mongoose.model<IChildFacilityGrant>('ChildFacilityGrant', ChildFacilityGrantSchema);

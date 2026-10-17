@@ -24,6 +24,7 @@ import type {
 import { EXPIRY_SHORT_LABEL_MAP } from '../utils/expiry';
 import { hapticFeedback } from '../utils/haptics';
 import { storage } from '../utils/storage';
+import { reportError } from '../utils/errorReporting';
 import { authenticateWithBiometrics, getBiometricStatus } from '../utils/biometrics';
 import { authService, type AuthSession } from '../services/authService';
 import { apiClient, setAuthToken } from '../services/apiClient';
@@ -65,6 +66,8 @@ export interface AppState {
   consentExpiry: ShareExpiry;
   consentPurpose: string;
   showFamilyAccess: boolean;
+  /** Set when the family list could not be loaded. Null when it loaded or has not been tried. */
+  familyLoadError: string | null;
   showChildProfile: boolean;
   childProfileMemberId: string | null;
   showAddFamilyMember: boolean;
@@ -268,6 +271,7 @@ const initialState: AppState = {
   consentExpiry: '24h',
   consentPurpose: '',
   showFamilyAccess: false,
+  familyLoadError: null,
   showChildProfile: false,
   childProfileMemberId: null,
   showAddFamilyMember: false,
@@ -574,7 +578,7 @@ export function useWelliApp() {
               patch({ recordsList: merged });
             }
           } catch (err) {
-            console.log('[Records] FETCH FAILED:', err);
+            reportError(err, { where: 'records.initialLoad' });
           }
 
           // Fetch genuine dependents & family members from cloud
@@ -582,14 +586,19 @@ export function useWelliApp() {
             const remoteFamily = await familyService.fetchFamilyMembers();
             if (Array.isArray(remoteFamily) && remoteFamily.length > 0) {
               patch((s) => ({
+                familyLoadError: null,
                 familyMembers: [
                   s.familyMembers[0], // primary user
                   ...remoteFamily.map(mapRemoteFamilyMember),
                 ],
               }));
+            } else {
+              patch({ familyLoadError: null });
             }
-          } catch {
-            // Keep local primary user
+          } catch (err: any) {
+            // Keep the local primary user, and say that the list is not current.
+            reportError(err, { where: 'family.initialLoad' });
+            patch({ familyLoadError: err?.message || 'Could not load your family list.' });
           }
         } else {
           // No saved session: remain unauthenticated.
@@ -794,8 +803,16 @@ export function useWelliApp() {
 
   // Re-reads the family list, including children other guardians shared with me.
   const reloadFamilyNow = async () => {
-    const remote = await familyService.fetchFamilyMembers();
+    let remote;
+    try {
+      remote = await familyService.fetchFamilyMembers();
+    } catch (err: any) {
+      reportError(err, { where: 'family.reload' });
+      patch({ familyLoadError: err?.message || 'Could not load your family list.' });
+      return;
+    }
     patch((s) => ({
+      familyLoadError: null,
       familyMembers: [
         s.familyMembers.find((member) => member.id === 'me') || s.familyMembers[0],
         ...remote.map(mapRemoteFamilyMember),
@@ -805,15 +822,22 @@ export function useWelliApp() {
 
   const refreshAuthenticatedFamily = () => {
     familyService.fetchFamilyMembers().then((remoteFamily) => {
-      if (!Array.isArray(remoteFamily) || remoteFamily.length === 0) return;
+      if (!Array.isArray(remoteFamily) || remoteFamily.length === 0) {
+        patch({ familyLoadError: null });
+        return;
+      }
 
       patch((s) => ({
+        familyLoadError: null,
         familyMembers: [
           s.familyMembers.find((member) => member.id === 'me') || s.familyMembers[0],
           ...remoteFamily.map(mapRemoteFamilyMember),
         ],
       }));
-    }).catch(() => {});
+    }).catch((err: any) => {
+      reportError(err, { where: 'family.refresh' });
+      patch({ familyLoadError: err?.message || 'Could not load your family list.' });
+    });
   };
 
   const commitAuthenticatedSession = async (
@@ -2014,6 +2038,7 @@ export function useWelliApp() {
       setAuthToken(null);
       await clearChildOfflineData();
       patch({
+        familyLoadError: null,
         isAuthenticated: false,
         user: null,
         loggedOut: false,

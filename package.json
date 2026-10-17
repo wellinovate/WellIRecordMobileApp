@@ -11,7 +11,8 @@
     "web": "expo start --web",
     "android": "expo run:android",
     "ios": "expo start --go --ios",
-    "lint": "oxlint"
+    "lint": "oxlint",
+    "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@clerk/expo": "^4.6.2",
@@ -68,6 +69,7 @@
     "oxlint": "^1.79.0",
     "prettier-plugin-tailwindcss": "^0.5.14",
     "tailwindcss": "^3.4.19",
+    "tsx": "^4.23.15",
     "typescript": "~6.0.2",
     "vite": "^8.2.2"
   }

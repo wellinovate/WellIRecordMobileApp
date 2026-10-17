@@ -131,7 +131,34 @@ export interface ReminderState {
   upcoming: { kind: 'due_soon' | 'due' | 'overdue'; count: number }[];
 }
 
+export interface FacilityGrant {
+  id: string;
+  state: 'active' | 'expired' | 'revoked';
+  expiresAt: string;
+  createdAt: string;
+  uses: { staffName: string; organization: string; action: string; at: string }[];
+}
+
 export const childHealthService = {
+  async createFacilityCode(memberId: string, hours: number): Promise<{ code: string; grant: FacilityGrant }> {
+    return apiClient.post(`/family/${memberId}/facility-codes`, { hours });
+  },
+
+  async listFacilityGrants(memberId: string): Promise<FacilityGrant[]> {
+    const res = await apiClient.get<{ grants: FacilityGrant[] }>(`/family/${memberId}/facility-codes`);
+    return res.grants || [];
+  },
+
+  async revokeFacilityGrant(memberId: string, grantId: string): Promise<void> {
+    await apiClient.delete(`/family/${memberId}/facility-codes/${grantId}`);
+  },
+
+  /** The child's record as a FHIR R4 Bundle, as text for the share sheet. */
+  async exportFhir(memberId: string): Promise<string> {
+    const bundle = await apiClient.get<unknown>(`/family/${memberId}/fhir`);
+    return JSON.stringify(bundle, null, 2);
+  },
+
   async fetchReminders(memberId: string): Promise<ReminderState> {
     return apiClient.get<ReminderState>(`/family/${memberId}/reminders`);
   },

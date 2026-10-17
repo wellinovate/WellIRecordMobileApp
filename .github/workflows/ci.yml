@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Type-check the app
+        run: npx tsc --noEmit -p tsconfig.app.json
+      - name: Lint
+        run: npm run lint
+      - name: Tests
+        run: npm test
+      - name: Check that Metro bundles for Android
+        run: CI=1 npx expo export --platform android --output-dir /tmp/export
+        env:
+          EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_ci_placeholder
+
+  server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Type-check and build the server
+        run: npx tsc --noEmit
+      - name: Tests
+        run: npm test
+      - name: Dependency audit (fails on high or critical)
+        run: npm audit --omit=dev --audit-level=high
+
+  app-audit:
+    # Informational. The findings are in build tooling that does not ship in the app; see docs/security/dependency-audit.md.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm audit --omit=dev --audit-level=critical

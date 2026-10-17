@@ -10,6 +10,7 @@ import rateLimit from 'express-rate-limit';
 import jwt from 'jsonwebtoken';
 import { AccessToken } from 'livekit-server-sdk';
 import bcrypt from 'bcryptjs';
+import { createStaff } from './staff';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 dotenv.config();
@@ -21,6 +22,7 @@ import {
   FamilyMember,
   ChildVaccination,
   ChildGuardian,
+  ClientError,
   ChildGrowth,
   HealthRecord,
   Prescription,
@@ -39,6 +41,8 @@ import {
 import { createWellipayRouter } from './wellipayPartner';
 import { IMMUNIZATION_SCHEDULE, scheduleDoseByCode } from './data/immunizationSchedule';
 import { createChildDevelopmentRouter } from './childDevelopment';
+import { createChildFacilityRouter } from './childFacility';
+import { childToFhirBundle } from './fhir';
 import { createChildReminderRouter, startChildReminderSweep, type ReminderDeps } from './childReminders';
 import { auditChild, createChildAccessRouter, effectivePerms, resolveChildAccess, type PermKey } from './childAccess';
 
@@ -119,6 +123,10 @@ const passwordResetLimiter = rateLimit({
   legacyHeaders: false,
   message: { success: false, message: 'Too many password reset attempts. Please try again in 15 minutes.' },
 });
+
+// Staff accounts and roles (replaces the shared ADMIN_SECRET).
+const staff = createStaff({ jwtSecret: JWT_SECRET, limiter: passwordResetLimiter });
+app.use('/api/v1', staff.router);
 
 const appointmentLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
@@ -2171,6 +2179,31 @@ app.get('/api/v1/family/:id/child-profile', async (req: Request, res: Response) 
   }
 });
 
+// GET /api/v1/family/:id/fhir — the child's record as a FHIR R4 Bundle (Patient, Immunization,
+// Observation, AllergyIntolerance). Same permission as viewing the profile. Written to the access log.
+app.get('/api/v1/family/:id/fhir', async (req: Request, res: Response) => {
+  try {
+    const member = await loadManagedChild(req, res);
+    if (!member) return;
+    const [vaccinations, growth] = await Promise.all([
+      ChildVaccination.find({ memberId: member._id }).sort({ administeredDate: 1 }),
+      ChildGrowth.find({ memberId: member._id }).sort({ measuredOn: -1 }),
+    ]);
+    await logChild(req, member, 'record_exported', 'FHIR');
+    const profile = childProfilePayload(member);
+    const bundle = childToFhirBundle(
+      { ...profile, id: String(member._id) },
+      vaccinations.map((v: any) => ({ ...v.toObject(), id: String(v._id) })),
+      growth.map((g: any) => ({ ...g.toObject(), id: String(g._id) }))
+    );
+    res.type('application/fhir+json');
+    return res.send(JSON.stringify(bundle));
+  } catch (err) {
+    console.error('[GET /family/:id/fhir] ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Could not export the record' });
+  }
+});
+
 // PATCH /api/v1/family/:id/child-profile — birth, location and emergency details.
 app.patch('/api/v1/family/:id/child-profile', async (req: Request, res: Response) => {
   try {
@@ -2298,13 +2331,13 @@ app.delete('/api/v1/family/:id/vaccinations/:vid', async (req: Request, res: Res
 
 // POST /api/v1/family/:id/vaccinations/:vid/verify — provider side, admin secret.
 // Body: { verifiedBy, source }. Only this route can set provider_verified.
-app.post('/api/v1/family/:id/vaccinations/:vid/verify', requireAdminSecret, async (req: Request, res: Response) => {
+app.post('/api/v1/family/:id/vaccinations/:vid/verify', staff.requireStaff('clinician', 'records_officer'), async (req: Request, res: Response) => {
   try {
     const { id, vid } = req.params;
     if (!mongoose.isValidObjectId(id) || !mongoose.isValidObjectId(vid)) {
       return res.status(400).json({ success: false, message: 'Invalid id' });
     }
-    const verifiedBy = cleanText(req.body?.verifiedBy, 120);
+    const verifiedBy = staff.actorName(req, cleanText(req.body?.verifiedBy, 120));
     if (!verifiedBy) return res.status(400).json({ success: false, message: 'verifiedBy is required' });
     const updated = await ChildVaccination.findOneAndUpdate(
       { _id: vid, memberId: id },
@@ -2395,12 +2428,60 @@ const reminderDeps: ReminderDeps = {
 };
 app.use('/api/v1', createChildDevelopmentRouter(getAuthUserId));
 app.use('/api/v1', createChildReminderRouter(reminderDeps));
+app.use(
+  '/api/v1',
+  createChildFacilityRouter({
+    getAuthUserId,
+    requireStaff: staff.requireStaff,
+    limiter: passwordResetLimiter,
+    codeSecret: JWT_SECRET,
+    notify: async (userId, title, body) => {
+      await dispatchPushNotification({ userId, type: 'system', title, body, categoryLabel: 'Family' });
+    },
+  })
+);
+
+// App crash reports. Anonymous by design: no token or user id is read or stored.
+const clientErrorLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many reports' },
+});
+const scrubServer = (v: unknown, max: number) =>
+  String(v ?? '')
+    .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, '[email]')
+    .replace(/\b[0-9a-f]{24}\b/gi, '[id]')
+    .replace(/\beyJ[\w-]+\.[\w-]+\.[\w-]+/g, '[token]')
+    .replace(/\+?\d[\d\s().-]{7,}\d/g, '[number]')
+    .slice(0, max);
+app.post('/api/v1/client-errors', clientErrorLimiter, async (req: Request, res: Response) => {
+  try {
+    const b = req.body || {};
+    await ClientError.create({
+      name: scrubServer(b.name, 60),
+      message: scrubServer(b.message, 300),
+      stack: scrubServer(b.stack, 2000),
+      where: scrubServer(b.where, 80),
+      fatal: Boolean(b.fatal),
+      appVersion: scrubServer(b.appVersion, 20),
+      platform: scrubServer(b.platform, 20),
+      osVersion: scrubServer(b.osVersion, 20),
+    });
+  } catch (err) {
+    console.error('[client-errors] could not store a report', err);
+  }
+  // Always 204: the app never needs to react to a failed report.
+  return res.status(204).end();
+});
 startChildReminderSweep(reminderDeps);
 app.use(
   '/api/v1',
   createChildAccessRouter({
     getAuthUserId,
-    requireAdminSecret,
+    requireStaff: staff.requireStaff,
+    actorName: staff.actorName,
     limiter: passwordResetLimiter,
     sendEmail: async (to, subject, text) => {
       const r = await sendWelliEmail({ to, subject, text, html: `<p>${text}</p>` });
@@ -2927,26 +3008,9 @@ app.get('/api/v1/pharmacy/orders/:id/status', async (req: Request, res: Response
   }
 });
 
-// Simple shared-secret admin auth — no staff/role system exists yet.
-// Protects the pending-order review endpoints only. Replace with real
-// staff accounts + RBAC once that system is built.
-function requireAdminSecret(req: Request, res: Response, next: () => void) {
-  const provided = req.headers['x-admin-secret'];
-  const expected = process.env.ADMIN_SECRET;
-  if (!expected) {
-    return res.status(503).json({ success: false, message: 'Admin review is not configured yet.' });
-  }
-  const providedBuf = Buffer.from(String(provided || ''));
-  const expectedBuf = Buffer.from(expected);
-  if (providedBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(providedBuf, expectedBuf)) {
-    return res.status(401).json({ success: false, message: 'Invalid admin credentials.' });
-  }
-  next();
-}
-
 // GET /api/v1/pharmacy/orders/pending — list all patient-initiated
 // orders awaiting review, most recent first.
-app.get('/api/v1/pharmacy/orders/pending', requireAdminSecret, async (req: Request, res: Response) => {
+app.get('/api/v1/pharmacy/orders/pending', staff.requireStaff('pharmacist'), async (req: Request, res: Response) => {
   try {
     if (mongoose.connection.readyState !== 1) {
       return res.json({ success: true, orders: [] });
@@ -2964,7 +3028,7 @@ app.get('/api/v1/pharmacy/orders/pending', requireAdminSecret, async (req: Reque
 // POST /api/v1/pharmacy/orders/:id/approve — moves an order to 'active'
 // so it enters the normal dispatch/refill flow. Optionally accepts
 // pricing fields to populate at approval time.
-app.post('/api/v1/pharmacy/orders/:id/approve', requireAdminSecret, async (req: Request, res: Response) => {
+app.post('/api/v1/pharmacy/orders/:id/approve', staff.requireStaff('pharmacist'), async (req: Request, res: Response) => {
   const { id } = req.params;
   const { totalPriceNaira, hmoCoveredNaira, patientCoPayNaira, refillsTotal, eta } = req.body;
 
@@ -3018,7 +3082,7 @@ app.post('/api/v1/pharmacy/orders/:id/approve', requireAdminSecret, async (req: 
 
 // POST /api/v1/pharmacy/orders/:id/reject — marks an order rejected
 // with a reason, and notifies the patient why.
-app.post('/api/v1/pharmacy/orders/:id/reject', requireAdminSecret, async (req: Request, res: Response) => {
+app.post('/api/v1/pharmacy/orders/:id/reject', staff.requireStaff('pharmacist'), async (req: Request, res: Response) => {
   const { id } = req.params;
   const { reason } = req.body;
 
@@ -3060,8 +3124,8 @@ app.post('/api/v1/pharmacy/orders/:id/reject', requireAdminSecret, async (req: R
 });
 
 // Minimal internal admin page for reviewing patient-initiated medication
-// orders. No staff/role system exists yet — gated by the same
-// ADMIN_SECRET used by the /pharmacy/orders/* endpoints. Not linked from
+// orders. Gated by the legacy ADMIN_SECRET header (see server/staff.ts);
+// it stops working when ALLOW_LEGACY_ADMIN_SECRET=false. Not linked from
 // anywhere in the app; access this directly at /admin/orders.
 app.get('/admin/orders', (_req: Request, res: Response) => {
   res.send(`<!DOCTYPE html>
@@ -3926,11 +3990,11 @@ function normalizeWebAppointment(doc: any) {
 // Called by the clinician side (web console backend) after a visit, with the
 // admin secret. Marks the visit completed, files a clinical note in the
 // patient's vault, optionally records a prescription, and notifies the patient.
-app.post('/api/v1/telehealth/appointments/:id/summary', requireAdminSecret, async (req: Request, res: Response) => {
+app.post('/api/v1/telehealth/appointments/:id/summary', staff.requireStaff('clinician'), async (req: Request, res: Response) => {
   const { id } = req.params;
   const diagnosis = String(req.body?.diagnosis || '').trim().slice(0, 300);
   const notes = String(req.body?.notes || '').trim().slice(0, 4000);
-  const authoredBy = String(req.body?.authoredBy || '').trim().slice(0, 120);
+  const authoredBy = staff.actorName(req, String(req.body?.authoredBy || '').trim().slice(0, 120));
   const rx = req.body?.prescription;
   if (!mongoose.isValidObjectId(id)) {
     return res.status(400).json({ success: false, message: 'Invalid appointment ID' });

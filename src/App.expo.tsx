@@ -55,6 +55,8 @@ import { NotificationSettingsModal } from "./modals/NotificationSettingsModal";
 
 import { FamilyAccessModal } from "./modals/FamilyAccessModal";
 import { ChildProfileModal } from "./modals/ChildProfileModal";
+import { ErrorBoundary } from "./components/ErrorBoundary";
+import { installGlobalErrorHandlers } from "./utils/errorReporting";
 
 import { AddFamilyMemberModal } from "./modals/AddFamilyMemberModal";
 
@@ -462,14 +464,18 @@ function MainWelliApp() {
   );
 }
 
+installGlobalErrorHandlers();
+
 export default function App() {
   return (
     <SafeAreaProvider>
-      <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
-        <ClerkLoaded>
-          <MainWelliApp />
-        </ClerkLoaded>
-      </ClerkProvider>
+      <ErrorBoundary>
+        <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+          <ClerkLoaded>
+            <MainWelliApp />
+          </ClerkLoaded>
+        </ClerkProvider>
+      </ErrorBoundary>
     </SafeAreaProvider>
   );
 }

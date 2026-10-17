@@ -218,6 +218,17 @@ export function FamilyAccessModal({ app }: { app: WelliApp }) {
               </View>
             </View>
 
+            {state.familyLoadError ? (
+              <View style={{ borderWidth: 1, borderColor: '#f59e0b', backgroundColor: '#fffbeb', borderRadius: 12, padding: 12, marginBottom: 12, gap: 6 }}>
+                <Text style={{ color: '#92400e', fontSize: 13, lineHeight: 18 }}>
+                  Could not load your family list: {state.familyLoadError} People you added may be missing from this screen.
+                </Text>
+                <TouchableOpacity accessibilityRole="button" onPress={() => { actions.reloadFamily(); }} style={{ minHeight: 40, justifyContent: 'center' }}>
+                  <Text style={{ color: '#315B90', fontSize: 13, fontWeight: '700' }}>Try again</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
             {/* Dependents List */}
             <Text style={styles.sectionHeader}>Managed Dependents ({dependents.length})</Text>
             {dependents.length === 0 ? (
