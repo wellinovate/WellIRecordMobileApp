@@ -169,6 +169,17 @@ export interface ChildProfileDetails {
   lga?: string | null;
   criticalAlerts?: string | null;
   emergencyContact?: { name?: string | null; relationship?: string | null; phone?: string | null };
+  school?: SchoolProfile;
+}
+
+// What the guardian chose to share with a school. Nothing is sent automatically.
+export interface SchoolProfile {
+  name?: string | null;
+  className?: string | null;
+  teacherName?: string | null;
+  contactPhone?: string | null;
+  healthNotes?: string | null;
+  include?: { emergencyContact?: boolean; allergies?: boolean; conditions?: boolean; immunizations?: boolean };
 }
 
 export interface Doctor {

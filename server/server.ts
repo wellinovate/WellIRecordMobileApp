@@ -38,6 +38,7 @@ import {
 } from './models';
 import { createWellipayRouter } from './wellipayPartner';
 import { IMMUNIZATION_SCHEDULE, scheduleDoseByCode } from './data/immunizationSchedule';
+import { createChildDevelopmentRouter } from './childDevelopment';
 import { auditChild, createChildAccessRouter, effectivePerms, resolveChildAccess, type PermKey } from './childAccess';
 
 const app = express();
@@ -2173,6 +2174,22 @@ app.patch('/api/v1/family/:id/child-profile', async (req: Request, res: Response
         phone: cleanText(b.emergencyContact.phone, 30) ?? null,
       };
     }
+    if (b.school && typeof b.school === 'object') {
+      const sc = b.school;
+      next.school = {
+        name: cleanText(sc.name, 120) ?? null,
+        className: cleanText(sc.className, 40) ?? null,
+        teacherName: cleanText(sc.teacherName, 80) ?? null,
+        contactPhone: cleanText(sc.contactPhone, 30) ?? null,
+        healthNotes: cleanText(sc.healthNotes, 300) ?? null,
+        include: {
+          emergencyContact: Boolean(sc.include?.emergencyContact),
+          allergies: Boolean(sc.include?.allergies),
+          conditions: Boolean(sc.include?.conditions),
+          immunizations: Boolean(sc.include?.immunizations),
+        },
+      };
+    }
     member.childProfile = next;
     member.markModified('childProfile');
     for (const key of ['bloodType', 'genotype', 'allergies', 'gender'] as const) {
@@ -2335,6 +2352,7 @@ app.delete('/api/v1/family/:id/growth/:gid', async (req: Request, res: Response)
   }
 });
 
+app.use('/api/v1', createChildDevelopmentRouter(getAuthUserId));
 app.use(
   '/api/v1',
   createChildAccessRouter({

@@ -15,6 +15,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import QRCode from 'react-native-qrcode-svg';
 import { ModalHeader } from '../components/ModalHeader';
 import { ChildAccessPanel } from './ChildAccessPanel';
+import { DevelopmentPanel } from './DevelopmentPanel';
+import { SchoolProfileCard } from './SchoolProfileCard';
 import { useTheme } from '../theme/ThemeContext';
 import type { WelliApp } from '../state/useWelliApp';
 import {
@@ -36,11 +38,12 @@ import {
   type Vaccination,
 } from '../utils/immunization';
 
-type Tab = 'overview' | 'vaccines' | 'growth' | 'details' | 'access';
+type Tab = 'overview' | 'vaccines' | 'growth' | 'development' | 'details' | 'access';
 const TABS: { key: Tab; label: string }[] = [
   { key: 'overview', label: 'Overview' },
   { key: 'vaccines', label: 'Vaccines' },
   { key: 'growth', label: 'Growth' },
+  { key: 'development', label: 'Development' },
   { key: 'details', label: 'Details' },
   { key: 'access', label: 'Access' },
 ];
@@ -661,6 +664,19 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
       ) : (
         <Text style={[styles.sub, { color: theme.muted }]}>The primary guardian has not given you permission to edit these details.</Text>
       )}
+      {profile && memberId ? (
+        <SchoolProfileCard
+          memberId={memberId}
+          profile={profile}
+          rows={rows}
+          canAdd={canAdd}
+          toast={actions.showToast}
+          onSaved={(saved) => {
+            setBundle((b) => (b ? { ...b, profile: saved } : b));
+            actions.applyChildProfile(memberId, saved);
+          }}
+        />
+      ) : null}
     </View>
   );
 
@@ -668,7 +684,7 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={close}>
       <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]}>
         <ModalHeader title={`${name}'s health profile`} onClose={close} />
-        <View style={[styles.tabs, { borderColor: theme.border }]}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.tabsScroll, { borderColor: theme.border }]} contentContainerStyle={styles.tabs}>
           {TABS.map((t) => {
             const on = tab === t.key;
             return (
@@ -686,7 +702,7 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
               </TouchableOpacity>
             );
           })}
-        </View>
+        </ScrollView>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {!!error && <Text style={styles.error}>{error}</Text>}
           {loading ? (
@@ -699,9 +715,12 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
             vaccines()
           ) : tab === 'growth' ? (
             growth()
+          ) : tab === 'development' && memberId ? (
+            <DevelopmentPanel memberId={memberId} dob={dob} canAdd={canAdd} toast={actions.showToast} />
           ) : tab === 'access' && memberId ? (
             <ChildAccessPanel
               memberId={memberId}
+              childName={name}
               toast={actions.showToast}
               onFamilyChanged={() => {
                 actions.reloadFamily().finally(() => actions.closeChildProfile());
@@ -719,8 +738,9 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { padding: 16, paddingBottom: 48 },
-  tabs: { flexDirection: 'row', borderBottomWidth: 1, paddingHorizontal: 8 },
-  tab: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 44, borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  tabsScroll: { flexGrow: 0, borderBottomWidth: 1 },
+  tabs: { flexDirection: 'row', paddingHorizontal: 8 },
+  tab: { paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center', minHeight: 44, borderBottomWidth: 2, borderBottomColor: 'transparent' },
   card: { borderWidth: 1, borderRadius: 14, padding: 14, gap: 4 },
   heading: { fontSize: 16, fontWeight: '800', marginBottom: 4 },
   groupTitle: { fontSize: 14, fontWeight: '800' },
