@@ -21,6 +21,7 @@ import {
   FamilyMember,
   ChildVaccination,
   ChildGuardian,
+  ClientError,
   ChildGrowth,
   HealthRecord,
   Prescription,
@@ -2395,6 +2396,41 @@ const reminderDeps: ReminderDeps = {
 };
 app.use('/api/v1', createChildDevelopmentRouter(getAuthUserId));
 app.use('/api/v1', createChildReminderRouter(reminderDeps));
+
+// App crash reports. Anonymous by design: no token or user id is read or stored.
+const clientErrorLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many reports' },
+});
+const scrubServer = (v: unknown, max: number) =>
+  String(v ?? '')
+    .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, '[email]')
+    .replace(/\b[0-9a-f]{24}\b/gi, '[id]')
+    .replace(/\beyJ[\w-]+\.[\w-]+\.[\w-]+/g, '[token]')
+    .replace(/\+?\d[\d\s().-]{7,}\d/g, '[number]')
+    .slice(0, max);
+app.post('/api/v1/client-errors', clientErrorLimiter, async (req: Request, res: Response) => {
+  try {
+    const b = req.body || {};
+    await ClientError.create({
+      name: scrubServer(b.name, 60),
+      message: scrubServer(b.message, 300),
+      stack: scrubServer(b.stack, 2000),
+      where: scrubServer(b.where, 80),
+      fatal: Boolean(b.fatal),
+      appVersion: scrubServer(b.appVersion, 20),
+      platform: scrubServer(b.platform, 20),
+      osVersion: scrubServer(b.osVersion, 20),
+    });
+  } catch (err) {
+    console.error('[client-errors] could not store a report', err);
+  }
+  // Always 204: the app never needs to react to a failed report.
+  return res.status(204).end();
+});
 startChildReminderSweep(reminderDeps);
 app.use(
   '/api/v1',

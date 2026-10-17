@@ -1091,3 +1091,31 @@ export const ReminderPreference: Model<IReminderPreference> =
   mongoose.models.ReminderPreference || mongoose.model<IReminderPreference>('ReminderPreference', ReminderPreferenceSchema);
 export const ReminderLog: Model<IReminderLog> =
   mongoose.models.ReminderLog || mongoose.model<IReminderLog>('ReminderLog', ReminderLogSchema);
+
+// App crash and error reports. No user id or token is stored. Kept for 30 days.
+export interface IClientError extends Document {
+  name: string;
+  message: string;
+  stack: string;
+  where: string;
+  fatal: boolean;
+  appVersion: string;
+  platform: string;
+  osVersion: string;
+}
+const ClientErrorSchema = new Schema<IClientError>(
+  {
+    name: { type: String, default: 'Error' },
+    message: { type: String, default: '' },
+    stack: { type: String, default: '' },
+    where: { type: String, default: '' },
+    fatal: { type: Boolean, default: false },
+    appVersion: { type: String, default: '' },
+    platform: { type: String, default: '' },
+    osVersion: { type: String, default: '' },
+  },
+  { timestamps: true }
+);
+ClientErrorSchema.index({ createdAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 });
+export const ClientError: Model<IClientError> =
+  mongoose.models.ClientError || mongoose.model<IClientError>('ClientError', ClientErrorSchema);
