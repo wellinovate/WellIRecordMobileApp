@@ -107,7 +107,7 @@ export function RecoveryEmailSentScreen({
       <Text style={styles.title}>Check your email</Text>
 
       <Text style={styles.subtitle}>
-        If a password account exists for this email, we sent a 6-digit reset code. It expires in 5 minutes.
+        If an account exists for this email, we sent a 6-digit reset code. It expires in 5 minutes.
       </Text>
 
       <View style={styles.mailCard}>
@@ -141,7 +141,7 @@ export function RecoveryEmailSentScreen({
       </View>
 
       <Text style={styles.instructions}>
-        Check your inbox and junk folder. Accounts created with a sign-in code have no password. Go back and use "Email me a sign-in code" instead.
+        Check your inbox and junk folder. The code can take a minute to arrive.
       </Text>
 
       {error && (

@@ -186,7 +186,7 @@ export function CoverageModal({ app }: { app: WelliApp }) {
   const body = () => {
     if (stage === 'loading') return <ActivityIndicator style={{ marginTop: 40 }} />;
     if (stage === 'unavailable')
-      return <Text style={[styles.sub, { color: theme.muted }]}>This version of the app is not connected to WelliPay. Update the app and try again.</Text>;
+      return <Text style={[styles.sub, { color: theme.muted }]}>WelliPay is not available in this build. Contact support if this continues.</Text>;
     if (stage === 'signin' || stage === 'link')
       return (
         <View style={{ gap: 12 }}>

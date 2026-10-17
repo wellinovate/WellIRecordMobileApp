@@ -391,7 +391,7 @@ export function BillingModal({ app }: { app: WelliApp }) {
           {stage === 'unavailable' && (
             <View style={styles.card}>
               <Text style={styles.cardTitle}>WelliPay is not available yet</Text>
-              <Text style={styles.muted}>This version of the app is not connected to WelliPay. Update the app and try again.</Text>
+              <Text style={styles.muted}>WelliPay is not available in this build. Contact support if this continues.</Text>
             </View>
           )}
 

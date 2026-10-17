@@ -18,6 +18,7 @@ export interface IUser extends Document {
   isPhoneVerified: boolean;
   twoFactorEnabled: boolean;
   biometricKeyHash?: string;
+  sessionsRevokedAt?: Date;
   pushTokens?: string[];
   createdAt: Date;
   updatedAt: Date;
@@ -36,6 +37,7 @@ const UserSchema = new Schema<IUser>(
     isPhoneVerified: { type: Boolean, default: false },
     twoFactorEnabled: { type: Boolean, default: true },
     biometricKeyHash: { type: String },
+    sessionsRevokedAt: { type: Date },
     pushTokens: { type: [String], default: [] },
   },
   { timestamps: true }

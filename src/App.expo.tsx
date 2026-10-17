@@ -71,7 +71,6 @@ import { CoverageModal } from "./modals/CoverageModal";
 import { BillingModal } from "./modals/BillingModal";
 
 
-import { PrintLabResultModal } from "./modals/PrintLabResultModal";
 
 
 import { PrescriptionRefillModal } from "./modals/PrescriptionRefillModal";
@@ -154,12 +153,6 @@ function MainWelliApp() {
 
       if (state.showRefillModal) {
         app.actions.closeRefillModal();
-
-        return true;
-      }
-
-      if (state.showPrintLabResult) {
-        app.actions.closePrintLabResult();
 
         return true;
       }
@@ -423,9 +416,6 @@ function MainWelliApp() {
           {Boolean(state.showCoverage) && <CoverageModal app={app} />}
 
 
-          {Boolean(state.showPrintLabResult) && (
-            <PrintLabResultModal app={app} />
-          )}
 
 
           {Boolean(state.showRefillModal) && (

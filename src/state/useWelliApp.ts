@@ -95,7 +95,6 @@ export interface AppState {
   bookingTimeSlot: string;
   showBilling: boolean;
   showCoverage: boolean;
-  showPrintLabResult: string | null;
   prescriptions: PrescriptionItem[];
   showRefillModal: string | null;
   showOrderMedication: boolean;
@@ -266,7 +265,6 @@ const initialState: AppState = {
   bookingTimeSlot: '',
   showBilling: false,
   showCoverage: false,
-  showPrintLabResult: null,
   prescriptions: [],
   showRefillModal: null,
   showOrderMedication: false,
@@ -1615,17 +1613,6 @@ export function useWelliApp() {
       patch({ recordDetailId: null });
       actions.openShareFlow(recordId ?? undefined);
     },
-    downloadRecord: () => {
-      hapticFeedback.success();
-      showToast('Record saved to Files as PDF');
-    },
-
-    openPrintLabResult: (recordId: string) => {
-      hapticFeedback.light();
-      patch({ showPrintLabResult: recordId });
-    },
-    closePrintLabResult: () => patch({ showPrintLabResult: null }),
-
     openWelcomeHome: (tab: WelcomeTab = 'about') =>
       patch({ showWelcomeHome: true, welcomeTab: tab }),
     closeWelcomeHome: () => patch({ showWelcomeHome: false }),

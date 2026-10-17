@@ -36,6 +36,9 @@ import {
 import { createWellipayRouter } from './wellipayPartner';
 
 const app = express();
+// Render sits behind a proxy. Without this every request shares the proxy's IP
+// and the rate limiters count all users together.
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 4000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/wellirecord';
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -101,6 +104,15 @@ const otpLimiter = rateLimit({
   message: { success: false, message: 'Too many verification code requests from this IP. Please try again after 10 minutes.' },
 });
 
+// Password reset: 10 attempts per 15 minutes per IP, separate from the OTP sign-in limiter.
+const passwordResetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many password reset attempts. Please try again in 15 minutes.' },
+});
+
 const appointmentLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 30, // 30 appointment writes per hour per IP
@@ -123,12 +135,31 @@ const ocrLimiter = rateLimit({
 // reloaded from the database every minute.
 const sessionsRevokedBefore = new Map<string, number>();
 
+// Stamps the cutoff on whichever store (User or Account) holds each id.
+async function revokeSessionsFor(ids: string[], nowSec = Math.floor(Date.now() / 1000)) {
+  const when = new Date(nowSec * 1000);
+  for (const id of ids) {
+    if (!mongoose.isValidObjectId(id)) continue;
+    await Promise.all([
+      Account.updateOne({ _id: id }, { $set: { sessionsRevokedAt: when } }),
+      User.updateOne({ _id: id }, { $set: { sessionsRevokedAt: when } }),
+    ]);
+    sessionsRevokedBefore.set(String(id), nowSec);
+  }
+}
+
 async function loadSessionRevocations() {
   if (mongoose.connection.readyState !== 1) return;
   try {
-    const rows: any[] = await Account.find({ sessionsRevokedAt: { $exists: true, $ne: null } }, 'sessionsRevokedAt').lean();
+    const query = { sessionsRevokedAt: { $exists: true, $ne: null } };
+    const rows: any[] = [
+      ...(await Account.find(query, 'sessionsRevokedAt').lean()),
+      ...(await User.find(query, 'sessionsRevokedAt').lean()),
+    ];
     for (const row of rows) {
-      sessionsRevokedBefore.set(String(row._id), Math.floor(new Date(row.sessionsRevokedAt).getTime() / 1000));
+      const cutoff = Math.floor(new Date(row.sessionsRevokedAt).getTime() / 1000);
+      const key = String(row._id);
+      sessionsRevokedBefore.set(key, Math.max(cutoff, sessionsRevokedBefore.get(key) || 0));
     }
   } catch (err) {
     console.warn('[Sessions] Could not load revocations:', err);
@@ -1736,16 +1767,29 @@ app.post('/api/v1/auth/login', async (req: Request, res: Response) => {
   }
 
   try {
-    let user = null;
+    const cleanId = String(identifier).toLowerCase().trim();
+    const phoneId = String(identifier).trim();
+    let user: any = null;
     if (mongoose.connection.readyState === 1) {
-      user = await User.findOne({
-        $or: [{ email: identifier.toLowerCase().trim() }, { phoneNumber: identifier.trim() }],
-      });
+      user = await User.findOne({ $or: [{ email: cleanId }, { phoneNumber: phoneId }] });
+      // Accounts created through the OTP, Google or web flows live in the
+      // Account store. Use its password when the User record has none.
+      if (!user || !user.password) {
+        const account: any = await Account.findOne({ $or: [{ email: cleanId }, { phone: phoneId }, { phoneNumber: phoneId }] }).select('+password');
+        if (account && account.password) {
+          user = {
+            _id: account._id,
+            password: account.password,
+            fullName: account.fullName || account.name || '',
+            email: account.email,
+            phoneNumber: account.phoneNumber || account.phone,
+          };
+        }
+      }
     }
 
     // No fallback to a fabricated account. No user, or no password on file,
-    // or a mismatched password all return the same generic 401 — never
-    // reveal which case it was, and never issue a token.
+    // or a mismatched password all return the same generic 401.
     if (!user || !user.password) {
       return res.status(401).json({ success: false, message: 'Invalid email/phone or password' });
     }
@@ -1865,7 +1909,7 @@ app.post('/api/v1/auth/register', async (req: Request, res: Response) => {
 
 // 3d. Password reset: emailed 6-digit code, then a new password.
 // Responses never reveal whether an account exists for the email.
-app.post('/api/v1/auth/password/forgot', otpLimiter, async (req: Request, res: Response) => {
+app.post('/api/v1/auth/password/forgot', passwordResetLimiter, async (req: Request, res: Response) => {
   const rawEmail = typeof req.body?.email === 'string' ? req.body.email : '';
   const cleanEmail = rawEmail.toLowerCase().trim();
   if (!cleanEmail.includes('@')) {
@@ -1873,18 +1917,23 @@ app.post('/api/v1/auth/password/forgot', otpLimiter, async (req: Request, res: R
   }
   try {
     if (mongoose.connection.readyState === 1) {
-      const user = await User.findOne({ email: cleanEmail });
-      if (user && user.password) {
+      const [user, account]: any[] = await Promise.all([
+        User.findOne({ email: cleanEmail }),
+        Account.findOne({ email: cleanEmail }),
+      ]);
+      const holder = user || account;
+      if (holder) {
         const code = generateOtp(`reset:${cleanEmail}`, 'login');
-        await sendWelliEmail({
+        const sent = await sendWelliEmail({
           to: cleanEmail,
           subject: 'Reset your WelliRecord™ password',
           html: renderOtpEmailHtml({
-            fullName: user.fullName || 'WelliRecord Patient',
+            fullName: holder.fullName || holder.name || 'WelliRecord Patient',
             code,
             expiresInMinutes: 5,
           }),
         });
+        if (!sent?.success) console.error('[Password forgot] email was not delivered for', cleanEmail);
       }
     }
   } catch (err) {
@@ -1892,11 +1941,11 @@ app.post('/api/v1/auth/password/forgot', otpLimiter, async (req: Request, res: R
   }
   return res.json({
     success: true,
-    message: 'If a password account exists for this email, a reset code has been sent.',
+    message: 'If an account exists for this email, a reset code has been sent.',
   });
 });
 
-app.post('/api/v1/auth/password/reset', otpLimiter, async (req: Request, res: Response) => {
+app.post('/api/v1/auth/password/reset', passwordResetLimiter, async (req: Request, res: Response) => {
   const cleanEmail = typeof req.body?.email === 'string' ? req.body.email.toLowerCase().trim() : '';
   const code = typeof req.body?.code === 'string' ? req.body.code.trim() : '';
   const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword : '';
@@ -1907,12 +1956,27 @@ app.post('/api/v1/auth/password/reset', otpLimiter, async (req: Request, res: Re
     return res.status(400).json({ success: false, message: 'That code is invalid or has expired' });
   }
   try {
-    const user = await User.findOne({ email: cleanEmail });
-    if (!user) {
+    const [user, account]: any[] = await Promise.all([
+      User.findOne({ email: cleanEmail }),
+      Account.findOne({ email: cleanEmail }),
+    ]);
+    if (!user && !account) {
       return res.status(400).json({ success: false, message: 'That code is invalid or has expired' });
     }
-    user.password = await bcrypt.hash(newPassword, 10);
-    await user.save();
+    const hash = await bcrypt.hash(newPassword, 10);
+    const ids: string[] = [];
+    // Write the same hash to both stores so /auth/login and the web app agree.
+    if (user) {
+      user.password = hash;
+      await user.save();
+      ids.push(String(user._id));
+    }
+    if (account) {
+      await Account.updateOne({ _id: account._id }, { $set: { password: hash, passwordChangedAt: new Date() } });
+      ids.push(String(account._id));
+    }
+    // Sign out every device that held the old password.
+    await revokeSessionsFor(ids);
     return res.json({ success: true, message: 'Password updated. Sign in with your new password.' });
   } catch (err) {
     console.error('[Password reset ERROR]', err);
@@ -2209,8 +2273,7 @@ app.post('/api/v1/auth/sessions/revoke-others', async (req: Request, res: Respon
   }
   try {
     const nowSec = Math.floor(Date.now() / 1000);
-    await Account.updateOne({ _id: authUserId }, { $set: { sessionsRevokedAt: new Date(nowSec * 1000) } });
-    sessionsRevokedBefore.set(authUserId, nowSec);
+    await revokeSessionsFor([authUserId], nowSec);
     const current: any = jwt.verify(req.headers.authorization!.substring(7), JWT_SECRET as string);
     const token = jwt.sign(
       { userId: authUserId, email: current.email, phoneNumber: current.phoneNumber, role: current.role || 'patient' },
