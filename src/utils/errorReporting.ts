@@ -8,19 +8,12 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { CONFIG } from '../services/config';
+import { scrub } from './scrub';
 
 const MAX_PER_SESSION = 20;
 const sent = new Set<string>();
 let count = 0;
 
-export function scrub(text: string): string {
-  return String(text || '')
-    .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, '[email]')
-    .replace(/\b[0-9a-f]{24}\b/gi, '[id]')
-    .replace(/\beyJ[\w-]+\.[\w-]+\.[\w-]+/g, '[token]')
-    .replace(/\+?\d[\d\s().-]{7,}\d/g, '[number]')
-    .replace(/\bWR[-\s]?\w{4,}\b/gi, '[wellid]');
-}
 
 export interface ReportContext {
   where?: string;
