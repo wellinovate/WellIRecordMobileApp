@@ -1092,6 +1092,66 @@ export const ReminderPreference: Model<IReminderPreference> =
 export const ReminderLog: Model<IReminderLog> =
   mongoose.models.ReminderLog || mongoose.model<IReminderLog>('ReminderLog', ReminderLogSchema);
 
+// Staff accounts for the provider and operations side. Patients never use these.
+export type StaffRole = 'admin' | 'clinician' | 'pharmacist' | 'records_officer';
+export interface IStaffUser extends Document {
+  email: string;
+  name: string;
+  role: StaffRole;
+  organization?: string;
+  passwordHash: string;
+  status: 'active' | 'disabled';
+  mustChangePassword: boolean;
+  tokenVersion: number;
+  failedAttempts: number;
+  lockedUntil?: Date;
+  lastLoginAt?: Date;
+  createdBy?: string;
+}
+
+const StaffUserSchema = new Schema<IStaffUser>(
+  {
+    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    name: { type: String, required: true, trim: true },
+    role: { type: String, enum: ['admin', 'clinician', 'pharmacist', 'records_officer'], required: true },
+    organization: { type: String, trim: true },
+    passwordHash: { type: String, required: true },
+    status: { type: String, enum: ['active', 'disabled'], default: 'active' },
+    mustChangePassword: { type: Boolean, default: true },
+    tokenVersion: { type: Number, default: 0 },
+    failedAttempts: { type: Number, default: 0 },
+    lockedUntil: { type: Date },
+    lastLoginAt: { type: Date },
+    createdBy: { type: String },
+  },
+  { timestamps: true }
+);
+
+// Who did what on the staff side. Kept; it is the record of clinical and custody actions.
+export interface IStaffActionLog extends Document {
+  staffId: string;
+  staffName: string;
+  role: string;
+  action: string;
+  target?: string;
+  detail?: string;
+  legacy: boolean;
+}
+
+const StaffActionLogSchema = new Schema<IStaffActionLog>(
+  {
+    staffId: { type: String, required: true, index: true },
+    staffName: { type: String, required: true },
+    role: { type: String, required: true },
+    action: { type: String, required: true },
+    target: { type: String },
+    detail: { type: String },
+    legacy: { type: Boolean, default: false },
+  },
+  { timestamps: true }
+);
+StaffActionLogSchema.index({ createdAt: -1 });
+
 // App crash and error reports. No user id or token is stored. Kept for 30 days.
 export interface IClientError extends Document {
   name: string;
@@ -1119,3 +1179,8 @@ const ClientErrorSchema = new Schema<IClientError>(
 ClientErrorSchema.index({ createdAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 });
 export const ClientError: Model<IClientError> =
   mongoose.models.ClientError || mongoose.model<IClientError>('ClientError', ClientErrorSchema);
+
+export const StaffUser: Model<IStaffUser> =
+  mongoose.models.StaffUser || mongoose.model<IStaffUser>('StaffUser', StaffUserSchema);
+export const StaffActionLog: Model<IStaffActionLog> =
+  mongoose.models.StaffActionLog || mongoose.model<IStaffActionLog>('StaffActionLog', StaffActionLogSchema);

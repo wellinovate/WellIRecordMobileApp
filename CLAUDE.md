@@ -118,6 +118,17 @@ The primary guardian is `FamilyMember.accountId`. Other adults are `ChildGuardia
 - Channels per guardian (`ReminderPreference`, `GET/PUT /family/:id/reminders`): app notification (default on), SMS and WhatsApp. SMS and WhatsApp need a valid Nigerian mobile number and are off until the guardian turns them on, which records a consent time. SMS needs `TERMII_API_KEY`. WhatsApp also needs `WHATSAPP_REMINDERS_ENABLED=true` (optional `TERMII_WHATSAPP_SENDER`). The WhatsApp path has not been tested against Termii, and the sender and template need Termii/Meta approval first. The app disables the switches when the server reports a channel unavailable.
 - Offline capture: `src/utils/childOfflineQueue.ts`. A vaccine dose or growth measurement that fails with a network error is stored on the phone and shown as "Waiting to sync". It is sent at sign-in, when the app returns to the foreground, or from "Sync now". Growth entries carry a `clientId` so a retry never duplicates; a 409 on a dose means it is already saved. An entry the server refuses (4xx) stays in the list with the reason until the guardian discards it. The last loaded profile is cached per child for reading offline. Milestones and the access log need a connection. Queue and cache are cleared on sign out and account deletion.
 
+## Staff accounts
+
+Staff routes (provider and operations side) use per-person accounts in `server/staff.ts`, not a shared secret.
+
+- Roles: `admin`, `clinician`, `pharmacist`, `records_officer`. Admin passes every check. Vaccination confirm: clinician or records officer. Visit summary: clinician. Pharmacy orders: pharmacist. Custody lock and guardian identity check: records officer.
+- First admin: `POST /api/v1/staff/bootstrap` with the `x-admin-secret` header and `{email, name, password}`. It works once, only while no admin exists. After that, an admin signs in with `POST /staff/auth/login` and adds people with `POST /staff/users`. The response holds a one-time temporary password; the person must change it (`POST /staff/auth/change-password`) before anything else.
+- Staff tokens last 8 hours and are signed with a key derived from `JWT_SECRET` but different from patient tokens. Changing a role, disabling an account or changing a password ends open sessions. Five wrong passwords lock the account for 15 minutes.
+- Every non-GET staff call is written to `StaffActionLog`. Recorded names (`verifiedBy`, `setBy`, `authoredBy`) are the signed-in person's own name; typed names are only taken for the legacy secret.
+- Legacy: `x-admin-secret` still works while `ALLOW_LEGACY_ADMIN_SECRET` is not `false`, so the web console and `/admin/orders` keep running. Each use is logged and warned. Move them to staff tokens, then set it to `false`.
+- Server tests: `cd server && npm test`.
+
 ## Rules for changes
 
 - Health documents must not be sent to third-party services. Open them in-app or hand the

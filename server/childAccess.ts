@@ -7,7 +7,7 @@
 import crypto from 'crypto';
 import express, { Request, Response, RequestHandler } from 'express';
 import mongoose from 'mongoose';
-import { Account, ChildAuditLog, ChildGuardian, FamilyMember, User } from './models';
+import { Account, ChildAuditLog, ChildGuardian, FamilyMember, StaffRole, User } from './models';
 
 export const PERMISSION_KEYS = ['viewRecords', 'addRecords', 'bookAppointments', 'receiveReminders', 'manageGuardians'] as const;
 export type PermKey = (typeof PERMISSION_KEYS)[number];
@@ -155,7 +155,9 @@ const guardianPayload = (g: any) => ({
 
 export interface ChildAccessDeps {
   getAuthUserId: (req: Request) => string | null;
-  requireAdminSecret: RequestHandler;
+  requireStaff: (...roles: StaffRole[]) => RequestHandler;
+  /** Name to record for a staff action. A signed-in person is always themselves. */
+  actorName: (req: Request, typed?: unknown) => string;
   limiter: RequestHandler;
   sendEmail: (to: string, subject: string, text: string) => Promise<void>;
   sendSms: (phone: string, text: string) => Promise<void>;
@@ -510,13 +512,13 @@ export function createChildAccessRouter(deps: ChildAccessDeps) {
   // Staff routes (admin secret) --------------------------------------------
 
   // POST /family/:id/custody { action: 'lock' | 'unlock', orderReference, note, setBy }
-  router.post('/family/:id/custody', deps.requireAdminSecret, async (req: Request, res: Response) => {
+  router.post('/family/:id/custody', deps.requireStaff('records_officer'), async (req: Request, res: Response) => {
     try {
       if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: 'Invalid id' });
       const member: any = await FamilyMember.findById(req.params.id);
       if (!member) return res.status(404).json({ success: false, message: 'Family member not found' });
       const action = req.body?.action;
-      const setBy = clean(req.body?.setBy, 120);
+      const setBy = deps.actorName(req, clean(req.body?.setBy, 120));
       if (!setBy) return res.status(400).json({ success: false, message: 'setBy is required' });
       if (action === 'lock') {
         member.custodyLock = { active: true, orderReference: clean(req.body?.orderReference, 80), note: clean(req.body?.note, 300), setBy, setAt: new Date() };
@@ -538,9 +540,9 @@ export function createChildAccessRouter(deps: ChildAccessDeps) {
   });
 
   // POST /family/:id/guardians/:gid/verify-identity { verifiedBy } — a staff check of the adult's identity.
-  router.post('/family/:id/guardians/:gid/verify-identity', deps.requireAdminSecret, async (req: Request, res: Response) => {
+  router.post('/family/:id/guardians/:gid/verify-identity', deps.requireStaff('records_officer'), async (req: Request, res: Response) => {
     try {
-      const verifiedBy = clean(req.body?.verifiedBy, 120);
+      const verifiedBy = deps.actorName(req, clean(req.body?.verifiedBy, 120));
       if (!verifiedBy) return res.status(400).json({ success: false, message: 'verifiedBy is required' });
       if (!mongoose.isValidObjectId(req.params.id) || !mongoose.isValidObjectId(req.params.gid)) return res.status(400).json({ success: false, message: 'Invalid id' });
       const g: any = await ChildGuardian.findOneAndUpdate({ _id: req.params.gid, childId: req.params.id }, { $set: { identityVerified: true } }, { new: true });
