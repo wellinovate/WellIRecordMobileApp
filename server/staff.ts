@@ -13,6 +13,7 @@ import bcrypt from 'bcryptjs';
 import express, { NextFunction, Request, RequestHandler, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { StaffActionLog, StaffRole, StaffUser } from './models';
+import { hashRecovery, newRecoveryCodes, newSecret, openSecret, otpauthUrl, sealSecret, verifyTotp } from './totp';
 
 export const STAFF_ROLES: StaffRole[] = ['admin', 'clinician', 'pharmacist', 'records_officer'];
 
@@ -29,6 +30,8 @@ export interface StaffContext {
   name: string;
   role: StaffRole;
   organization?: string;
+  /** True when this session passed the second factor (or none is required). */
+  mfa: boolean;
   legacy: boolean;
   mustChangePassword: boolean;
 }
@@ -64,21 +67,42 @@ export function staffSigningKey(jwtSecret: string): string {
   return crypto.createHmac('sha256', jwtSecret).update('welli-staff-tokens-v1').digest('hex');
 }
 
-export function signStaffToken(jwtSecret: string, user: { id: string; role: StaffRole; tokenVersion: number }): string {
-  return jwt.sign({ typ: 'staff', sid: user.id, role: user.role, tv: user.tokenVersion }, staffSigningKey(jwtSecret), {
+export function signStaffToken(jwtSecret: string, user: { id: string; role: StaffRole; tokenVersion: number }, mfa = true): string {
+  return jwt.sign({ typ: 'staff', sid: user.id, role: user.role, tv: user.tokenVersion, mfa }, staffSigningKey(jwtSecret), {
     expiresIn: `${TOKEN_HOURS}h`,
   });
 }
 
-export function verifyStaffToken(jwtSecret: string, token: string): { sid: string; role: StaffRole; tv: number } | null {
+export function verifyStaffToken(jwtSecret: string, token: string): { sid: string; role: StaffRole; tv: number; mfa: boolean } | null {
   try {
     const d: any = jwt.verify(token, staffSigningKey(jwtSecret));
     if (d?.typ !== 'staff' || !d.sid) return null;
-    return { sid: String(d.sid), role: d.role, tv: Number(d.tv) || 0 };
+    return { sid: String(d.sid), role: d.role, tv: Number(d.tv) || 0, mfa: d.mfa === true };
   } catch {
     return null;
   }
 }
+
+/** Short-lived proof that the password step passed. It cannot be used as a session. */
+export function signMfaChallenge(jwtSecret: string, userId: string): string {
+  return jwt.sign({ typ: 'staff-mfa', sid: userId }, staffSigningKey(jwtSecret), { expiresIn: '5m' });
+}
+
+export function verifyMfaChallenge(jwtSecret: string, token: unknown): string | null {
+  try {
+    const d: any = jwt.verify(String(token ?? ''), staffSigningKey(jwtSecret));
+    return d?.typ === 'staff-mfa' && d.sid ? String(d.sid) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Paths a signed-in person may use before they have set up a second factor. */
+export function allowedBeforeMfa(path: string): boolean {
+  return path.startsWith('/staff/mfa/') || path === '/staff/me' || path === '/staff/auth/change-password';
+}
+
+export const mfaRequired = () => String(process.env.STAFF_MFA_REQUIRED ?? 'true').toLowerCase() !== 'false';
 
 export function tempPassword(): string {
   // 16 characters, letters and digits, no look-alikes.
@@ -121,7 +145,7 @@ export function createStaff(deps: StaffDeps) {
         if (!user || user.status !== 'active' || user.tokenVersion !== decoded.tv) {
           return { error: 401, message: 'Your session has ended. Sign in again.' };
         }
-        return { id: String(user._id), name: user.name, role: user.role, organization: user.organization || undefined, legacy: false, mustChangePassword: user.mustChangePassword };
+        return { id: String(user._id), name: user.name, role: user.role, organization: user.organization || undefined, mfa: decoded.mfa || !mfaRequired(), legacy: false, mustChangePassword: user.mustChangePassword };
       }
     }
     if (req.headers['x-admin-secret']) {
@@ -129,7 +153,7 @@ export function createStaff(deps: StaffDeps) {
       if (!legacyAllowed()) return { error: 401, message: 'The shared admin secret is switched off. Sign in with a staff account.' };
       if (!legacySecretOk(req)) return { error: 401, message: 'Invalid admin credentials.' };
       console.warn(`[STAFF] legacy x-admin-secret used for ${req.method} ${req.path}`);
-      return { id: 'legacy-secret', name: 'Shared admin secret', role: 'admin', legacy: true, mustChangePassword: false };
+      return { id: 'legacy-secret', name: 'Shared admin secret', role: 'admin', mfa: true, legacy: true, mustChangePassword: false };
     }
     return null;
   }
@@ -143,6 +167,9 @@ export function createStaff(deps: StaffDeps) {
         if ('error' in ctx) return res.status(ctx.error).json({ success: false, message: ctx.message });
         if (ctx.mustChangePassword && !req.path.endsWith('/auth/change-password')) {
           return res.status(403).json({ success: false, message: 'Change your password before continuing.', code: 'password_change_required' });
+        }
+        if (!ctx.legacy && !ctx.mfa && !allowedBeforeMfa(req.path)) {
+          return res.status(403).json({ success: false, message: 'Set up your second sign-in step before continuing.', code: 'mfa_enrollment_required' });
         }
         if (!roleAllowed(ctx.role, allowed)) {
           return res.status(403).json({ success: false, message: 'Your role cannot do this.' });
@@ -192,6 +219,7 @@ export function createStaff(deps: StaffDeps) {
     organization: u.organization || '',
     status: u.status,
     mustChangePassword: u.mustChangePassword,
+    mfaEnabled: Boolean(u.mfaEnabled),
     lastLoginAt: u.lastLoginAt || null,
   });
 
@@ -248,12 +276,17 @@ export function createStaff(deps: StaffDeps) {
         await user.save();
         return res.status(401).json(generic);
       }
+      if (user.mfaEnabled) {
+        // The password alone is not a session. The failure counter is only cleared after the second step.
+        return res.json({ success: true, mfaRequired: true, mfaToken: signMfaChallenge(deps.jwtSecret, String(user._id)) });
+      }
       user.failedAttempts = 0;
       user.lockedUntil = undefined;
       user.lastLoginAt = new Date();
       await user.save();
-      const token = signStaffToken(deps.jwtSecret, { id: String(user._id), role: user.role, tokenVersion: user.tokenVersion });
-      return res.json({ success: true, token, staff: publicUser(user) });
+      // Someone who has not set up MFA gets a session that can only reach the setup steps.
+      const token = signStaffToken(deps.jwtSecret, { id: String(user._id), role: user.role, tokenVersion: user.tokenVersion }, !mfaRequired());
+      return res.json({ success: true, token, staff: publicUser(user), mfaSetupRequired: mfaRequired() });
     } catch (err) {
       console.error('[POST /staff/auth/login] ERROR:', err);
       return res.status(500).json({ success: false, message: 'Could not sign in' });
@@ -275,11 +308,123 @@ export function createStaff(deps: StaffDeps) {
       user.tokenVersion += 1;
       await user.save();
       await logAction(req, 'staff_password_changed', String(user._id));
-      const token = signStaffToken(deps.jwtSecret, { id: String(user._id), role: user.role, tokenVersion: user.tokenVersion });
+      const token = signStaffToken(deps.jwtSecret, { id: String(user._id), role: user.role, tokenVersion: user.tokenVersion }, req.staff!.mfa);
       return res.json({ success: true, token, staff: publicUser(user) });
     } catch (err) {
       console.error('[POST /staff/auth/change-password] ERROR:', err);
       return res.status(500).json({ success: false, message: 'Could not change the password' });
+    }
+  });
+
+  // ----- second sign-in step (TOTP) -----
+
+  /** Counts a wrong second-step code against the same lockout as passwords. */
+  async function mfaFailed(user: any) {
+    user.failedAttempts = (user.failedAttempts || 0) + 1;
+    if (user.failedAttempts >= MAX_FAILED) {
+      user.lockedUntil = new Date(Date.now() + LOCK_MINUTES * 60 * 1000);
+      user.failedAttempts = 0;
+    }
+    await user.save();
+  }
+
+  // POST /staff/auth/mfa { mfaToken, code } or { mfaToken, recoveryCode } — finishes sign-in.
+  router.post('/staff/auth/mfa', deps.limiter, async (req: Request, res: Response) => {
+    const generic = { success: false, message: 'That code is not right.' };
+    try {
+      const sid = verifyMfaChallenge(deps.jwtSecret, req.body?.mfaToken);
+      if (!sid) return res.status(401).json({ success: false, message: 'Start sign-in again.' });
+      const user: any = await StaffUser.findById(sid);
+      if (!user || user.status !== 'active' || !user.mfaEnabled || !user.mfaSecretEnc) return res.status(401).json({ success: false, message: 'Start sign-in again.' });
+      if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
+        return res.status(429).json({ success: false, message: `Too many wrong codes. Try again in ${LOCK_MINUTES} minutes.` });
+      }
+      if (req.body?.recoveryCode) {
+        const h = hashRecovery(deps.jwtSecret, req.body.recoveryCode);
+        if (!user.mfaRecovery.includes(h)) {
+          await mfaFailed(user);
+          return res.status(401).json(generic);
+        }
+        user.mfaRecovery = user.mfaRecovery.filter((x: string) => x !== h); // single use
+      } else {
+        const secret = openSecret(deps.jwtSecret, user.mfaSecretEnc);
+        const step = secret ? verifyTotp(secret, req.body?.code, Date.now(), user.mfaLastStep ?? -1) : null;
+        if (step === null) {
+          await mfaFailed(user);
+          return res.status(401).json(generic);
+        }
+        user.mfaLastStep = step;
+      }
+      user.failedAttempts = 0;
+      user.lockedUntil = undefined;
+      user.lastLoginAt = new Date();
+      await user.save();
+      const token = signStaffToken(deps.jwtSecret, { id: String(user._id), role: user.role, tokenVersion: user.tokenVersion }, true);
+      return res.json({ success: true, token, staff: publicUser(user), recoveryCodesLeft: user.mfaRecovery.length });
+    } catch (err) {
+      console.error('[POST /staff/auth/mfa] ERROR:', err);
+      return res.status(500).json({ success: false, message: 'Could not check the code' });
+    }
+  });
+
+  // POST /staff/mfa/setup — starts enrolment. Returns the secret and an otpauth URL for a QR code.
+  router.post('/staff/mfa/setup', requireStaff(), async (req: Request, res: Response) => {
+    try {
+      if (req.staff!.legacy) return res.status(400).json({ success: false, message: 'Sign in with a staff account first.' });
+      const user: any = await StaffUser.findById(req.staff!.id);
+      if (!user) return res.status(404).json({ success: false, message: 'Staff account not found' });
+      if (user.mfaEnabled) return res.status(409).json({ success: false, message: 'Second step is already on. Ask an admin to reset it first.' });
+      const secret = newSecret();
+      user.mfaSecretEnc = sealSecret(deps.jwtSecret, secret);
+      await user.save();
+      return res.json({ success: true, secret, otpauthUrl: otpauthUrl(secret, user.email) });
+    } catch (err) {
+      console.error('[POST /staff/mfa/setup] ERROR:', err);
+      return res.status(500).json({ success: false, message: 'Could not start setup' });
+    }
+  });
+
+  // POST /staff/mfa/enable { code } — confirms the first code, turns MFA on, returns recovery codes once.
+  router.post('/staff/mfa/enable', deps.limiter, requireStaff(), async (req: Request, res: Response) => {
+    try {
+      if (req.staff!.legacy) return res.status(400).json({ success: false, message: 'Sign in with a staff account first.' });
+      const user: any = await StaffUser.findById(req.staff!.id);
+      if (!user || !user.mfaSecretEnc) return res.status(409).json({ success: false, message: 'Start setup first.' });
+      if (user.mfaEnabled) return res.status(409).json({ success: false, message: 'Second step is already on.' });
+      const secret = openSecret(deps.jwtSecret, user.mfaSecretEnc);
+      const step = secret ? verifyTotp(secret, req.body?.code, Date.now(), -1) : null;
+      if (step === null) return res.status(401).json({ success: false, message: 'That code is not right. Check the time on your phone and try the next code.' });
+      const codes = newRecoveryCodes();
+      user.mfaEnabled = true;
+      user.mfaLastStep = step;
+      user.mfaRecovery = codes.map((c) => hashRecovery(deps.jwtSecret, c));
+      user.tokenVersion += 1; // other sessions end; this one continues with the new token
+      await user.save();
+      await logAction(req, 'staff_mfa_enabled', String(user._id));
+      const token = signStaffToken(deps.jwtSecret, { id: String(user._id), role: user.role, tokenVersion: user.tokenVersion }, true);
+      return res.json({ success: true, token, staff: publicUser(user), recoveryCodes: codes });
+    } catch (err) {
+      console.error('[POST /staff/mfa/enable] ERROR:', err);
+      return res.status(500).json({ success: false, message: 'Could not turn on the second step' });
+    }
+  });
+
+  // POST /staff/users/:id/reset-mfa — admin clears a lost authenticator. They must set up again at next sign-in.
+  router.post('/staff/users/:id/reset-mfa', requireStaff('admin'), async (req: Request, res: Response) => {
+    try {
+      const user: any = await StaffUser.findById(req.params.id);
+      if (!user) return res.status(404).json({ success: false, message: 'Staff account not found' });
+      user.mfaEnabled = false;
+      user.mfaSecretEnc = undefined;
+      user.mfaRecovery = [];
+      user.mfaLastStep = -1;
+      user.tokenVersion += 1;
+      await user.save();
+      await logAction(req, 'staff_mfa_reset', String(user._id));
+      return res.json({ success: true, staff: publicUser(user) });
+    } catch (err) {
+      console.error('[POST /staff/users/:id/reset-mfa] ERROR:', err);
+      return res.status(500).json({ success: false, message: 'Could not reset the second step' });
     }
   });
 
