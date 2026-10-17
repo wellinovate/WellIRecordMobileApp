@@ -17,8 +17,9 @@ import { FormSelect } from '../components/FormSelect';
 import { BLOOD_TYPES, GENDER_OPTIONS, GENOTYPES } from '../data/mockData';
 import { hapticFeedback } from '../utils/haptics';
 import type { WelliApp } from '../state/useWelliApp';
+import { FAMILY_RELATIONSHIPS, addMemberIntro } from '../constants/relationships';
 
-const RELATIONSHIPS = ['Child', 'Spouse', 'Parent', 'Other'];
+const RELATIONSHIPS = FAMILY_RELATIONSHIPS;
 
 const MONTH_NAMES = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -103,7 +104,7 @@ export function AddFamilyMemberModal({ app }: { app: WelliApp }) {
           alwaysBounceVertical={true}
         >
           <Text style={styles.introText}>
-            Add a dependent to manage their clinical records, vitals, and appointments as their legal guardian.
+            {addMemberIntro(draftRelationship)}
           </Text>
 
           <Text style={styles.fieldLabel}>Full Name *</Text>

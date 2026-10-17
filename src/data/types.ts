@@ -119,7 +119,7 @@ export interface FamilyMember {
   name: string;
   initials: string;
   role: 'owner' | 'dependent';
-  relationship?: 'Self' | 'Spouse' | 'Child' | 'Parent';
+  relationship?: string;
   dob: string;
   gender: string;
   bloodType: string;
