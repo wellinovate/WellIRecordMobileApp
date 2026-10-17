@@ -19,6 +19,7 @@ import { ChildReminderCard } from './ChildReminderCard';
 import { FacilityCodeCard } from './FacilityCodeCard';
 import { DevelopmentPanel } from './DevelopmentPanel';
 import { SchoolProfileCard } from './SchoolProfileCard';
+import { GrowthChart } from './GrowthChart';
 import { useTheme } from '../theme/ThemeContext';
 import type { WelliApp } from '../state/useWelliApp';
 import {
@@ -762,8 +763,14 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
       ) : canAdd ? (
         button('Add a measurement', () => setGrowthForm({ ...EMPTY_GROWTH, measuredOn: todayIso() }))
       ) : null}
+      <GrowthChart
+        entries={growthEntries}
+        gender={profile?.gender || ''}
+        dob={dobValid ? dob : ''}
+        gestationalAgeWeeks={profile?.childProfile?.gestationalAgeWeeks}
+      />
       <Text style={[styles.sub, { color: theme.muted }]}>
-        Growth charts and clinician alerts are not available yet. Show these numbers at your child's well-child visit.
+        The chart is a guide, not a diagnosis. Show these numbers at your child's well-child visit.
       </Text>
       {growthEntries.length === 0 && <Text style={[styles.sub, { color: theme.muted }]}>No measurements yet.</Text>}
       {growthEntries.map((g) => (
