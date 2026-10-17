@@ -55,6 +55,10 @@ export function ProfileScreen({
     family.find((member) => member.role === 'owner') ??
     family[0];
 
+  const dependentCount = family.filter(
+    (member) => member.role === 'dependent' && member.id !== 'me',
+  ).length;
+
   const [notificationsEnabled, setNotificationsEnabled] =
     useState(true);
 
@@ -231,6 +235,19 @@ export function ProfileScreen({
             title="Health history"
             subtitle="Allergies, conditions, medicines & surgeries"
             onPress={actions.openPersonalInfo}
+          />
+
+          <Divider />
+
+          <SettingsRow
+            icon="person"
+            title="Family and children"
+            subtitle={
+              dependentCount > 0
+                ? `${dependentCount} ${dependentCount === 1 ? 'person' : 'people'} · child health profiles, guardians, vaccines`
+                : 'Add a child or dependant, or enter an invite code'
+            }
+            onPress={actions.openFamilyAccess}
           />
 
           <Divider />
