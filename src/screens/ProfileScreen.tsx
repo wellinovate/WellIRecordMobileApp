@@ -253,6 +253,15 @@ export function ProfileScreen({
           <Divider />
 
           <SettingsRow
+            icon="verify"
+            title="Share with a provider"
+            subtitle="Link or QR code for a doctor not on WelliRecord. Expires, needs a code"
+            onPress={actions.openProviderShare}
+          />
+
+          <Divider />
+
+          <SettingsRow
             icon="membership"
             title="WelliPay"
             subtitle="Bills, wallet and payments"

@@ -66,6 +66,7 @@ export interface AppState {
   consentExpiry: ShareExpiry;
   consentPurpose: string;
   showFamilyAccess: boolean;
+  showProviderShare: boolean;
   /** Set when the family list could not be loaded. Null when it loaded or has not been tried. */
   familyLoadError: string | null;
   showChildProfile: boolean;
@@ -271,6 +272,7 @@ const initialState: AppState = {
   consentExpiry: '24h',
   consentPurpose: '',
   showFamilyAccess: false,
+  showProviderShare: false,
   familyLoadError: null,
   showChildProfile: false,
   childProfileMemberId: null,
@@ -1018,6 +1020,8 @@ export function useWelliApp() {
     closeEmergency: () => patch({ showEmergency: false }),
     openFamilyAccess: () => patch({ showFamilyAccess: true }),
     closeFamilyAccess: () => patch({ showFamilyAccess: false }),
+    openProviderShare: () => patch({ showProviderShare: true }),
+    closeProviderShare: () => patch({ showProviderShare: false }),
     reloadFamily: reloadFamilyNow,
     acceptGuardianInvite: async (code: string): Promise<boolean> => {
       try {
