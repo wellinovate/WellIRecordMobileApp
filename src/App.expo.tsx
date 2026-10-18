@@ -54,6 +54,7 @@ import { LinkedAccountsModal } from "./modals/LinkedAccountsModal";
 import { NotificationSettingsModal } from "./modals/NotificationSettingsModal";
 
 import { FamilyAccessModal } from "./modals/FamilyAccessModal";
+import { ProviderShareModal } from "./modals/ProviderShareModal";
 import { ChildProfileModal } from "./modals/ChildProfileModal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { installGlobalErrorHandlers } from "./utils/errorReporting";
@@ -226,6 +227,12 @@ function MainWelliApp() {
 
       if (state.showChildProfile) {
         app.actions.closeChildProfile();
+
+        return true;
+      }
+
+      if (state.showProviderShare) {
+        app.actions.closeProviderShare();
 
         return true;
       }
@@ -404,6 +411,7 @@ function MainWelliApp() {
           )}
 
           {Boolean(state.showFamilyAccess) && <FamilyAccessModal app={app} />}
+          <ProviderShareModal app={app} />
 
           {Boolean(state.showChildProfile) && <ChildProfileModal app={app} />}
 

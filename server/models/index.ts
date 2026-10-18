@@ -1229,3 +1229,64 @@ export const StaffActionLog: Model<IStaffActionLog> =
   mongoose.models.StaffActionLog || mongoose.model<IStaffActionLog>('StaffActionLog', StaffActionLogSchema);
 export const ChildFacilityGrant: Model<IChildFacilityGrant> =
   mongoose.models.ChildFacilityGrant || mongoose.model<IChildFacilityGrant>('ChildFacilityGrant', ChildFacilityGrantSchema);
+
+// A patient's link or QR code for a provider who has no WelliRecord account (WelliBridge).
+// The link token and every code are stored only as keyed hashes. Opening it needs a one-time code,
+// either sent to the provider's own email or phone, or read out by the patient (passcode).
+export interface IProviderShare extends Document {
+  ownerId: mongoose.Types.ObjectId;
+  subjectId: string;
+  subjectIsSelf: boolean;
+  recipientName: string;
+  purpose?: string;
+  sections: string[];
+  expiresAt: Date;
+  revokedAt?: Date;
+  lockedAt?: Date;
+  tokenHash: string;
+  mode: 'contact' | 'passcode';
+  contactChannel?: 'email' | 'sms';
+  contact?: string;
+  passcodeHash?: string;
+  otpHash?: string;
+  otpExpiresAt?: Date;
+  otpSendCount: number;
+  otpWindowStart?: Date;
+  failures: number;
+  lifetimeFailures: number;
+  cooldownUntil?: Date;
+  views: { at: Date; ip?: string; userAgent?: string }[];
+}
+
+const ProviderShareSchema = new Schema<IProviderShare>(
+  {
+    ownerId: { type: Schema.Types.ObjectId, required: true, index: true },
+    subjectId: { type: String, required: true },
+    subjectIsSelf: { type: Boolean, default: false },
+    recipientName: { type: String, required: true },
+    purpose: { type: String },
+    sections: { type: [String], default: [] },
+    expiresAt: { type: Date, required: true },
+    revokedAt: { type: Date },
+    lockedAt: { type: Date },
+    tokenHash: { type: String, required: true, unique: true },
+    mode: { type: String, enum: ['contact', 'passcode'], required: true },
+    contactChannel: { type: String, enum: ['email', 'sms'] },
+    contact: { type: String },
+    passcodeHash: { type: String },
+    otpHash: { type: String },
+    otpExpiresAt: { type: Date },
+    otpSendCount: { type: Number, default: 0 },
+    otpWindowStart: { type: Date },
+    failures: { type: Number, default: 0 },
+    lifetimeFailures: { type: Number, default: 0 },
+    cooldownUntil: { type: Date },
+    views: [{ _id: false, at: Date, ip: String, userAgent: String }],
+  },
+  { timestamps: true }
+);
+// Remove a month after it expires.
+ProviderShareSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 });
+
+export const ProviderShare: Model<IProviderShare> =
+  mongoose.models.ProviderShare || mongoose.model<IProviderShare>('ProviderShare', ProviderShareSchema);
