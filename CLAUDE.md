@@ -137,6 +137,16 @@ Staff routes (provider and operations side) use per-person accounts in `server/s
 - Clinic access (`server/childFacility.ts`): a guardian with `manageGuardians` creates an 8 character code for 1 to 72 hours (default 24) in the Access tab. The code is stored as an HMAC and shown once. A clinician or records officer signs in with a staff account and sends the child's WelliID and the code to `POST /facility/child/lookup` (record as a FHIR Bundle), `/facility/child/vaccinations` (adds a `provider_verified` dose or confirms the parent's entry) or `/facility/child/growth` (source `clinic`). Wrong code, unknown WelliID, expired and cancelled codes all return the same 403. A custody lock returns 423. Every use is recorded on the grant and in the child's access log under the staff member's name, and the primary guardian gets a notification for writes.
 - Clinic screen: `/clinic` on this server. Not built: SNOMED mapping, FHIR import into the app, export of an adult's own record.
 
+## WelliBridge provider sharing
+
+A patient or guardian shares part of a record with a provider who has no WelliRecord account. Code: `server/providerShare.ts`, page `server/providerSharePage.ts`, model `ProviderShare`, app `ProviderShareModal` (Profile > Share with a provider).
+
+- Patient routes (token): `POST/GET /provider-shares`, `POST /provider-shares/:id/revoke`. Children need `manageGuardians`; a custody lock returns 423. Sharing needs at least one section from allergies (also blood group, genotype), conditions, medications, records, vaccinations, growth (children only). Name, date of birth, sex and WelliID are always included. Files and scans are never included.
+- Link: `<base>/share/<token>`, 1 hour to 7 days (default 24). Token stored as an HMAC. The page sets `Referrer-Policy: no-referrer`, a nonce CSP and `noindex`.
+- Provider routes (public, rate limited): `/provider-share/:token/info`, `/otp`, `/verify`, `/record`. A 6-digit code is needed to open it: sent by email or SMS to the contact the patient entered (valid 10 minutes, 5 sends an hour), or a passcode shown once to the patient. 5 wrong codes start a 15 minute cooldown; 15 lifetime wrong codes lock the link and notify the patient. A correct code gives a 15 minute view session that is checked against the link status on each read, so withdrawing the link ends it at once.
+- Each successful open is logged on the link (time, IP, user agent) and the patient gets a notification.
+- SMS needs `TERMII_API_KEY`; email needs the Resend settings. Not built: attachments, export as FHIR, staff-side view of these links. Integration test: `server/tests/integration/providerShare.test.ts` (CI only).
+
 ## Rules for changes
 
 - Health documents must not be sent to third-party services. Open them in-app or hand the

@@ -45,6 +45,8 @@ import { createWellipayRouter } from './wellipayPartner';
 import { IMMUNIZATION_SCHEDULE, scheduleDoseByCode } from './data/immunizationSchedule';
 import { createChildDevelopmentRouter } from './childDevelopment';
 import { createChildFacilityRouter } from './childFacility';
+import { createProviderShareRouter } from './providerShare';
+import { providerSharePage } from './providerSharePage';
 import { childToFhirBundle } from './fhir';
 import { createChildReminderRouter, startChildReminderSweep, type ReminderDeps } from './childReminders';
 import { auditChild, createChildAccessRouter, effectivePerms, resolveChildAccess, type PermKey } from './childAccess';
@@ -2443,6 +2445,47 @@ app.use(
     },
   })
 );
+
+const providerShareLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many requests. Try again later.' },
+});
+app.use(
+  '/api/v1',
+  createProviderShareRouter({
+    getAuthUserId,
+    callerCanShare: (authUserId, subjectId) =>
+      subjectId === authUserId ? Promise.resolve(true) : callerCanAccessOwner(authUserId, subjectId, 'manageGuardians'),
+    sendEmail: async (m) => {
+      const r = await sendWelliEmail(m);
+      if (!r.success) throw new Error('email failed');
+    },
+    sendSms: sendWelliSms,
+    normalisePhone: normalizeNigerianPhone,
+    notify: async (userId, title, body) => {
+      await dispatchPushNotification({ userId, type: 'system', title, body, categoryLabel: 'Sharing' });
+    },
+    limiter: providerShareLimiter,
+    secret: JWT_SECRET,
+    publicBaseUrl: (req) => process.env.PUBLIC_API_BASE_URL || `${req.protocol}://${req.get('host')}`,
+  })
+);
+app.get('/share/:token', (req, res) => {
+  const nonce = crypto.randomBytes(16).toString('base64');
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader(
+    'Content-Security-Policy',
+    `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`
+  );
+  res.send(providerSharePage(nonce));
+});
 
 // App crash reports. Anonymous by design: no token or user id is read or stored.
 const clientErrorLimiter = rateLimit({
