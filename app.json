@@ -1,6 +1,7 @@
 {
   "expo": {
     "name": "WelliRecord",
+    "owner": "talk2jaywins-team",
     "slug": "welli-record-mobile",
     "scheme": "wellirecord",
     "version": "1.0.0",
