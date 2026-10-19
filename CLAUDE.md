@@ -162,6 +162,10 @@ Tab: Assistant (`src/screens/ChatScreen.tsx`). Typed questions go to `POST /api/
 
 `LabDirectoryModal` and `PharmacyDirectoryModal` ask for foreground location (`src/utils/nearby.ts`, `src/hooks/useNearbyDirectory.ts`) and call `GET /care/labs` or `/care/pharmacies` with `lat` and `lng`. The server (`server/nearbyPlaces.ts`) runs Google Places Nearby Search around that point, widening 8, 25, 50 km until something is found, sorts by distance and caches per 1 km cell for 6 hours. 60 searches an hour per IP. Needs `GOOGLE_PLACES_API_KEY` (Places API enabled). Without the key, or if Google fails, the saved Abuja list is returned only when the person is within 60 km of Abuja; elsewhere the list is empty. Without `lat` and `lng` the old Abuja district search still runs. Coordinates are not stored. Results are unverified Google listings, not partner facilities.
 
+`CareLocatorModal` (Care tab > Hospitals, clinics and maternity) uses the same path through `GET /care/places?kind=hospital|clinic|maternity&lat&lng` (Places type hospital, type doctor with keyword clinic, keyword maternity hospital). It needs a position and has no saved list: nothing is invented when Google is unavailable.
+
+Booking at a Google listing (`externalBookingFacility`) saves an `AppointmentRequest` with `externalFacility: true` and an optional `providerRemark` (built in `src/utils/providerRemark.ts`: says the patient uses WelliRecord, gives the WelliID, points to a WelliBridge link and wellirecord.com). The facility is not notified by us; after saving, the app opens the share sheet with the request so the person sends it. The remark can be switched off per booking.
+
 ## Rules for changes
 
 - Health documents must not be sent to third-party services. Open them in-app or hand the

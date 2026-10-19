@@ -4,13 +4,13 @@ import type { LocState } from '../hooks/useNearbyDirectory';
 
 const PRIMARY = '#0EA5E9';
 
-export function NearbyBar({ loc, radiusKm, count, noun, onRefresh }: { loc: LocState; radiusKm?: number; count: number; noun: string; onRefresh: () => void }) {
+export function NearbyBar({ loc, radiusKm, count, noun, onRefresh, needsLocation }: { needsLocation?: boolean; loc: LocState; radiusKm?: number; count: number; noun: string; onRefresh: () => void }) {
   const theme = useTheme();
   const text =
     loc === 'locating' ? 'Finding your location...'
     : loc === 'ok' ? `${count} ${noun} near you${radiusKm ? ` (within ${radiusKm} km)` : ''}`
-    : loc === 'denied' ? 'Location is off, so this shows Abuja. Allow location to see places near you.'
-    : 'Could not get your location, so this shows Abuja.';
+    : loc === 'denied' ? (needsLocation ? 'Location is off. Allow location to find places near you.' : 'Location is off, so this shows Abuja. Allow location to see places near you.')
+    : (needsLocation ? 'Could not get your location. Try again outdoors or turn on GPS.' : 'Could not get your location, so this shows Abuja.');
   return (
     <View style={styles.row}>
       <Text style={[styles.text, { color: theme.muted }]}>{text}</Text>

@@ -16,6 +16,10 @@ export interface AppointmentRequestPayload {
   timeSlot: string;
   reason?: string;
   visitType?: 'in_person' | 'video';
+  /** A Google listing, not a WelliRecord facility: nobody is notified by us. */
+  externalFacility?: boolean;
+  /** Remark that points the provider to WelliRecord. */
+  providerRemark?: string;
 }
 
 export type AppointmentStatus =
@@ -36,6 +40,8 @@ export interface AppointmentItem {
   timeSlot: string;
   reason: string;
   visitType?: 'in_person' | 'video';
+  externalFacility?: boolean;
+  providerRemark?: string;
   status: AppointmentStatus | string;
   visitSummary?: { diagnosis: string; notes: string; authoredBy: string };
 }
@@ -55,7 +61,29 @@ export interface TelehealthSession {
   room: string;
 }
 
+export type PlaceKind = 'hospital' | 'clinic' | 'maternity';
+
+export interface NearbyPlaceItem {
+  placeId: string;
+  name: string;
+  address: string;
+  district: string;
+  lat: number;
+  lng: number;
+  rating: number | null;
+  openNow: boolean | null;
+  distanceKm?: number;
+}
+
 export const careService = {
+  /** Hospitals, clinics or maternity care around a point. Needs a position. */
+  async fetchPlaces(kind: PlaceKind, pos: { lat: number; lng: number }): Promise<{ places: NearbyPlaceItem[]; radiusKm?: number }> {
+    const res = await apiClient.get<{ success: boolean; places: NearbyPlaceItem[]; radiusKm?: number }>(
+      `/care/places?kind=${kind}&lat=${pos.lat}&lng=${pos.lng}`
+    );
+    return { places: Array.isArray(res?.places) ? res.places : [], radiusKm: res?.radiusKm };
+  },
+
   async fetchTelehealthToken(appointmentId: string): Promise<TelehealthSession> {
     const res = await apiClient.post<{ success: boolean } & TelehealthSession>(
       `/telehealth/appointments/${encodeURIComponent(appointmentId)}/token`,

@@ -49,7 +49,7 @@ import { createProviderShareRouter } from './providerShare';
 import { cleanAvatar } from './avatar';
 import { anthropicCall, createAssistantRouter, geminiCall, parseGeminiSse } from './assistant';
 import { providerSharePage } from './providerSharePage';
-import { nearAbuja, nearbyCached, parseCoords, type PlaceKind } from './nearbyPlaces';
+import { nearAbuja, nearbyCached, parseCoords, PLACE_KINDS, type PlaceKind } from './nearbyPlaces';
 import { childToFhirBundle } from './fhir';
 import { createChildReminderRouter, startChildReminderSweep, type ReminderDeps } from './childReminders';
 import { auditChild, createChildAccessRouter, effectivePerms, resolveChildAccess, type PermKey } from './childAccess';
@@ -3692,10 +3692,11 @@ const nearbyLimiter = rateLimit({
 // Labs or pharmacies around the phone's position, anywhere. The curated Abuja list is only used
 // when the key is missing or Google fails and the person is near Abuja.
 async function nearbyHandler(kind: PlaceKind, req: Request, res: Response) {
-  const key = kind === 'lab' ? 'labs' : 'pharmacies';
+  const key = kind === 'lab' ? 'labs' : kind === 'pharmacy' ? 'pharmacies' : 'places';
   const p = parseCoords(req.query as any);
   if (!p) return res.status(400).json({ success: false, message: 'Invalid location.' });
-  const fallback = kind === 'lab' ? ABUJA_FALLBACK_LABS : ABUJA_FALLBACK_PHARMACIES;
+  // Curated Abuja lists exist for labs and pharmacies only; nothing is invented for the other kinds.
+  const fallback = kind === 'lab' ? ABUJA_FALLBACK_LABS : kind === 'pharmacy' ? ABUJA_FALLBACK_PHARMACIES : [];
   const curated = () => (nearAbuja(p) ? { [key]: fallback, usedFallback: true } : { [key]: [], usedFallback: false });
   const placesKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!placesKey) return res.json({ success: true, ...curated(), located: true });
@@ -3707,6 +3708,15 @@ async function nearbyHandler(kind: PlaceKind, req: Request, res: Response) {
     return res.json({ success: true, ...curated(), located: true });
   }
 }
+
+// Hospitals, clinics and maternity care around the phone's position.
+app.get('/api/v1/care/places', (req: Request, res: Response) => {
+  const kind = String(req.query.kind || '') as PlaceKind;
+  if (!['hospital', 'clinic', 'maternity'].includes(kind) || !PLACE_KINDS.includes(kind)) {
+    return res.status(400).json({ success: false, message: 'Unknown kind.' });
+  }
+  return nearbyLimiter(req, res, () => nearbyHandler(kind, req, res));
+});
 
 app.get('/api/v1/care/pharmacies', async (req: Request, res: Response) => {
   if (req.query.lat !== undefined) return nearbyLimiter(req, res, () => nearbyHandler('pharmacy', req, res));
@@ -3987,6 +3997,8 @@ function normalizeAppointmentRequest(doc: any) {
     timeSlot: doc.timeSlot,
     reason: doc.reason || '',
     visitType: (doc.visitType === 'video' ? 'video' : 'in_person') as 'video' | 'in_person',
+    externalFacility: Boolean(doc.externalFacility),
+    providerRemark: doc.providerRemark || '',
     status: doc.status as string,
     visitSummary: doc.visitSummary?.authoredAt
       ? {
@@ -4174,7 +4186,10 @@ app.post('/api/v1/appointments/requests', appointmentLimiter, async (req: Reques
     return res.status(503).json({ success: false, message: 'Database unavailable' });
   }
 
-  const { facilityId, facilityName, facilityAddress, date, timeSlot, reason, familyMemberId, visitType } = req.body || {};
+  const { facilityId, facilityName, facilityAddress, date, timeSlot, reason, familyMemberId, visitType, providerRemark, externalFacility } = req.body || {};
+  if (providerRemark !== undefined && (typeof providerRemark !== 'string' || providerRemark.length > 800)) {
+    return res.status(400).json({ success: false, message: 'Remark must be 800 characters or fewer' });
+  }
   if (visitType !== undefined && visitType !== 'in_person' && visitType !== 'video') {
     return res.status(400).json({ success: false, message: 'Visit type must be in_person or video' });
   }
@@ -4223,6 +4238,8 @@ app.post('/api/v1/appointments/requests', appointmentLimiter, async (req: Reques
       timeSlot: timeSlot.trim(),
       reason: typeof reason === 'string' ? reason.trim() : '',
       visitType: visitType === 'video' ? 'video' : 'in_person',
+      externalFacility: externalFacility === true,
+      providerRemark: typeof providerRemark === 'string' ? providerRemark.trim() : '',
       status: 'requested',
     });
     return res.status(201).json({ success: true, appointment: normalizeAppointmentRequest(doc) });
