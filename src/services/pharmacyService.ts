@@ -46,17 +46,19 @@ export const pharmacyService = {
   /**
    * Fetches locator-only pharmacies (e.g. Abuja districts) from Google Places
    */
-  async fetchPharmacies(): Promise<FetchPharmaciesResult> {
+  async fetchPharmacies(pos?: { lat: number; lng: number }): Promise<FetchPharmaciesResult> {
     try {
       const res = await apiClient.get<{
         success: boolean;
         pharmacies: PharmacyDirectoryItem[];
         usedFallback?: boolean;
-      }>('/care/pharmacies');
+        radiusKm?: number;
+      }>(pos ? `/care/pharmacies?lat=${pos.lat}&lng=${pos.lng}` : '/care/pharmacies');
       if (res && Array.isArray(res.pharmacies)) {
         return {
           pharmacies: res.pharmacies,
           usedFallback: Boolean(res.usedFallback),
+          radiusKm: res.radiusKm,
         };
       }
       return { pharmacies: [], usedFallback: false };
@@ -89,6 +91,7 @@ export interface PharmacyOrder {
 export interface FetchPharmaciesResult {
   pharmacies: PharmacyDirectoryItem[];
   usedFallback: boolean;
+  radiusKm?: number;
 }
 
 export interface PharmacyDirectoryItem {
@@ -100,5 +103,6 @@ export interface PharmacyDirectoryItem {
   lng: number;
   rating: number | null;
   openNow: boolean | null;
+  distanceKm?: number;
 }
 

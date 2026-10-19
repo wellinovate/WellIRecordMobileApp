@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -16,12 +16,15 @@ import { ModalHeader } from '../components/ModalHeader';
 import { useTheme } from '../theme/ThemeContext';
 import { labService, type LabDirectoryItem } from '../services/labService';
 import { hapticFeedback } from '../utils/haptics';
+import { formatDistance, regionAround } from '../utils/nearby';
+import { useNearbyDirectory } from '../hooks/useNearbyDirectory';
+import { NearbyBar } from '../components/NearbyBar';
 import type { WelliApp } from '../state/useWelliApp';
 
 const PRIMARY_COLOR = '#0EA5E9';
 const BOOK_COLOR = '#059669';
 
-// Abuja center coordinates as the default map region
+// Abuja is the default map region when the phone gives no location
 const ABUJA_REGION = {
   latitude: 9.0765,
   longitude: 7.4586,
@@ -29,50 +32,12 @@ const ABUJA_REGION = {
   longitudeDelta: 0.12,
 };
 
-const DISTRICT_COORDINATES: Record<string, { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number }> = {
-  All: ABUJA_REGION,
-  Wuse: { latitude: 9.078, longitude: 7.48, latitudeDelta: 0.04, longitudeDelta: 0.04 },
-  'Wuse Zone 1': { latitude: 9.062, longitude: 7.472, latitudeDelta: 0.03, longitudeDelta: 0.03 },
-  'Wuse Zone 2': { latitude: 9.066, longitude: 7.475, latitudeDelta: 0.03, longitudeDelta: 0.03 },
-  'Wuse Zone 3': { latitude: 9.071, longitude: 7.478, latitudeDelta: 0.03, longitudeDelta: 0.03 },
-  'Wuse Zone 4': { latitude: 9.075, longitude: 7.481, latitudeDelta: 0.03, longitudeDelta: 0.03 },
-  'Wuse Zone 5': { latitude: 9.079, longitude: 7.484, latitudeDelta: 0.03, longitudeDelta: 0.03 },
-  'Wuse Zone 6': { latitude: 9.083, longitude: 7.488, latitudeDelta: 0.03, longitudeDelta: 0.03 },
-  Utako: { latitude: 9.065, longitude: 7.442, latitudeDelta: 0.04, longitudeDelta: 0.04 },
-  Maitama: { latitude: 9.088, longitude: 7.494, latitudeDelta: 0.04, longitudeDelta: 0.04 },
-  Asokoro: { latitude: 9.044, longitude: 7.526, latitudeDelta: 0.04, longitudeDelta: 0.04 },
-  Jabi: { latitude: 9.072, longitude: 7.423, latitudeDelta: 0.04, longitudeDelta: 0.04 },
-  Jahi: { latitude: 9.092, longitude: 7.439, latitudeDelta: 0.04, longitudeDelta: 0.04 },
-  Wuye: { latitude: 9.053, longitude: 7.453, latitudeDelta: 0.04, longitudeDelta: 0.04 },
-};
-
-const DISTRICTS = [
-  'All',
-  'Wuse',
-  'Wuse Zone 1',
-  'Wuse Zone 2',
-  'Wuse Zone 3',
-  'Wuse Zone 4',
-  'Wuse Zone 5',
-  'Wuse Zone 6',
-  'Utako',
-  'Maitama',
-  'Asokoro',
-  'Jabi',
-  'Jahi',
-  'Wuye',
-];
-
 export function LabDirectoryModal({ app }: { app: WelliApp }) {
   const theme = useTheme();
   const { state, actions } = app;
   const mapRef = useRef<MapView>(null);
 
-  const [labs, setLabs] = useState<LabDirectoryItem[]>([]);
-  const [usedFallback, setUsedFallback] = useState(false);
-  const [selectedDistrict, setSelectedDistrict] = useState('All');
   const [selectedLab, setSelectedLab] = useState<LabDirectoryItem | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapFailed, setMapFailed] = useState(false);
@@ -95,55 +60,22 @@ export function LabDirectoryModal({ app }: { app: WelliApp }) {
 
   const isVisible = Boolean(state.showLabDirectory);
 
+  const { items: labs, pos, loc, usedFallback, radiusKm, loading: isLoading, reload } = useNearbyDirectory<LabDirectoryItem>(
+    isVisible,
+    async (p) => {
+      const r = await labService.fetchLabs(p);
+      return { items: r.labs, usedFallback: r.usedFallback, radiusKm: r.radiusKm };
+    },
+  );
+
+  // Select the nearest result when the list changes and move the map to the person (or Abuja).
   useEffect(() => {
-    if (!isVisible) return;
-    let isMounted = true;
-
-    labService
-      .fetchLabs()
-      .then((res) => {
-        if (isMounted) {
-          setLabs(res.labs);
-          setUsedFallback(res.usedFallback);
-          setSelectedLab((prev) => prev ?? (res.labs.length > 0 ? res.labs[0] : null));
-        }
-      })
-      .catch((err) => {
-        console.error('[LabDirectoryModal] load error:', err);
-      })
-      .finally(() => {
-        if (isMounted) setIsLoading(false);
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [isVisible]);
-
-  const filteredLabs = useMemo(() => {
-    if (selectedDistrict === 'All') return labs;
-    return labs.filter(
-      (lab) => lab.district.toLowerCase() === selectedDistrict.toLowerCase()
-    );
-  }, [labs, selectedDistrict]);
-
-  const handleSelectDistrict = (district: string) => {
-    hapticFeedback.light();
-    setSelectedDistrict(district);
-
-    const region = DISTRICT_COORDINATES[district] || ABUJA_REGION;
+    setSelectedLab(labs.length > 0 ? labs[0] : null);
+    const region = pos ? regionAround(pos, radiusKm ? Math.min(radiusKm, 10) : 5) : ABUJA_REGION;
     mapRef.current?.animateToRegion(region, 500);
+  }, [labs, pos, radiusKm]);
 
-    const matching = district === 'All'
-      ? labs
-      : labs.filter((l) => l.district.toLowerCase() === district.toLowerCase());
-
-    if (matching.length > 0) {
-      setSelectedLab(matching[0]);
-    } else {
-      setSelectedLab(null);
-    }
-  };
+  const filteredLabs = labs;
 
   const handleSelectLab = (lab: LabDirectoryItem) => {
     hapticFeedback.light();
@@ -197,7 +129,7 @@ export function LabDirectoryModal({ app }: { app: WelliApp }) {
     >
       <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]}>
         <ModalHeader
-          title="Abuja Diagnostic Center Locator"
+          title="Diagnostic Center Locator"
           onClose={actions.closeLabDirectory}
         />
 
@@ -222,52 +154,16 @@ export function LabDirectoryModal({ app }: { app: WelliApp }) {
           <View style={[styles.fallbackBanner, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
             <Text style={{ fontSize: 13 }}>⚠️</Text>
             <Text style={[styles.fallbackBannerText, { color: '#92400E' }]}>
-              Showing verified offline directory — live search currently unavailable.
+              Showing the saved Abuja list because live search is not available.
             </Text>
           </View>
         )}
 
-        {/* District Filter Chips */}
-        <View style={styles.filterSection}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipsContainer}
-          >
-            {DISTRICTS.map((district) => {
-              const isActive = selectedDistrict === district;
-              return (
-                <TouchableOpacity
-                  key={district}
-                  activeOpacity={0.7}
-                  onPress={() => handleSelectDistrict(district)}
-                  style={[
-                    styles.districtChip,
-                    {
-                      backgroundColor: isActive ? PRIMARY_COLOR : theme.surface,
-                      borderColor: isActive ? PRIMARY_COLOR : theme.border,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.districtChipText,
-                      { color: isActive ? '#ffffff' : theme.text },
-                    ]}
-                  >
-                    {district}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
+        <NearbyBar loc={loc} radiusKm={radiusKm} count={labs.length} noun="diagnostic centers" onRefresh={reload} />
 
         {/* View Mode Toggle: Map vs List */}
         <View style={styles.viewToggleRow}>
-          <Text style={[styles.resultsCount, { color: theme.muted }]}>
-            {filteredLabs.length} {filteredLabs.length === 1 ? 'diagnostic center' : 'diagnostic centers'} found
-          </Text>
+          <View />
           <View style={[styles.togglePill, { backgroundColor: theme.surface, borderColor: theme.border }]}>
             <TouchableOpacity
               activeOpacity={0.7}
@@ -315,7 +211,7 @@ export function LabDirectoryModal({ app }: { app: WelliApp }) {
         {isLoading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={PRIMARY_COLOR} />
-            <Text style={[styles.loadingText, { color: theme.muted }]}>Loading Abuja diagnostic centers...</Text>
+            <Text style={[styles.loadingText, { color: theme.muted }]}>Finding diagnostic centers...</Text>
           </View>
         ) : viewMode === 'map' ? (
           <View style={styles.mapContainer}>
@@ -324,8 +220,8 @@ export function LabDirectoryModal({ app }: { app: WelliApp }) {
               ref={mapRef}
               provider={PROVIDER_DEFAULT}
               style={styles.map}
-              initialRegion={ABUJA_REGION}
-              showsUserLocation={false}
+              initialRegion={pos ? regionAround(pos, 5) : ABUJA_REGION}
+              showsUserLocation={Boolean(pos)}
               showsCompass={true}
               showsScale={true}
               onMapLoaded={() => setMapLoaded(true)}
@@ -385,7 +281,7 @@ export function LabDirectoryModal({ app }: { app: WelliApp }) {
                         : 'Hours Unverified'}
                     </Text>
                     <Text style={[styles.districtTag, { color: theme.mutedLight }]}>
-                      · {selectedLab.district}
+                      · {selectedLab.distanceKm !== undefined ? formatDistance(selectedLab.distanceKm) : selectedLab.district}
                     </Text>
                   </View>
 
@@ -420,7 +316,7 @@ export function LabDirectoryModal({ app }: { app: WelliApp }) {
               <View style={styles.emptyList}>
                 <Text style={{ fontSize: 32, marginBottom: 8 }}>🔬</Text>
                 <Text style={[styles.emptyTitle, { color: theme.text }]}>No diagnostic centers found</Text>
-                <Text style={[styles.emptySub, { color: theme.muted }]}>Try selecting "All" districts or a neighboring area.</Text>
+                <Text style={[styles.emptySub, { color: theme.muted }]}>Try again from a different spot, or check your connection.</Text>
               </View>
             ) : (
               filteredLabs.map((lab) => {
@@ -464,7 +360,7 @@ export function LabDirectoryModal({ app }: { app: WelliApp }) {
                             : 'Hours Unverified'}
                         </Text>
                         <Text style={[styles.districtTag, { color: theme.mutedLight }]}>
-                          · {lab.district} District
+                          · {lab.distanceKm !== undefined ? formatDistance(lab.distanceKm) : lab.district + ' District'}
                         </Text>
                       </View>
                     </View>

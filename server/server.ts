@@ -49,6 +49,7 @@ import { createProviderShareRouter } from './providerShare';
 import { cleanAvatar } from './avatar';
 import { anthropicCall, createAssistantRouter, geminiCall, parseGeminiSse } from './assistant';
 import { providerSharePage } from './providerSharePage';
+import { nearAbuja, nearbyCached, parseCoords, type PlaceKind } from './nearbyPlaces';
 import { childToFhirBundle } from './fhir';
 import { createChildReminderRouter, startChildReminderSweep, type ReminderDeps } from './childReminders';
 import { auditChild, createChildAccessRouter, effectivePerms, resolveChildAccess, type PermKey } from './childAccess';
@@ -3680,7 +3681,35 @@ async function fetchWithTimeout(url: string, ms: number) {
   }
 }
 
+const nearbyLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many searches. Try again later.' },
+});
+
+// Labs or pharmacies around the phone's position, anywhere. The curated Abuja list is only used
+// when the key is missing or Google fails and the person is near Abuja.
+async function nearbyHandler(kind: PlaceKind, req: Request, res: Response) {
+  const key = kind === 'lab' ? 'labs' : 'pharmacies';
+  const p = parseCoords(req.query as any);
+  if (!p) return res.status(400).json({ success: false, message: 'Invalid location.' });
+  const fallback = kind === 'lab' ? ABUJA_FALLBACK_LABS : ABUJA_FALLBACK_PHARMACIES;
+  const curated = () => (nearAbuja(p) ? { [key]: fallback, usedFallback: true } : { [key]: [], usedFallback: false });
+  const placesKey = process.env.GOOGLE_PLACES_API_KEY;
+  if (!placesKey) return res.json({ success: true, ...curated(), located: true });
+  try {
+    const r = await nearbyCached(kind, p, placesKey, fetchWithTimeout);
+    return res.json({ success: true, [key]: r.places, usedFallback: false, located: true, radiusKm: r.radiusKm });
+  } catch (err) {
+    console.error(`[Nearby ${kind}]`, err);
+    return res.json({ success: true, ...curated(), located: true });
+  }
+}
+
 app.get('/api/v1/care/pharmacies', async (req: Request, res: Response) => {
+  if (req.query.lat !== undefined) return nearbyLimiter(req, res, () => nearbyHandler('pharmacy', req, res));
   const placesKey = process.env.GOOGLE_PLACES_API_KEY;
 
   if (pharmacyCache && Date.now() - pharmacyCache.fetchedAt < CACHE_TTL_MS) {
@@ -3857,6 +3886,7 @@ const ABUJA_FALLBACK_LABS = [
 ];
 
 app.get('/api/v1/care/labs', async (req: Request, res: Response) => {
+  if (req.query.lat !== undefined) return nearbyLimiter(req, res, () => nearbyHandler('lab', req, res));
   const placesKey = process.env.GOOGLE_PLACES_API_KEY;
 
   if (labCache && Date.now() - labCache.fetchedAt < CACHE_TTL_MS) {
