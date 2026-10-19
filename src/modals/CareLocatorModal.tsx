@@ -19,6 +19,7 @@ import { hapticFeedback } from '../utils/haptics';
 import { formatDistance, regionAround } from '../utils/nearby';
 import { useNearbyDirectory } from '../hooks/useNearbyDirectory';
 import { NearbyBar } from '../components/NearbyBar';
+import { WelliBadge } from '../components/WelliBadge';
 import type { WelliApp } from '../state/useWelliApp';
 
 const PRIMARY_COLOR = '#0EA5E9';
@@ -116,6 +117,11 @@ export function CareLocatorModal({ app }: { app: WelliApp }) {
   const handleBookAppointment = (lab: LabDirectoryItem) => {
     hapticFeedback.selection();
     actions.closeCareLocator();
+    // A registered provider is booked as a WelliRecord facility, so it is notified. Anything else is a Google listing.
+    if (lab.welliRecord && lab.facilityId && app.facilities.some((f) => f.id === lab.facilityId)) {
+      actions.openBookAppointment(lab.facilityId);
+      return;
+    }
     actions.openBookAppointment('', {
       name: lab.name,
       address: lab.address,
@@ -142,7 +148,7 @@ export function CareLocatorModal({ app }: { app: WelliApp }) {
         <View style={[styles.disclaimerBar, { backgroundColor: theme.surface2, borderColor: theme.border }]}>
           <Text style={{ fontSize: 13 }}>📍</Text>
           <Text style={[styles.disclaimerText, { color: theme.muted }]}>
-            Public directory locator. To share records or manage consent, use verified WelliRecord partner facilities.
+            Providers marked WelliRecord are registered on WelliRecord and listed first. Other results are Google listings that WelliRecord has not checked.
           </Text>
         </View>
 
@@ -266,6 +272,7 @@ export function CareLocatorModal({ app }: { app: WelliApp }) {
                     <Text style={[styles.labName, { color: theme.text }]} numberOfLines={1}>
                       {selectedLab.name}
                     </Text>
+                    {selectedLab.welliRecord ? <View style={{ alignSelf: 'flex-start', marginBottom: 3 }}><WelliBadge /></View> : null}
                     <Text style={[styles.labAddress, { color: theme.muted }]} numberOfLines={2}>
                       {selectedLab.address}
                     </Text>
@@ -352,6 +359,7 @@ export function CareLocatorModal({ app }: { app: WelliApp }) {
                     <View style={{ flex: 1, paddingRight: 8 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                         <Text style={[styles.listItemName, { color: theme.text }]}>{lab.name}</Text>
+                        {lab.welliRecord ? <WelliBadge /> : null}
                         {lab.rating !== null && (
                           <Text style={styles.ratingInline}>★ {lab.rating.toFixed(1)}</Text>
                         )}

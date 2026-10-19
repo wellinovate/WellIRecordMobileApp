@@ -14,6 +14,8 @@ export interface LabDirectoryItem {
   rating: number | null;
   openNow: boolean | null;
   distanceKm?: number;
+  welliRecord?: boolean;
+  facilityId?: string;
 }
 
 export interface FetchLabsResult {
