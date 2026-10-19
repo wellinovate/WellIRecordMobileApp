@@ -23,6 +23,7 @@ export interface AddFamilyMemberData {
   genotype?: string;
   allergies?: string;
   phone?: string;
+  avatarUrl?: string;
   linkedAccountId?: string | null;
 }
 

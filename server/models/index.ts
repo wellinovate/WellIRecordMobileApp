@@ -58,6 +58,7 @@ export interface IFamilyMember extends Document {
   bloodType?: string;
   genotype?: string;
   height?: string;
+  avatarUrl?: string;
   heightCm?: number;
   weight?: string;
   weightKg?: number;
@@ -87,6 +88,7 @@ const FamilyMemberSchema = new Schema<IFamilyMember>(
     bloodType: { type: String },
     genotype: { type: String },
     height: { type: String },
+    avatarUrl: { type: String },
     heightCm: { type: Number },
     weight: { type: String },
     weightKg: { type: Number },

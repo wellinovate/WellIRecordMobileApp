@@ -49,6 +49,7 @@ export const profileService = {
       conditions: draft.conditions,
       address: draft.address,
       contact: draft.contact,
+      avatarUrl: !draft.avatarUrl ? '' : draft.avatarUrl.startsWith('data:image/') ? draft.avatarUrl : undefined,
     });
   },
 };

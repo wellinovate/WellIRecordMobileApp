@@ -174,6 +174,12 @@ function formatDobInput(text: string): string {
   return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
 }
 
+// Low quality keeps a square profile photo small enough to store with the profile.
+const AVATAR_QUALITY = 0.35;
+const photoData = (r: { uri: string; base64?: string; type?: string }) =>
+  r.base64 ? `data:${r.type && r.type.startsWith('image/') ? r.type : 'image/jpeg'};base64,${r.base64}` : r.uri;
+const photoBytes = (r: { base64?: string; size?: number }) => (r.base64 ? Math.floor((r.base64.length * 3) / 4) : r.size || 1024);
+
 export function PersonalInfoModal({ app }: { app: WelliApp }) {
   const { state, actions, family } = app;
   const [showPhotoOptions, setShowPhotoOptions] = useState(false);
@@ -265,11 +271,11 @@ export function PersonalInfoModal({ app }: { app: WelliApp }) {
     setShowPhotoOptions(false);
     setPickingPhoto(true);
     hapticFeedback.light();
-    const result = await pickImageFromCamera();
+    const result = await pickImageFromCamera(true, AVATAR_QUALITY);
     setPickingPhoto(false);
     if (result) {
       hapticFeedback.success();
-      actions.setAvatar(activeMember.id, result.uri, result.size || 1024);
+      actions.setAvatar(activeMember.id, photoData(result), photoBytes(result));
     }
   };
 
@@ -277,11 +283,11 @@ export function PersonalInfoModal({ app }: { app: WelliApp }) {
     setShowPhotoOptions(false);
     setPickingPhoto(true);
     hapticFeedback.light();
-    const result = await pickImageFromLibrary();
+    const result = await pickImageFromLibrary(true, AVATAR_QUALITY);
     setPickingPhoto(false);
     if (result) {
       hapticFeedback.success();
-      actions.setAvatar(activeMember.id, result.uri, result.size || 1024);
+      actions.setAvatar(activeMember.id, photoData(result), photoBytes(result));
     }
   };
 

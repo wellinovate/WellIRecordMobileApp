@@ -46,6 +46,7 @@ import { IMMUNIZATION_SCHEDULE, scheduleDoseByCode } from './data/immunizationSc
 import { createChildDevelopmentRouter } from './childDevelopment';
 import { createChildFacilityRouter } from './childFacility';
 import { createProviderShareRouter } from './providerShare';
+import { cleanAvatar } from './avatar';
 import { providerSharePage } from './providerSharePage';
 import { childToFhirBundle } from './fhir';
 import { createChildReminderRouter, startChildReminderSweep, type ReminderDeps } from './childReminders';
@@ -109,7 +110,14 @@ app.use(
     },
   })
 );
-app.use(express.json());
+// Profile photos arrive as a small base64 JPEG inside the profile update, so those two routes
+// take a larger body than the 100kb default.
+const bigJson = express.json({ limit: '1500kb' });
+const smallJson = express.json();
+app.use((req, res, next) =>
+  /^\/(api\/v1\/)?(profile\/update|family\/[a-f0-9]{24})\/?$/i.test(req.path) ? bigJson(req, res, next) : smallJson(req, res, next)
+);
+
 
 // Rate limiters for auth OTP endpoints and OCR document processing
 const otpLimiter = rateLimit({
@@ -1386,7 +1394,7 @@ app.post('/api/v1/auth/social/verify', async (req: Request, res: Response) => {
 });
 
 // 3d. Update Patient Profile (writes directly to shared 'userprofiles' collection)
-app.post(['/api/v1/profile/update', '/profile/update'], async (req: Request, res: Response) => {
+const updateProfileHandler = async (req: Request, res: Response) => {
   const authUserId = getAuthUserId(req);
   if (!authUserId) {
     return res.status(401).json({ success: false, message: 'Authentication required' });
@@ -1413,7 +1421,13 @@ app.post(['/api/v1/profile/update', '/profile/update'], async (req: Request, res
     address,
     homeAddress,
     contact,
+    avatarUrl,
   } = req.body;
+
+  const avatar = cleanAvatar(avatarUrl);
+  if (avatar === null) {
+    return res.status(400).json({ success: false, message: 'That photo could not be saved. Choose a smaller picture.' });
+  }
 
   // Bound to caller's own account or a dependent owned by caller
   const targetId = (accountId || userId || authUserId) as string;
@@ -1474,6 +1488,10 @@ app.post(['/api/v1/profile/update', '/profile/update'], async (req: Request, res
         profile.address = resolvedAddress;
       }
       if (contact !== undefined) profile.contact = contact;
+      if (avatar !== undefined) {
+        profile.avatarUrl = avatar;
+        profile.avatar = avatar;
+      }
       if (!profile.wrId) {
         profile.wrId = wrId || memberId || generateWelliRecordId();
       }
@@ -1485,7 +1503,9 @@ app.post(['/api/v1/profile/update', '/profile/update'], async (req: Request, res
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Failed to update profile', error: err });
   }
-});
+};
+app.post(['/api/v1/profile/update', '/profile/update'], updateProfileHandler);
+app.patch(['/api/v1/profile/update', '/profile/update'], updateProfileHandler);
 
 // 3e. Fetch Current Patient Profile (reads from shared 'userprofiles' collection)
 app.get(['/api/v1/profile/me', '/api/v1/profile'], async (req: Request, res: Response) => {
@@ -1766,7 +1786,13 @@ app.patch('/api/v1/family/:id', async (req: Request, res: Response) => {
       weight,
       allergies,
       phone,
+      avatarUrl,
     } = req.body;
+
+    const avatar = cleanAvatar(avatarUrl);
+    if (avatar === null) {
+      return res.status(400).json({ success: false, message: 'That photo could not be saved. Choose a smaller picture.' });
+    }
 
     const resolvedName = fullName !== undefined ? fullName : name;
     if (resolvedName !== undefined) {
@@ -1793,6 +1819,7 @@ app.patch('/api/v1/family/:id', async (req: Request, res: Response) => {
     if (weight !== undefined) member.weight = weight;
     if (allergies !== undefined) member.allergies = allergies;
     if (phone !== undefined) member.phone = phone;
+    if (avatar !== undefined) member.avatarUrl = avatar;
 
     await member.save();
     return res.json({

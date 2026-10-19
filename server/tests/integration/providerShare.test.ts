@@ -34,8 +34,8 @@ describe('provider share against a real database', { skip: !hasDb && 'set MONGOD
   before(async () => {
     await connect();
     await UserProfile.create({ accountId: owner, fullName: 'Ada Test', dateOfBirth: '1990-01-02', gender: 'Female', allergies: 'Penicillin', wrId: 'WR-TEST-0001' });
-    await Prescription.create({ familyMemberId: String(owner), medicationName: 'Amlodipine', dosage: '5mg', frequency: 'Daily', status: 'active' });
-    await HealthRecord.create({ familyMemberId: String(owner), title: 'Malaria test', recordType: 'lab', date: '2026-01-01', summary: 'Positive' });
+    await Prescription.create({ familyMemberId: String(owner), medicationName: 'Amlodipine', dosage: '5mg', frequency: 'Daily', prescriber: 'Dr Test', pharmacyProvider: 'Test Pharmacy', status: 'active' });
+    await HealthRecord.create({ userId: owner, familyMemberId: owner, title: 'Malaria test', recordType: 'Lab Result', date: '2026-01-01', provider: 'Test Lab', summary: 'Positive' });
     const app = express();
     app.use(express.json());
     app.use(
@@ -140,7 +140,7 @@ describe('provider share against a real database', { skip: !hasDb && 'set MONGOD
   });
 
   it('rejects sharing a profile the caller cannot reach', async () => {
-    const kid = await FamilyMember.create({ accountId: stranger, fullName: 'Child', relationship: 'Child' } as any);
+    const kid = await FamilyMember.create({ accountId: stranger, fullName: 'Child', initials: 'C', relationship: 'Child' } as any);
     const r = await call('POST', '/provider-shares', form({ subjectId: String(kid._id) }), as(owner));
     assert.equal(r.status, 403);
   });
