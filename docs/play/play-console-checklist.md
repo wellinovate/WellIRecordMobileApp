@@ -30,7 +30,7 @@ Encrypted in transit: yes (HTTPS). Deletion request offered: yes (in app and by 
 | Crash logs and diagnostics | Yes | First-party error reports with no name, email, phone or health data, deleted after 30 days | No |
 | Device or other IDs | Push token | Notifications | Yes |
 
-Service providers that process data for us: Clerk (sign-in), the hosting and database providers, Termii (SMS, only if the guardian turns it on), LiveKit (video visits), Expo (push notifications), and Anthropic (the Assistant: only the text the user types in the chat, with no records or account data). Scanned document images go to Google Cloud Vision and Anthropic for text reading (see the open decision in CLAUDE.md rules). Declare in Data safety: user-typed chat messages are shared with a service provider to give the answer.
+Service providers that process data for us: Clerk (sign-in), the hosting and database providers, Termii (SMS, only if the guardian turns it on), LiveKit (video visits), Expo (push notifications), and Google (Gemini) or Anthropic, whichever key is set (the Assistant: only the text the user types in the chat, with no records or account data). Scanned document images go to Google Cloud Vision and Anthropic for text reading (see the open decision in CLAUDE.md rules). Declare in Data safety: user-typed chat messages are shared with a service provider to give the answer.
 
 ## Known gaps before you submit
 

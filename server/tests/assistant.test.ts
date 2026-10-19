@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
 import express from 'express';
-import { cleanTurns, createAssistantRouter, isEmergency, parseSse, EMERGENCY_NOTICE, type ModelCall } from '../assistant';
+import { cleanTurns, createAssistantRouter, isEmergency, parseGeminiSse, parseSse, EMERGENCY_NOTICE, type ModelCall, type SseParser } from '../assistant';
 import { ASSISTANT_SYSTEM_PROMPT } from '../data/assistantKnowledge';
 
 const sse = (...evs: object[]) => evs.map((e) => `event: x\ndata: ${JSON.stringify(e)}\n\n`).join('');
@@ -17,13 +17,14 @@ function fakeModel(chunks: string[], ok = true): ModelCall {
   });
 }
 
-async function withServer(call: ModelCall | null, fn: (base: string) => Promise<void>) {
+async function withServer(call: ModelCall | null, fn: (base: string) => Promise<void>, parse?: SseParser) {
   const app = express();
   app.use(express.json());
   app.use('/api/v1', createAssistantRouter({
     getAuthUserId: (req) => (req.headers.authorization === 'Bearer ok' ? 'u1' : null),
     limiter: (_q, _s, n) => n(),
     call,
+    parse,
   }));
   const srv = app.listen(0);
   try { await fn(`http://127.0.0.1:${(srv.address() as AddressInfo).port}/api/v1`); } finally { srv.close(); }
@@ -112,4 +113,25 @@ test('model outage returns a friendly 502 and an empty answer reports an error',
     const text = await (await ask(base, [{ role: 'user', content: 'hi' }])).text();
     assert.ok(text.includes('"error"'));
   });
+});
+
+const gem = (...parts: string[]) => parts.map((t) => `data: ${JSON.stringify({ candidates: [{ content: { role: 'model', parts: [{ text: t }] } }] })}\r\n\r\n`).join('');
+
+test('gemini stream is parsed, including CRLF and split chunks', () => {
+  const full = gem('Open ', 'Records.') + `data: ${JSON.stringify({ candidates: [{ finishReason: 'STOP' }] })}\r\n\r\n`;
+  const a = parseGeminiSse(full.slice(0, 50));
+  const b = parseGeminiSse(a.rest + full.slice(50));
+  assert.equal([...a.deltas, ...b.deltas].join(''), 'Open Records.');
+  assert.equal(b.done, true);
+  assert.ok(parseGeminiSse(`data: ${JSON.stringify({ candidates: [{ finishReason: 'SAFETY' }] })}\n\n`).error);
+  assert.ok(parseGeminiSse(`data: ${JSON.stringify({ promptFeedback: { blockReason: 'OTHER' } })}\n\n`).error);
+});
+
+test('the route streams a Gemini answer', async () => {
+  await withServer(fakeModel([gem('Tap ', 'You.')]), async (base) => {
+    const text = await (await ask(base, [{ role: 'user', content: 'where is my profile' }])).text();
+    const evs = text.split('\n\n').filter(Boolean).map((l) => JSON.parse(l.replace(/^data: /, '')));
+    assert.equal(evs.filter((e) => e.delta).map((e) => e.delta).join(''), 'Tap You.');
+    assert.equal(evs[evs.length - 1].done, true);
+  }, parseGeminiSse);
 });
