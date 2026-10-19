@@ -704,7 +704,7 @@ interface SendEmailOptions {
   from?: string;
 }
 
-async function sendWelliEmail({ to, subject, html, text, from }: SendEmailOptions): Promise<{ success: boolean; messageId?: string; error?: any }> {
+async function sendWelliEmail({ to, subject, html, text, from }: SendEmailOptions): Promise<{ success: boolean; delivered?: boolean; messageId?: string; error?: any }> {
   const fromAddress = from || process.env.EMAIL_FROM || 'WelliRecord <noreply@send.wellirecord.com>';
   
   // 1. Resend API
@@ -728,7 +728,7 @@ async function sendWelliEmail({ to, subject, html, text, from }: SendEmailOption
       const data = await response.json();
       if (response.ok) {
         console.log('[EMAIL RESEND DISPATCHED]', to, data.id);
-        return { success: true, messageId: data.id };
+        return { success: true, delivered: true, messageId: data.id };
       } else {
         console.warn('[EMAIL RESEND WARN]', data);
       }
@@ -759,7 +759,7 @@ async function sendWelliEmail({ to, subject, html, text, from }: SendEmailOption
       });
       if (response.ok || response.status === 202) {
         console.log('[EMAIL SENDGRID DISPATCHED]', to);
-        return { success: true, messageId: `sg_${Date.now()}` };
+        return { success: true, delivered: true, messageId: `sg_${Date.now()}` };
       }
     } catch (e: any) {
       console.error('[EMAIL SENDGRID ERROR]', e.message);
@@ -768,7 +768,8 @@ async function sendWelliEmail({ to, subject, html, text, from }: SendEmailOption
 
   // 3. Fallback / Development Dispatch Logger
   console.log(`[EMAIL DISPATCHED TO ${to}] Subject: "${subject}"`);
-  return { success: true, messageId: `msg_${Date.now()}` };
+  // Nothing was sent: no provider is configured or every one failed. Callers that must reach a person check `delivered`.
+  return { success: true, delivered: false, messageId: `msg_${Date.now()}` };
 }
 
 function renderOtpEmailHtml({ fullName, code, expiresInMinutes }: { fullName?: string; code: string; expiresInMinutes?: number }): string {
@@ -2505,8 +2506,9 @@ app.use(
       subjectId === authUserId ? Promise.resolve(true) : callerCanAccessOwner(authUserId, subjectId, 'manageGuardians'),
     sendEmail: async (m) => {
       const r = await sendWelliEmail(m);
-      if (!r.success) throw new Error('email failed');
+      if (!r.success || !r.delivered) throw new Error('email not delivered');
     },
+    channels: () => ({ email: Boolean(process.env.RESEND_API_KEY || process.env.SENDGRID_API_KEY), sms: smsConfigured() }),
     sendSms: sendWelliSms,
     normalisePhone: normalizeNigerianPhone,
     notify: async (userId, title, body) => {

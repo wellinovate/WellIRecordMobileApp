@@ -95,6 +95,8 @@ export interface ShareDeps {
   limiter: RequestHandler;
   secret: string;
   publicBaseUrl: (req: Request) => string;
+  /** Which code channels can really deliver. When omitted, both are assumed to work. */
+  channels?: () => { email: boolean; sms: boolean };
 }
 
 export function createProviderShareRouter(deps: ShareDeps) {
@@ -138,6 +140,13 @@ export function createProviderShareRouter(deps: ShareDeps) {
       const parsed = parseCreate(req.body, deps.normalisePhone);
       if ('message' in parsed) return res.status(400).json({ success: false, message: parsed.message });
       const p = parsed.value;
+      if (p.verification.mode === 'contact' && deps.channels && !deps.channels()[p.verification.channel as 'email' | 'sms']) {
+        return res.status(400).json({
+          success: false,
+          code: 'channel_unavailable',
+          message: `${p.verification.channel === 'email' ? 'Email' : 'SMS'} codes are not set up yet. Choose "I will tell them" and give the provider the passcode yourself.`,
+        });
+      }
       const rawSubject = String(req.body?.subjectId || 'me');
       const subjectIsSelf = rawSubject === 'me' || rawSubject === authUserId;
       const subjectId = subjectIsSelf ? authUserId : rawSubject;

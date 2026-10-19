@@ -20,7 +20,7 @@ const JS = `
 (function(){
 var token=location.pathname.split('/').pop();
 var base='/api/v1/provider-share/'+encodeURIComponent(token);
-var session=null;
+var session=null;var sessionMinutes=15;
 var $=function(id){return document.getElementById(id)};
 function show(id){['s-load','s-dead','s-code','s-rec'].forEach(function(x){$(x).classList.toggle('hidden',x!==id)})}
 function el(tag,text,cls){var e=document.createElement(tag);if(text!==undefined&&text!==null)e.textContent=String(text);if(cls)e.className=cls;return e}
@@ -60,7 +60,7 @@ $('go').addEventListener('click',function(){
   $('go').disabled=true;$('code-err').textContent='';
   api('POST','/verify',{code:code}).then(function(j){
     $('go').disabled=false;
-    if(j.success){session=j.session;$('code').value='';loadRecord()}
+    if(j.success){session=j.session;sessionMinutes=Math.max(1,Math.round((j.sessionExpiresInSeconds||900)/60));$('code').value='';loadRecord()}
     else if(j.__status===410){dead(j.message)}
     else{$('code-err').textContent=(j.message||'That code is not right.')+(typeof j.attemptsLeft==='number'?' Tries left: '+j.attemptsLeft+'.':'')}
   });
@@ -108,7 +108,7 @@ function render(r){
 function loadRecord(){
   api('GET','/record',null,session).then(function(j){
     if(j.success){render(j);show('s-rec');
-      var left=Math.round(15);$('sess').textContent='This view closes after '+left+' minutes. Print or save what you need, then close the page.'}
+      $('sess').textContent='This view closes after '+sessionMinutes+' minutes. Print or save what you need, then close the page.'}
     else if(j.__status===410)dead(j.message);
     else{session=null;show('s-code');$('code-err').textContent=j.message||'Enter the code again.'}
   });
