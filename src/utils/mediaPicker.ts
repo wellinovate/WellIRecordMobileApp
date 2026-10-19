@@ -19,7 +19,8 @@ async function ensureMediaLibraryPermission(): Promise<boolean> {
 }
 
 export async function pickImageFromCamera(
-  allowsEditing = true
+  allowsEditing = true,
+  quality = 0.8
 ): Promise<PickedMediaResult | null> {
   try {
     if (Platform.OS !== 'web') {
@@ -35,7 +36,7 @@ export async function pickImageFromCamera(
       mediaTypes: ['images'],
       allowsEditing,
       aspect: [1, 1],
-      quality: 0.8,
+      quality,
       base64: true,
     });
 
@@ -59,7 +60,8 @@ export async function pickImageFromCamera(
 }
 
 export async function pickImageFromLibrary(
-  allowsEditing = true
+  allowsEditing = true,
+  quality = 0.8
 ): Promise<PickedMediaResult | null> {
   try {
     const permitted = await ensureMediaLibraryPermission();
@@ -72,7 +74,7 @@ export async function pickImageFromLibrary(
       mediaTypes: ['images'],
       allowsEditing,
       aspect: [1, 1],
-      quality: 0.8,
+      quality,
       base64: true,
     });
 

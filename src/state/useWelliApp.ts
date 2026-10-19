@@ -138,6 +138,13 @@ export interface AppState {
   toast: string | null;
 }
 
+// The server stores a photo only as a small data URL. A local file path means the picker gave no
+// data, so send nothing rather than a path the server cannot read. No photo sends '' to remove it.
+function avatarForServer(url?: string): string | undefined {
+  if (!url) return '';
+  return url.startsWith('data:image/') ? url : undefined;
+}
+
 // Turns a family member returned by the API into the app's FamilyMember shape.
 export function mapRemoteFamilyMember(m: any): FamilyMember {
   return {
@@ -163,6 +170,7 @@ export function mapRemoteFamilyMember(m: any): FamilyMember {
     insuranceId: m.insuranceId || '',
     wrId: m.wrId || undefined,
     memberId: m.wrId || undefined,
+    avatarUrl: m.avatarUrl || undefined,
     childProfile: m.childProfile || undefined,
     sharedWithMe: Boolean(m.sharedWithMe),
     myPermissions: m.myPermissions || undefined,
@@ -790,6 +798,7 @@ export function useWelliApp() {
                     ? liveProfile.conditions
                     : member.conditions,
                 address: liveProfile.address || member.address,
+                avatarUrl: liveProfile.avatarUrl || liveProfile.avatar || member.avatarUrl,
                 contact:
                   formatEmergencyContact(liveProfile) || member.contact,
                 emergencyContacts:
@@ -1224,6 +1233,7 @@ export function useWelliApp() {
             conditions: draft.conditions,
             address: draft.address,
             contact: draft.contact,
+            avatarUrl: avatarForServer(draft.avatarUrl),
           });
 
           const serverProfile = res?.profile;
@@ -1236,6 +1246,7 @@ export function useWelliApp() {
             genotype: serverProfile?.genotype || draft.genotype,
             email: serverProfile?.email || draft.email,
             phone: serverProfile?.phone || serverProfile?.phoneNumber || draft.phone,
+            avatarUrl: serverProfile ? serverProfile.avatarUrl || undefined : draft.avatarUrl,
             insuranceProvider: serverProfile?.hmoProvider || serverProfile?.insuranceProvider || draft.insuranceProvider || '',
             insuranceId: serverProfile?.hmoPolicyNumber || serverProfile?.policyNumber || draft.insuranceId || '',
             wrId: serverProfile?.wrId || serverProfile?.memberId || draft.wrId || '',
@@ -1269,6 +1280,7 @@ export function useWelliApp() {
             genotype: draft.genotype,
             allergies: draft.allergies,
             phone: draft.phone,
+            avatarUrl: avatarForServer(draft.avatarUrl),
           });
 
           patch((s) => ({
@@ -1286,8 +1298,8 @@ export function useWelliApp() {
       }
     },
     setAvatar: (memberId: string, dataUrl: string, sizeBytes: number) => {
-      if (sizeBytes > 5 * 1024 * 1024) {
-        showToast('Photo is too large — choose one under 5MB');
+      if (sizeBytes > 700 * 1024) {
+        showToast('Photo is too large. Choose a smaller picture.');
         return;
       }
       patch((s) => ({

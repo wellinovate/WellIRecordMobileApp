@@ -126,7 +126,7 @@ export const recordsService = {
    */
   async extractOcrBiomarkers(fileKey: string, type: RecordType): Promise<HealthRecord['extractedOcr']> {
 
-    return apiClient.post<HealthRecord['extractedOcr']>('/records/extract-ocr', {
+    return apiClient.post<HealthRecord['extractedOcr']>('/records/ocr-extract', {
       fileKey,
       type,
     });
