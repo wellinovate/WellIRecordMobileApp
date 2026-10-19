@@ -88,23 +88,23 @@ export function parseGeminiSse(buffer: string): { deltas: string[]; rest: string
 
 export type SseParser = typeof parseSse;
 
-export type ModelCall = (turns: ChatTurn[], signal: AbortSignal) => Promise<Response | { ok: boolean; status: number; body: any; json: () => Promise<any> }>;
+export type ModelCall = (turns: ChatTurn[], signal: AbortSignal, system?: string) => Promise<Response | { ok: boolean; status: number; body: any; json: () => Promise<any> }>;
 
-export const anthropicCall = (apiKey: string, model: string): ModelCall => (turns, signal) =>
+export const anthropicCall = (apiKey: string, model: string): ModelCall => (turns, signal, system) =>
   fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     signal,
     headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model, max_tokens: 700, stream: true, system: ASSISTANT_SYSTEM_PROMPT, messages: turns }),
+    body: JSON.stringify({ model, max_tokens: 700, stream: true, system: system || ASSISTANT_SYSTEM_PROMPT, messages: turns }),
   });
 
-export const geminiCall = (apiKey: string, model: string): ModelCall => (turns, signal) =>
+export const geminiCall = (apiKey: string, model: string): ModelCall => (turns, signal, system) =>
   fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, {
     method: 'POST',
     signal,
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify({
-      systemInstruction: { parts: [{ text: ASSISTANT_SYSTEM_PROMPT }] },
+      systemInstruction: { parts: [{ text: system || ASSISTANT_SYSTEM_PROMPT }] },
       contents: turns.map((t) => ({ role: t.role === 'assistant' ? 'model' : 'user', parts: [{ text: t.content }] })),
       generationConfig: { maxOutputTokens: 800, temperature: 0.3 },
     }),
@@ -115,6 +115,7 @@ export interface AssistantDeps {
   limiter: RequestHandler;
   call: ModelCall | null; // null when no API key is set
   parse?: SseParser; // how to read this model's stream; Claude's by default
+  extraContext?: () => Promise<string>; // appended to the instructions for each question (public provider list)
 }
 
 export function createAssistantRouter(deps: AssistantDeps) {
@@ -135,7 +136,11 @@ export function createAssistantRouter(deps: AssistantDeps) {
     res.on('close', () => ctrl.abort());
     const timer = setTimeout(() => ctrl.abort(), 45_000);
     try {
-      const upstream: any = await deps.call(turns, ctrl.signal);
+      let system = ASSISTANT_SYSTEM_PROMPT;
+      if (deps.extraContext) {
+        try { system += await deps.extraContext(); } catch (e: any) { console.error('[assistant] context failed:', e?.message || e); }
+      }
+      const upstream: any = await deps.call(turns, ctrl.signal, system);
       if (!upstream.ok) {
         console.error('[assistant] model returned', upstream.status);
         return res.status(502).json({ success: false, message: 'The Assistant is busy. Try again in a moment.' });

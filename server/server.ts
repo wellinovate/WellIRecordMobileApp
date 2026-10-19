@@ -51,6 +51,7 @@ import { anthropicCall, createAssistantRouter, geminiCall, parseGeminiSse } from
 import { providerSharePage } from './providerSharePage';
 import { notifyRequested, notifyStatus, summarise, type NotifyDeps } from './appointmentNotify';
 import { nearAbuja, nearbyCached, parseCoords, PLACE_KINDS, type PlaceKind } from './nearbyPlaces';
+import { createProviderSource, mergeWelliFirst, ORG_FIELDS, providerContext, welliPlaces } from './welliProviders';
 import { childToFhirBundle } from './fhir';
 import { createChildReminderRouter, startChildReminderSweep, type ReminderDeps } from './childReminders';
 import { auditChild, createChildAccessRouter, effectivePerms, resolveChildAccess, type PermKey } from './childAccess';
@@ -2542,6 +2543,7 @@ app.use(
         ? anthropicCall(process.env.ANTHROPIC_API_KEY, process.env.ASSISTANT_MODEL || 'claude-haiku-5-5')
         : null,
     parse: process.env.GEMINI_API_KEY ? parseGeminiSse : undefined,
+    extraContext: async () => providerContext(mongoose.connection.readyState === 1 ? await welliProviders() : []),
   })
 );
 app.get('/share/:token', (req, res) => {
@@ -3483,6 +3485,11 @@ const OrganizationProfile: mongoose.Model<any> =
   (mongoose.models.OrganizationProfile as any) ||
   mongoose.model('OrganizationProfile', OrganizationProfileSchema, 'organizationprofiles');
 
+// Approved WelliRecord providers, cached for five minutes. Used by the locators and the Assistant.
+const welliProviders = createProviderSource(() =>
+  OrganizationProfile.find({ verificationStatus: 'approved' }, ORG_FIELDS).limit(500).lean() as any
+);
+
 app.get(['/api/v1/care/providers', '/api/v1/providers'], async (_req: Request, res: Response) => {
   try {
     if (mongoose.connection.readyState !== 1) {
@@ -3715,14 +3722,21 @@ async function nearbyHandler(kind: PlaceKind, req: Request, res: Response) {
   // Curated Abuja lists exist for labs and pharmacies only; nothing is invented for the other kinds.
   const fallback = kind === 'lab' ? ABUJA_FALLBACK_LABS : kind === 'pharmacy' ? ABUJA_FALLBACK_PHARMACIES : [];
   const curated = () => (nearAbuja(p) ? { [key]: fallback, usedFallback: true } : { [key]: [], usedFallback: false });
+  // Registered WelliRecord providers come first, and are shown even when Google is off or fails.
+  const registered = mongoose.connection.readyState === 1 ? welliPlaces(kind, p, await welliProviders()) : [];
+  const withRegistered = (list: any[]) => mergeWelliFirst(registered, list);
   const placesKey = process.env.GOOGLE_PLACES_API_KEY;
-  if (!placesKey) return res.json({ success: true, ...curated(), located: true });
+  if (!placesKey) {
+    const c: any = curated();
+    return res.json({ success: true, ...c, [key]: withRegistered(c[key]), located: true });
+  }
   try {
     const r = await nearbyCached(kind, p, placesKey, placesPost);
-    return res.json({ success: true, [key]: r.places, usedFallback: false, located: true, radiusKm: r.radiusKm });
+    return res.json({ success: true, [key]: withRegistered(r.places), usedFallback: false, located: true, radiusKm: r.radiusKm });
   } catch (err) {
     console.error(`[Nearby ${kind}]`, err);
-    return res.json({ success: true, ...curated(), located: true });
+    const c: any = curated();
+    return res.json({ success: true, ...c, [key]: withRegistered(c[key]), located: true });
   }
 }
 

@@ -19,6 +19,7 @@ import { hapticFeedback } from '../utils/haptics';
 import { formatDistance, regionAround } from '../utils/nearby';
 import { useNearbyDirectory } from '../hooks/useNearbyDirectory';
 import { NearbyBar } from '../components/NearbyBar';
+import { WelliBadge } from '../components/WelliBadge';
 import type { WelliApp } from '../state/useWelliApp';
 
 const PRIMARY_COLOR = '#0EA5E9';
@@ -126,7 +127,7 @@ export function PharmacyDirectoryModal({ app }: { app: WelliApp }) {
         <View style={[styles.disclaimerBar, { backgroundColor: theme.surface2, borderColor: theme.border }]}>
           <Text style={{ fontSize: 13 }}>📍</Text>
           <Text style={[styles.disclaimerText, { color: theme.muted }]}>
-            Public directory locator. To share records or manage consent, use verified WelliRecord partner facilities.
+            Providers marked WelliRecord are registered on WelliRecord and listed first. Other results are Google listings that WelliRecord has not checked.
           </Text>
         </View>
 
@@ -319,6 +320,7 @@ export function PharmacyDirectoryModal({ app }: { app: WelliApp }) {
                     <View style={{ flex: 1, paddingRight: 8 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                         <Text style={[styles.listItemName, { color: theme.text }]}>{pharmacy.name}</Text>
+                        {pharmacy.welliRecord ? <WelliBadge /> : null}
                         {pharmacy.rating !== null && (
                           <Text style={styles.ratingInline}>★ {pharmacy.rating.toFixed(1)}</Text>
                         )}

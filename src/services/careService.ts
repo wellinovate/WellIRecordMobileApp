@@ -73,6 +73,8 @@ export interface NearbyPlaceItem {
   rating: number | null;
   openNow: boolean | null;
   distanceKm?: number;
+  welliRecord?: boolean;
+  facilityId?: string;
 }
 
 export const careService = {
