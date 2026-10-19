@@ -63,6 +63,31 @@ export function parseSse(buffer: string): { deltas: string[]; rest: string; done
   return { deltas, rest, done, error };
 }
 
+// Reads Gemini's server-sent events: candidates[0].content.parts[].text. A block or a stop for
+// safety is reported as an error so the app can say so.
+export function parseGeminiSse(buffer: string): { deltas: string[]; rest: string; done: boolean; error?: string } {
+  const deltas: string[] = [];
+  let done = false;
+  let error: string | undefined;
+  const events = buffer.replace(/\r\n/g, '\n').split('\n\n');
+  const rest = events.pop() ?? '';
+  for (const ev of events) {
+    const line = ev.split('\n').find((l) => l.startsWith('data:'));
+    if (!line) continue;
+    try {
+      const j = JSON.parse(line.slice(5).trim());
+      if (j.promptFeedback?.blockReason) error = 'I cannot answer that one. Try asking it a different way.';
+      const c = j.candidates?.[0];
+      for (const p of c?.content?.parts || []) if (typeof p.text === 'string' && p.text && !p.thought) deltas.push(p.text);
+      if (c?.finishReason === 'SAFETY' || c?.finishReason === 'PROHIBITED_CONTENT') error = 'I cannot answer that one. Try asking it a different way.';
+      else if (c?.finishReason) done = true;
+    } catch { /* ignore a malformed event */ }
+  }
+  return { deltas, rest, done, error };
+}
+
+export type SseParser = typeof parseSse;
+
 export type ModelCall = (turns: ChatTurn[], signal: AbortSignal) => Promise<Response | { ok: boolean; status: number; body: any; json: () => Promise<any> }>;
 
 export const anthropicCall = (apiKey: string, model: string): ModelCall => (turns, signal) =>
@@ -73,10 +98,23 @@ export const anthropicCall = (apiKey: string, model: string): ModelCall => (turn
     body: JSON.stringify({ model, max_tokens: 700, stream: true, system: ASSISTANT_SYSTEM_PROMPT, messages: turns }),
   });
 
+export const geminiCall = (apiKey: string, model: string): ModelCall => (turns, signal) =>
+  fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, {
+    method: 'POST',
+    signal,
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: ASSISTANT_SYSTEM_PROMPT }] },
+      contents: turns.map((t) => ({ role: t.role === 'assistant' ? 'model' : 'user', parts: [{ text: t.content }] })),
+      generationConfig: { maxOutputTokens: 800, temperature: 0.3 },
+    }),
+  });
+
 export interface AssistantDeps {
   getAuthUserId: (req: Request) => string | null;
   limiter: RequestHandler;
   call: ModelCall | null; // null when no API key is set
+  parse?: SseParser; // how to read this model's stream; Claude's by default
 }
 
 export function createAssistantRouter(deps: AssistantDeps) {
@@ -116,7 +154,7 @@ export function createAssistantRouter(deps: AssistantDeps) {
       let sent = 0;
       const feed = (chunk: string) => {
         buf += chunk;
-        const p = parseSse(buf);
+        const p = (deps.parse || parseSse)(buf);
         buf = p.rest;
         for (const d of p.deltas) { send({ delta: d }); sent += d.length; }
         return p;
@@ -126,10 +164,13 @@ export function createAssistantRouter(deps: AssistantDeps) {
           const { value, done } = await reader.read();
           if (done) break;
           const p = feed(decoder.decode(value, { stream: true }));
-          if (p.error) { send({ error: 'The Assistant stopped early. Try again.' }); break; }
+          if (p.error) { send({ error: p.error.length < 90 ? p.error : 'The Assistant stopped early. Try again.' }); break; }
         }
       } else {
-        for await (const value of upstream.body) feed(decoder.decode(value, { stream: true }));
+        for await (const value of upstream.body) {
+          const p = feed(decoder.decode(value, { stream: true }));
+          if (p.error) { send({ error: p.error }); break; }
+        }
       }
       feed('\n\n');
       if (!sent) send({ error: 'The Assistant did not answer. Try again.' });
