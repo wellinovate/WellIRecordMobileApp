@@ -1,4 +1,7 @@
-import { apiClient } from './apiClient';
+import { fetch as streamFetch } from 'expo/fetch';
+import { apiClient, getAuthToken } from './apiClient';
+import { CONFIG } from './config';
+import { parseAssistantEvents } from '../utils/sse';
 
 export interface ChatOption {
   label: string;
@@ -131,7 +134,70 @@ const FALLBACK_INTENTS: Record<string, ChatResponse> = {
   start_over: DEFAULT_WELCOME,
 };
 
+export type AssistantTurn = { role: 'user' | 'assistant'; content: string };
+
+export class AssistantUnavailableError extends Error {}
+
+// Asks the live Assistant and calls back as the answer arrives. Streams where the phone allows it and
+// otherwise reads the whole answer at the end.
+async function askAssistant(
+  messages: AssistantTurn[],
+  on: { onNotice?: (t: string) => void; onDelta: (t: string) => void },
+  signal?: AbortSignal,
+): Promise<void> {
+  const token = getAuthToken();
+  const res = await streamFetch(`${CONFIG.apiBaseUrl}/assistant/message`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ messages }),
+    signal,
+  });
+
+  if (!res.ok) {
+    let msg = 'The Assistant is busy. Try again in a moment.';
+    let code = '';
+    try {
+      const j: any = await res.json();
+      msg = j?.message || msg;
+      code = j?.code || '';
+    } catch {
+      // keep the default message
+    }
+    if (res.status === 503 || code === 'not_configured') throw new AssistantUnavailableError(msg);
+    throw new Error(res.status === 401 ? 'Sign in again to use the Assistant.' : msg);
+  }
+
+  let sawDone = false;
+  const handle = (events: ReturnType<typeof parseAssistantEvents>['events']) => {
+    for (const e of events) {
+      if (e.notice) on.onNotice?.(e.notice);
+      if (e.delta) on.onDelta(e.delta);
+      if (e.error) throw new Error(e.error);
+      if (e.done) sawDone = true;
+    }
+  };
+
+  const reader = res.body?.getReader?.();
+  if (reader) {
+    const decoder = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      const p = parseAssistantEvents(buf + decoder.decode(value, { stream: true }));
+      buf = p.rest;
+      handle(p.events);
+    }
+    handle(parseAssistantEvents(buf + '\n\n').events);
+  } else {
+    handle(parseAssistantEvents((await res.text()) + '\n\n').events);
+  }
+  if (!sawDone) throw new Error('The connection dropped. Try again.');
+}
+
 export const chatbotService = {
+  ask: askAssistant,
+
   open: async (): Promise<ChatResponse> => {
     try {
       const res = await apiClient.post<any>('/chatbot/open');
