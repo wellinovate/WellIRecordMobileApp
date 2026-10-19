@@ -60,3 +60,28 @@ test('provider page uses the nonce and no inline handlers', () => {
   assert.ok(!/\son[a-z]+=/i.test(html));
   assert.ok(!/\sstyle=/i.test(html));
 });
+
+import express from 'express';
+import type { AddressInfo } from 'node:net';
+import { createProviderShareRouter } from '../providerShare';
+
+test('a code channel that cannot deliver is refused before anything is created', async () => {
+  const app = express();
+  app.use(express.json());
+  const deps: any = {
+    getAuthUserId: () => 'u1', callerCanShare: async () => true, sendEmail: async () => {}, sendSms: async () => {},
+    normalisePhone: phone, notify: async () => {}, limiter: (_q: any, _s: any, n: any) => n(), secret: 's',
+    publicBaseUrl: () => 'http://x', channels: () => ({ email: false, sms: false }),
+  };
+  app.use('/api/v1', createProviderShareRouter(deps));
+  const srv = app.listen(0);
+  try {
+    const base = `http://127.0.0.1:${(srv.address() as AddressInfo).port}/api/v1/provider-shares`;
+    const post = (verification: any) => fetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recipientName: 'Dr Ade', sections: ['allergies'], hours: 24, verification }) });
+    const a = await post({ mode: 'contact', channel: 'email', contact: 'dr@clinic.ng' });
+    assert.equal(a.status, 400);
+    assert.equal((await a.json()).code, 'channel_unavailable');
+    const b = await post({ mode: 'contact', channel: 'sms', contact: '08012345678' });
+    assert.equal(b.status, 400);
+  } finally { srv.close(); }
+});
