@@ -3687,6 +3687,17 @@ async function fetchWithTimeout(url: string, ms: number) {
   }
 }
 
+async function placesPost(req: { url: string; headers: Record<string, string>; body: unknown }, ms: number) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), ms);
+  try {
+    const res = await fetch(req.url, { method: 'POST', headers: req.headers, body: JSON.stringify(req.body), signal: controller.signal });
+    return await res.json();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 const nearbyLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 60,
@@ -3707,7 +3718,7 @@ async function nearbyHandler(kind: PlaceKind, req: Request, res: Response) {
   const placesKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!placesKey) return res.json({ success: true, ...curated(), located: true });
   try {
-    const r = await nearbyCached(kind, p, placesKey, fetchWithTimeout);
+    const r = await nearbyCached(kind, p, placesKey, placesPost);
     return res.json({ success: true, [key]: r.places, usedFallback: false, located: true, radiusKm: r.radiusKm });
   } catch (err) {
     console.error(`[Nearby ${kind}]`, err);

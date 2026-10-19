@@ -1,4 +1,4 @@
-// Nearby labs and pharmacies around a point the phone sends, using Google Places Nearby Search.
+// Nearby labs and pharmacies around a point the phone sends, using Google Places API (New).
 export type PlaceKind = 'lab' | 'pharmacy' | 'hospital' | 'clinic' | 'maternity';
 export const PLACE_KINDS: PlaceKind[] = ['lab', 'pharmacy', 'hospital', 'clinic', 'maternity'];
 
@@ -37,50 +37,56 @@ export function distanceKm(a: { lat: number; lng: number }, b: { lat: number; ln
 export const nearAbuja = (p: { lat: number; lng: number }) => distanceKm(p, ABUJA_CENTER) <= ABUJA_FALLBACK_RADIUS_KM;
 
 export function mapPlace(place: any, origin: { lat: number; lng: number }): NearbyPlace | null {
-  const lat = place?.geometry?.location?.lat;
-  const lng = place?.geometry?.location?.lng;
-  if (!place?.place_id || !place?.name || typeof lat !== 'number' || typeof lng !== 'number') return null;
-  const address = String(place.vicinity || place.formatted_address || '');
+  const lat = place?.location?.latitude;
+  const lng = place?.location?.longitude;
+  const name = place?.displayName?.text;
+  if (!place?.id || !name || typeof lat !== 'number' || typeof lng !== 'number') return null;
+  const address = String(place.shortFormattedAddress || place.formattedAddress || '');
   const parts = address.split(',').map((s) => s.trim()).filter(Boolean);
   return {
-    placeId: place.place_id,
-    name: place.name,
+    placeId: place.id,
+    name,
     address,
     district: parts.length > 1 ? parts[parts.length - 1] : '',
     lat,
     lng,
     rating: typeof place.rating === 'number' ? place.rating : null,
-    openNow: place.opening_hours?.open_now ?? null,
+    openNow: typeof place.currentOpeningHours?.openNow === 'boolean' ? place.currentOpeningHours.openNow : null,
     distanceKm: Math.round(distanceKm(origin, { lat, lng }) * 10) / 10,
   };
 }
 
-export function nearbyUrl(kind: PlaceKind, p: { lat: number; lng: number }, radiusM: number, key: string): string {
-  const params = new URLSearchParams({ location: `${p.lat},${p.lng}`, radius: String(radiusM), key });
-  if (kind === 'pharmacy') params.set('type', 'pharmacy');
-  else if (kind === 'hospital') params.set('type', 'hospital');
-  else if (kind === 'clinic') { params.set('type', 'doctor'); params.set('keyword', 'clinic'); }
-  else if (kind === 'maternity') params.set('keyword', 'maternity hospital');
-  else params.set('keyword', 'diagnostic laboratory');
-  return `https://maps.googleapis.com/maps/api/place/nearbysearch/json?${params.toString()}`;
+// Places API (New). Types come from Google's table A; kinds without a clean type use a text query.
+export interface PlacesRequest { url: string; headers: Record<string, string>; body: unknown }
+
+const FIELD_MASK = 'places.id,places.displayName,places.formattedAddress,places.shortFormattedAddress,places.location,places.rating,places.currentOpeningHours.openNow';
+const NEARBY_URL = 'https://places.googleapis.com/v1/places:searchNearby';
+const TEXT_URL = 'https://places.googleapis.com/v1/places:searchText';
+
+export function nearbyRequest(kind: PlaceKind, p: { lat: number; lng: number }, radiusM: number, key: string): PlacesRequest {
+  const circle = { center: { latitude: p.lat, longitude: p.lng }, radius: radiusM };
+  const headers = { 'Content-Type': 'application/json', 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': FIELD_MASK };
+  if (kind === 'pharmacy' || kind === 'hospital') {
+    return { url: NEARBY_URL, headers, body: { includedTypes: [kind], maxResultCount: 20, rankPreference: 'DISTANCE', locationRestriction: { circle } } };
+  }
+  const textQuery = kind === 'clinic' ? 'clinic' : kind === 'maternity' ? 'maternity hospital' : 'diagnostic laboratory';
+  return { url: TEXT_URL, headers, body: { textQuery, maxResultCount: 20, rankPreference: 'DISTANCE', locationBias: { circle } } };
 }
 
-export type JsonFetch = (url: string, ms: number) => Promise<any>;
+export type JsonFetch = (req: PlacesRequest, ms: number) => Promise<any>;
 
 // Searches a widening circle until something is found. Results are sorted nearest first.
 export async function searchNearby(kind: PlaceKind, p: { lat: number; lng: number }, key: string, getJson: JsonFetch) {
   for (const radius of RADII_M) {
-    const data = await getJson(nearbyUrl(kind, p, radius, key), 6000);
-    if (data?.status === 'OK' && Array.isArray(data.results)) {
-      const seen = new Set<string>();
-      const places = data.results
-        .map((r: any) => mapPlace(r, p))
-        .filter((x: NearbyPlace | null): x is NearbyPlace => Boolean(x) && !seen.has(x!.placeId) && Boolean(seen.add(x!.placeId)))
-        .sort((a: NearbyPlace, b: NearbyPlace) => a.distanceKm - b.distanceKm);
-      if (places.length) return { places, radiusKm: radius / 1000 };
-    } else if (data?.status && data.status !== 'ZERO_RESULTS') {
-      throw new Error(`Places ${data.status}`);
-    }
+    const data = await getJson(nearbyRequest(kind, p, radius, key), 6000);
+    if (data?.error) throw new Error(`Places ${data.error.status || data.error.code}: ${data.error.message || ''}`.trim());
+    const list: any[] = Array.isArray(data?.places) ? data.places : [];
+    const seen = new Set<string>();
+    const places = list
+      .map((r) => mapPlace(r, p))
+      .filter((x: NearbyPlace | null): x is NearbyPlace => Boolean(x) && x!.distanceKm <= radius / 1000 && !seen.has(x!.placeId) && Boolean(seen.add(x!.placeId)))
+      .sort((a: NearbyPlace, b: NearbyPlace) => a.distanceKm - b.distanceKm);
+    if (places.length) return { places, radiusKm: radius / 1000 };
   }
   return { places: [] as NearbyPlace[], radiusKm: RADII_M[RADII_M.length - 1] / 1000 };
 }

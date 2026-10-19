@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clearNearbyCache, distanceKm, mapPlace, nearAbuja, nearbyCached, nearbyUrl, parseCoords, searchNearby } from '../nearbyPlaces';
+import { clearNearbyCache, distanceKm, mapPlace, nearAbuja, nearbyCached, nearbyRequest, parseCoords, searchNearby } from '../nearbyPlaces';
 
-const place = (id: string, lat: number, lng: number) => ({ place_id: id, name: id, vicinity: '12 Main St, Ikeja', geometry: { location: { lat, lng } }, rating: 4.2, opening_hours: { open_now: true } });
+const place = (id: string, lat: number, lng: number) => ({ id, displayName: { text: id }, shortFormattedAddress: '12 Main St, Ikeja', location: { latitude: lat, longitude: lng }, rating: 4.2, currentOpeningHours: { openNow: true } });
 
 test('coordinates are validated', () => {
   assert.deepEqual(parseCoords({ lat: '6.5', lng: '3.3' }), { lat: 6.5, lng: 3.3 });
@@ -25,24 +25,28 @@ test('a place is mapped with its district and skipped when incomplete', () => {
   assert.equal(mapPlace({ name: 'x' }, { lat: 0, lng: 0 }), null);
 });
 
-test('url uses the pharmacy type or the lab keyword', () => {
-  assert.match(nearbyUrl('pharmacy', { lat: 1, lng: 2 }, 8000, 'K'), /type=pharmacy/);
-  assert.match(nearbyUrl('lab', { lat: 1, lng: 2 }, 8000, 'K'), /keyword=diagnostic\+laboratory/);
-});
-
-test('hospital, clinic and maternity searches use their own filters', () => {
+test('pharmacy and hospital use Nearby Search with a type; the rest use a text query', () => {
   const p = { lat: 1, lng: 2 };
-  assert.match(nearbyUrl('hospital', p, 8000, 'K'), /type=hospital/);
-  assert.match(nearbyUrl('clinic', p, 8000, 'K'), /type=doctor&keyword=clinic/);
-  assert.match(nearbyUrl('maternity', p, 8000, 'K'), /keyword=maternity\+hospital/);
+  const ph: any = nearbyRequest('pharmacy', p, 8000, 'K');
+  assert.match(ph.url, /places:searchNearby$/);
+  assert.deepEqual(ph.body.includedTypes, ['pharmacy']);
+  assert.equal(ph.headers['X-Goog-Api-Key'], 'K');
+  assert.match(ph.headers['X-Goog-FieldMask'], /places\.displayName/);
+  assert.deepEqual((nearbyRequest('hospital', p, 8000, 'K').body as any).includedTypes, ['hospital']);
+  for (const [kind, q] of [['clinic', 'clinic'], ['maternity', 'maternity hospital'], ['lab', 'diagnostic laboratory']] as const) {
+    const r: any = nearbyRequest(kind, p, 8000, 'K');
+    assert.match(r.url, /places:searchText$/);
+    assert.equal(r.body.textQuery, q);
+    assert.equal(r.body.locationBias.circle.radius, 8000);
+  }
 });
 
 test('the search widens the radius, sorts by distance and drops duplicates', async () => {
   const urls: string[] = [];
-  const get = async (u: string) => {
-    urls.push(u);
-    if (urls.length === 1) return { status: 'ZERO_RESULTS', results: [] };
-    return { status: 'OK', results: [place('far', 6.7, 3.4), place('near', 6.601, 3.3), place('far', 6.7, 3.4)] };
+  const get = async (u: any) => {
+    urls.push(u.url);
+    if (urls.length === 1) return {};
+    return { places: [place('far', 6.7, 3.4), place('near', 6.601, 3.3), place('far', 6.7, 3.4)] };
   };
   const r = await searchNearby('lab', { lat: 6.6, lng: 3.3 }, 'K', get);
   assert.deepEqual(r.places.map((p) => p.placeId), ['near', 'far']);
@@ -50,15 +54,15 @@ test('the search widens the radius, sorts by distance and drops duplicates', asy
 });
 
 test('a Places error is thrown and nothing found returns an empty list', async () => {
-  await assert.rejects(searchNearby('lab', { lat: 1, lng: 1 }, 'K', async () => ({ status: 'REQUEST_DENIED' })));
-  const r = await searchNearby('lab', { lat: 1, lng: 1 }, 'K', async () => ({ status: 'ZERO_RESULTS' }));
+  await assert.rejects(searchNearby('lab', { lat: 1, lng: 1 }, 'K', async () => ({ error: { code: 403, status: 'PERMISSION_DENIED', message: 'Places API (New) has not been used' } })));
+  const r = await searchNearby('lab', { lat: 1, lng: 1 }, 'K', async () => ({}));
   assert.equal(r.places.length, 0);
 });
 
 test('nearby phones share one cached call and keep their own distances', async () => {
   clearNearbyCache();
   let calls = 0;
-  const get = async () => { calls++; return { status: 'OK', results: [place('p', 6.6, 3.3)] }; };
+  const get = async () => { calls++; return { places: [place('p', 6.6, 3.3)] }; };
   const a = await nearbyCached('pharmacy', { lat: 6.601, lng: 3.301 }, 'K', get, 1000);
   const b = await nearbyCached('pharmacy', { lat: 6.604, lng: 3.299 }, 'K', get, 2000);
   assert.equal(calls, 1);
