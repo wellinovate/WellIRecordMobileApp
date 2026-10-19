@@ -65,7 +65,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "WelliRecord uses your location to show nearby care. It stays on your device."
+          "locationWhenInUsePermission": "WelliRecord uses your location to find labs and pharmacies near you. It is sent to our server and Google Places for that search and is not stored."
         }
       ],
       [

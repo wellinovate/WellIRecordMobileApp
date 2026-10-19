@@ -19,6 +19,10 @@ const SECTIONS = [
     body: 'Your data is used solely to provide and improve the WelliRecord service for you and the family members on your account. We never sell your data, use it for advertising, or share it with third parties without your explicit permission.',
   },
   {
+    heading: 'Your location',
+    body: 'If you allow location, the lab and pharmacy locators send your position to our server, which asks Google Places for places near you. We do not store your position. If you do not allow it, the locators show Abuja.',
+  },
+  {
     heading: 'The Assistant',
     body: 'When you type a question to the Assistant, the conversation is sent to an AI service to write the answer. The Assistant cannot see your records or account, and we do not send them. Do not type personal health details, ID numbers, passwords or codes that you do not want processed. The Assistant gives general information and is not a doctor. In an emergency, call 112.',
   },

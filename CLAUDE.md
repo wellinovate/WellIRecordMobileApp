@@ -158,6 +158,10 @@ Tab: Assistant (`src/screens/ChatScreen.tsx`). Typed questions go to `POST /api/
 - When a feature ships or changes, update the knowledge base file. It must say only what the app does. Vaccine timing is deliberately not in it.
 - Tests: `server/tests/assistant.test.ts` (fake model, no database), `tests/sse.test.ts`.
 
+## Nearby labs and pharmacies
+
+`LabDirectoryModal` and `PharmacyDirectoryModal` ask for foreground location (`src/utils/nearby.ts`, `src/hooks/useNearbyDirectory.ts`) and call `GET /care/labs` or `/care/pharmacies` with `lat` and `lng`. The server (`server/nearbyPlaces.ts`) runs Google Places Nearby Search around that point, widening 8, 25, 50 km until something is found, sorts by distance and caches per 1 km cell for 6 hours. 60 searches an hour per IP. Needs `GOOGLE_PLACES_API_KEY` (Places API enabled). Without the key, or if Google fails, the saved Abuja list is returned only when the person is within 60 km of Abuja; elsewhere the list is empty. Without `lat` and `lng` the old Abuja district search still runs. Coordinates are not stored. Results are unverified Google listings, not partner facilities.
+
 ## Rules for changes
 
 - Health documents must not be sent to third-party services. Open them in-app or hand the

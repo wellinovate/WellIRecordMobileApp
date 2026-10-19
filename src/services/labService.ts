@@ -13,23 +13,26 @@ export interface LabDirectoryItem {
   lng: number;
   rating: number | null;
   openNow: boolean | null;
+  distanceKm?: number;
 }
 
 export interface FetchLabsResult {
   labs: LabDirectoryItem[];
   usedFallback: boolean;
+  radiusKm?: number;
 }
 
 export const labService = {
-  async fetchLabs(): Promise<FetchLabsResult> {
+  async fetchLabs(pos?: { lat: number; lng: number }): Promise<FetchLabsResult> {
     try {
       const res = await apiClient.get<{
         success: boolean;
         labs: LabDirectoryItem[];
         usedFallback?: boolean;
-      }>('/care/labs');
+        radiusKm?: number;
+      }>(pos ? `/care/labs?lat=${pos.lat}&lng=${pos.lng}` : '/care/labs');
       if (res && Array.isArray(res.labs)) {
-        return { labs: res.labs, usedFallback: Boolean(res.usedFallback) };
+        return { labs: res.labs, usedFallback: Boolean(res.usedFallback), radiusKm: res.radiusKm };
       }
       return { labs: [], usedFallback: false };
     } catch (err) {

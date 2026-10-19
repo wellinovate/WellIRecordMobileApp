@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -16,11 +16,14 @@ import { ModalHeader } from '../components/ModalHeader';
 import { useTheme } from '../theme/ThemeContext';
 import { pharmacyService, type PharmacyDirectoryItem } from '../services/pharmacyService';
 import { hapticFeedback } from '../utils/haptics';
+import { formatDistance, regionAround } from '../utils/nearby';
+import { useNearbyDirectory } from '../hooks/useNearbyDirectory';
+import { NearbyBar } from '../components/NearbyBar';
 import type { WelliApp } from '../state/useWelliApp';
 
 const PRIMARY_COLOR = '#0EA5E9';
 
-// Abuja center coordinates as the default map region
+// Abuja is the default map region when the phone gives no location
 const ABUJA_REGION = {
   latitude: 9.0765,
   longitude: 7.4586,
@@ -28,29 +31,12 @@ const ABUJA_REGION = {
   longitudeDelta: 0.12,
 };
 
-const DISTRICT_COORDINATES: Record<string, { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number }> = {
-  All: ABUJA_REGION,
-  Wuse: { latitude: 9.078, longitude: 7.48, latitudeDelta: 0.04, longitudeDelta: 0.04 },
-  Utako: { latitude: 9.065, longitude: 7.442, latitudeDelta: 0.04, longitudeDelta: 0.04 },
-  Maitama: { latitude: 9.088, longitude: 7.494, latitudeDelta: 0.04, longitudeDelta: 0.04 },
-  Asokoro: { latitude: 9.044, longitude: 7.526, latitudeDelta: 0.04, longitudeDelta: 0.04 },
-  Jabi: { latitude: 9.072, longitude: 7.423, latitudeDelta: 0.04, longitudeDelta: 0.04 },
-  Jahi: { latitude: 9.092, longitude: 7.439, latitudeDelta: 0.04, longitudeDelta: 0.04 },
-  Wuye: { latitude: 9.053, longitude: 7.453, latitudeDelta: 0.04, longitudeDelta: 0.04 },
-};
-
-const DISTRICTS = ['All', 'Wuse', 'Utako', 'Maitama', 'Asokoro', 'Jabi', 'Jahi', 'Wuye'];
-
 export function PharmacyDirectoryModal({ app }: { app: WelliApp }) {
   const theme = useTheme();
   const { state, actions } = app;
   const mapRef = useRef<MapView>(null);
 
-  const [pharmacies, setPharmacies] = useState<PharmacyDirectoryItem[]>([]);
-  const [usedFallback, setUsedFallback] = useState(false);
-  const [selectedDistrict, setSelectedDistrict] = useState('All');
   const [selectedPharmacy, setSelectedPharmacy] = useState<PharmacyDirectoryItem | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapFailed, setMapFailed] = useState(false);
@@ -73,55 +59,22 @@ export function PharmacyDirectoryModal({ app }: { app: WelliApp }) {
 
   const isVisible = Boolean(state.showPharmacyDirectory);
 
+  const { items: pharmacies, pos, loc, usedFallback, radiusKm, loading: isLoading, reload } = useNearbyDirectory<PharmacyDirectoryItem>(
+    isVisible,
+    async (p) => {
+      const r = await pharmacyService.fetchPharmacies(p);
+      return { items: r.pharmacies, usedFallback: r.usedFallback, radiusKm: r.radiusKm };
+    },
+  );
+
+  // Select the nearest result when the list changes and move the map to the person (or Abuja).
   useEffect(() => {
-    if (!isVisible) return;
-    let isMounted = true;
-
-    pharmacyService
-      .fetchPharmacies()
-      .then((res) => {
-        if (isMounted) {
-          setPharmacies(res.pharmacies);
-          setUsedFallback(res.usedFallback);
-          setSelectedPharmacy((prev) => prev ?? (res.pharmacies.length > 0 ? res.pharmacies[0] : null));
-        }
-      })
-      .catch((err) => {
-        console.error('[PharmacyDirectoryModal] load error:', err);
-      })
-      .finally(() => {
-        if (isMounted) setIsLoading(false);
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [isVisible]);
-
-  const filteredPharmacies = useMemo(() => {
-    if (selectedDistrict === 'All') return pharmacies;
-    return pharmacies.filter(
-      (p) => p.district.toLowerCase() === selectedDistrict.toLowerCase()
-    );
-  }, [pharmacies, selectedDistrict]);
-
-  const handleSelectDistrict = (district: string) => {
-    hapticFeedback.light();
-    setSelectedDistrict(district);
-
-    const region = DISTRICT_COORDINATES[district] || ABUJA_REGION;
+    setSelectedPharmacy(pharmacies.length > 0 ? pharmacies[0] : null);
+    const region = pos ? regionAround(pos, radiusKm ? Math.min(radiusKm, 10) : 5) : ABUJA_REGION;
     mapRef.current?.animateToRegion(region, 500);
+  }, [pharmacies, pos, radiusKm]);
 
-    const matching = district === 'All'
-      ? pharmacies
-      : pharmacies.filter((p) => p.district.toLowerCase() === district.toLowerCase());
-
-    if (matching.length > 0) {
-      setSelectedPharmacy(matching[0]);
-    } else {
-      setSelectedPharmacy(null);
-    }
-  };
+  const filteredPharmacies = pharmacies;
 
   const handleSelectPharmacy = (pharmacy: PharmacyDirectoryItem) => {
     hapticFeedback.light();
@@ -165,7 +118,7 @@ export function PharmacyDirectoryModal({ app }: { app: WelliApp }) {
     >
       <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]}>
         <ModalHeader
-          title="Abuja Pharmacy Locator"
+          title="Pharmacy Locator"
           onClose={actions.closePharmacyDirectory}
         />
 
@@ -190,52 +143,16 @@ export function PharmacyDirectoryModal({ app }: { app: WelliApp }) {
           <View style={[styles.fallbackBanner, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
             <Text style={{ fontSize: 13 }}>⚠️</Text>
             <Text style={[styles.fallbackBannerText, { color: '#92400E' }]}>
-              Showing verified offline directory — live search currently unavailable.
+              Showing the saved Abuja list because live search is not available.
             </Text>
           </View>
         )}
 
-        {/* District Filter Chips */}
-        <View style={styles.filterSection}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipsContainer}
-          >
-            {DISTRICTS.map((district) => {
-              const isActive = selectedDistrict === district;
-              return (
-                <TouchableOpacity
-                  key={district}
-                  activeOpacity={0.7}
-                  onPress={() => handleSelectDistrict(district)}
-                  style={[
-                    styles.districtChip,
-                    {
-                      backgroundColor: isActive ? PRIMARY_COLOR : theme.surface,
-                      borderColor: isActive ? PRIMARY_COLOR : theme.border,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.districtChipText,
-                      { color: isActive ? '#ffffff' : theme.text },
-                    ]}
-                  >
-                    {district}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
+        <NearbyBar loc={loc} radiusKm={radiusKm} count={pharmacies.length} noun="pharmacies" onRefresh={reload} />
 
         {/* View Mode Toggle: Map vs List */}
         <View style={styles.viewToggleRow}>
-          <Text style={[styles.resultsCount, { color: theme.muted }]}>
-            {filteredPharmacies.length} {filteredPharmacies.length === 1 ? 'pharmacy' : 'pharmacies'} found
-          </Text>
+          <View />
           <View style={[styles.togglePill, { backgroundColor: theme.surface, borderColor: theme.border }]}>
             <TouchableOpacity
               activeOpacity={0.7}
@@ -283,7 +200,7 @@ export function PharmacyDirectoryModal({ app }: { app: WelliApp }) {
         {isLoading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={PRIMARY_COLOR} />
-            <Text style={[styles.loadingText, { color: theme.muted }]}>Loading Abuja pharmacies...</Text>
+            <Text style={[styles.loadingText, { color: theme.muted }]}>Finding pharmacies...</Text>
           </View>
         ) : viewMode === 'map' ? (
           <View style={styles.mapContainer}>
@@ -292,8 +209,8 @@ export function PharmacyDirectoryModal({ app }: { app: WelliApp }) {
               ref={mapRef}
               provider={PROVIDER_DEFAULT}
               style={styles.map}
-              initialRegion={ABUJA_REGION}
-              showsUserLocation={false}
+              initialRegion={pos ? regionAround(pos, 5) : ABUJA_REGION}
+              showsUserLocation={Boolean(pos)}
               showsCompass={true}
               showsScale={true}
               onMapLoaded={() => setMapLoaded(true)}
@@ -353,7 +270,7 @@ export function PharmacyDirectoryModal({ app }: { app: WelliApp }) {
                         : 'Hours Unverified'}
                     </Text>
                     <Text style={[styles.districtTag, { color: theme.mutedLight }]}>
-                      · {selectedPharmacy.district}
+                      · {selectedPharmacy.distanceKm !== undefined ? formatDistance(selectedPharmacy.distanceKm) : selectedPharmacy.district}
                     </Text>
                   </View>
 
@@ -378,7 +295,7 @@ export function PharmacyDirectoryModal({ app }: { app: WelliApp }) {
               <View style={styles.emptyList}>
                 <Text style={{ fontSize: 32, marginBottom: 8 }}>🏥</Text>
                 <Text style={[styles.emptyTitle, { color: theme.text }]}>No pharmacies found</Text>
-                <Text style={[styles.emptySub, { color: theme.muted }]}>Try selecting "All" districts or a neighboring area.</Text>
+                <Text style={[styles.emptySub, { color: theme.muted }]}>Try again from a different spot, or check your connection.</Text>
               </View>
             ) : (
               filteredPharmacies.map((pharmacy) => {
@@ -422,7 +339,7 @@ export function PharmacyDirectoryModal({ app }: { app: WelliApp }) {
                             : 'Hours Unverified'}
                         </Text>
                         <Text style={[styles.districtTag, { color: theme.mutedLight }]}>
-                          · {pharmacy.district} District
+                          · {pharmacy.distanceKm !== undefined ? formatDistance(pharmacy.distanceKm) : pharmacy.district + ' District'}
                         </Text>
                       </View>
                     </View>

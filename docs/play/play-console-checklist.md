@@ -25,7 +25,7 @@ Encrypted in transit: yes (HTTPS). Deletion request offered: yes (in app and by 
 | Date of birth, sex | Yes | Health record, growth charts, vaccine schedule | Required for children's charts |
 | Health info (records, vitals, medications, prescriptions, vaccines, growth, development) | Yes | Core function | Yes |
 | Photos and files (documents the user uploads) | Yes | Stored in the user's vault | Yes |
-| Approximate or precise location | Yes, on request | Find nearby facilities. Used when the user taps it, not stored by us | Yes |
+| Approximate or precise location | Yes, on request | Find nearby labs and pharmacies. Sent to our server and Google Places for the search when the locator opens; not stored by us | Yes |
 | Audio and video | Not stored | Video visits are live through LiveKit | Yes |
 | Crash logs and diagnostics | Yes | First-party error reports with no name, email, phone or health data, deleted after 30 days | No |
 | Device or other IDs | Push token | Notifications | Yes |
