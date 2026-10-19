@@ -30,6 +30,13 @@ test('url uses the pharmacy type or the lab keyword', () => {
   assert.match(nearbyUrl('lab', { lat: 1, lng: 2 }, 8000, 'K'), /keyword=diagnostic\+laboratory/);
 });
 
+test('hospital, clinic and maternity searches use their own filters', () => {
+  const p = { lat: 1, lng: 2 };
+  assert.match(nearbyUrl('hospital', p, 8000, 'K'), /type=hospital/);
+  assert.match(nearbyUrl('clinic', p, 8000, 'K'), /type=doctor&keyword=clinic/);
+  assert.match(nearbyUrl('maternity', p, 8000, 'K'), /keyword=maternity\+hospital/);
+});
+
 test('the search widens the radius, sorts by distance and drops duplicates', async () => {
   const urls: string[] = [];
   const get = async (u: string) => {

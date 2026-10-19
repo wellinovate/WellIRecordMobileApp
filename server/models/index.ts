@@ -979,6 +979,8 @@ export interface IAppointmentRequest extends Document {
   timeSlot: string;
   reason?: string;
   visitType?: 'in_person' | 'video';
+  externalFacility?: boolean;
+  providerRemark?: string;
   status: 'requested' | 'confirmed' | 'cancelled' | 'completed';
   visitSummary?: { diagnosis?: string; notes?: string; authoredBy?: string; authoredAt?: Date };
   notifiedStatus?: string;
@@ -995,6 +997,8 @@ const AppointmentRequestSchema = new Schema<IAppointmentRequest>(
     timeSlot: { type: String, required: true },
     reason: { type: String, default: '' },
     visitType: { type: String, enum: ['in_person', 'video'], default: 'in_person' },
+    externalFacility: { type: Boolean, default: false },
+    providerRemark: { type: String, default: '' },
     status: { type: String, enum: ['requested', 'confirmed', 'cancelled', 'completed'], default: 'requested' },
     visitSummary: {
       diagnosis: { type: String },

@@ -1,5 +1,6 @@
 // Nearby labs and pharmacies around a point the phone sends, using Google Places Nearby Search.
-export type PlaceKind = 'lab' | 'pharmacy';
+export type PlaceKind = 'lab' | 'pharmacy' | 'hospital' | 'clinic' | 'maternity';
+export const PLACE_KINDS: PlaceKind[] = ['lab', 'pharmacy', 'hospital', 'clinic', 'maternity'];
 
 export interface NearbyPlace {
   placeId: string;
@@ -57,6 +58,9 @@ export function mapPlace(place: any, origin: { lat: number; lng: number }): Near
 export function nearbyUrl(kind: PlaceKind, p: { lat: number; lng: number }, radiusM: number, key: string): string {
   const params = new URLSearchParams({ location: `${p.lat},${p.lng}`, radius: String(radiusM), key });
   if (kind === 'pharmacy') params.set('type', 'pharmacy');
+  else if (kind === 'hospital') params.set('type', 'hospital');
+  else if (kind === 'clinic') { params.set('type', 'doctor'); params.set('keyword', 'clinic'); }
+  else if (kind === 'maternity') params.set('keyword', 'maternity hospital');
   else params.set('keyword', 'diagnostic laboratory');
   return `https://maps.googleapis.com/maps/api/place/nearbysearch/json?${params.toString()}`;
 }
