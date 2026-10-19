@@ -17,8 +17,6 @@ const walk = (dir: string, out: string[] = []) => {
 // Client calls with no server route today. Nothing in the screens calls these. Remove an entry when
 // the server route is added or the dead call is deleted.
 const KNOWN_UNROUTED = new Set([
-  'POST /records',
-  'DELETE /records/*',
   'DELETE /shares/grants/*',
   'GET /shares/audit-logs',
 ]);
