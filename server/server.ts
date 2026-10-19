@@ -113,11 +113,26 @@ app.use(
 // Profile photos arrive as a small base64 JPEG inside the profile update, so those two routes
 // take a larger body than the 100kb default.
 const bigJson = express.json({ limit: '1500kb' });
+const photoJson = express.json({ limit: '14mb' });
 const smallJson = express.json();
-app.use((req, res, next) =>
-  /^\/(api\/v1\/)?(profile\/update|family\/[a-f0-9]{24})\/?$/i.test(req.path) ? bigJson(req, res, next) : smallJson(req, res, next)
-);
+app.use((req, res, next) => {
+  // A scanned document photo is sent as base64, which is about a third bigger than the file.
+  if (/^\/(api\/v1\/)?records\/ocr-extract\/?$/i.test(req.path)) return photoJson(req, res, next);
+  if (/^\/(api\/v1\/)?(profile\/update|family\/[a-f0-9]{24})\/?$/i.test(req.path)) return bigJson(req, res, next);
+  return smallJson(req, res, next);
+});
 
+
+// A body that is too large or not valid JSON gets a plain message the app can show.
+app.use((err: any, _req: Request, res: Response, next: (e?: any) => void) => {
+  if (err?.type === 'entity.too.large') {
+    return res.status(413).json({ success: false, message: 'That file is too large. Take the photo again at a lower size, or crop it.' });
+  }
+  if (err?.type === 'entity.parse.failed') {
+    return res.status(400).json({ success: false, message: 'The request could not be read.' });
+  }
+  return next(err);
+});
 
 // Rate limiters for auth OTP endpoints and OCR document processing
 const otpLimiter = rateLimit({
@@ -2568,6 +2583,77 @@ app.use(
 );
 
 // 4. Fetch Health Records (MongoDB)
+// The app reads a record as { id, ownerId, type }; the stored document uses _id, familyMemberId, recordType.
+function recordForApp(doc: any, authUserId: string) {
+  const r = typeof doc.toObject === 'function' ? doc.toObject() : doc;
+  const owner = String(r.familyMemberId);
+  return {
+    ...r,
+    id: String(r._id),
+    ownerId: owner === authUserId ? 'me' : owner,
+    type: r.recordType,
+    extractedOcr: r.ocrData || undefined,
+    attachments: [],
+  };
+}
+
+const USER_RECORD_TYPES = ['Lab Result', 'Prescription', 'Imaging', 'Clinical Note', 'Immunization', 'Receipt'];
+const short = (v: unknown, max: number) => String(v ?? '').trim().slice(0, max);
+
+// POST /api/v1/records — files a record the patient scanned or typed. Only the extracted text is kept; the photo is not stored.
+app.post('/api/v1/records', async (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) return res.status(401).json({ success: false, message: 'Authentication required' });
+  try {
+    const rawOwner = String(req.body?.ownerId || 'me');
+    const ownerId = rawOwner === 'me' ? authUserId : rawOwner;
+    if (!mongoose.isValidObjectId(ownerId)) return res.status(400).json({ success: false, message: 'Unknown profile' });
+    if (!(await callerCanAccessOwner(authUserId, ownerId, 'addRecords'))) {
+      return res.status(403).json({ success: false, message: 'You cannot add records to this profile' });
+    }
+    const type = String(req.body?.type || '');
+    if (!USER_RECORD_TYPES.includes(type)) return res.status(400).json({ success: false, message: 'Choose a record type' });
+    const title = short(req.body?.title, 200);
+    if (!title) return res.status(400).json({ success: false, message: 'Give the record a title' });
+    const keyValues = (Array.isArray(req.body?.extractedOcr?.keyValues) ? req.body.extractedOcr.keyValues : [])
+      .slice(0, 50)
+      .map((k: any) => ({ label: short(k?.label, 200), value: short(k?.value, 500) }));
+    const doc = await HealthRecord.create({
+      userId: new mongoose.Types.ObjectId(authUserId),
+      familyMemberId: new mongoose.Types.ObjectId(ownerId),
+      title,
+      recordType: type,
+      date: short(req.body?.date, 40) || new Date().toISOString().slice(0, 10),
+      provider: short(req.body?.provider, 200) || 'Patient upload',
+      summary: short(req.body?.summary, 5000),
+      ocrData: keyValues.length ? { keyValues, statusBadge: 'OCR Extracted' } : undefined,
+    } as any);
+    return res.status(201).json(recordForApp(doc, authUserId));
+  } catch (err) {
+    console.error('[POST /records] ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Could not save the record' });
+  }
+});
+
+// DELETE /api/v1/records/:id — removes a record the caller can manage. Safe to repeat.
+app.delete('/api/v1/records/:id', async (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) return res.status(401).json({ success: false, message: 'Authentication required' });
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.json({ success: true, deleted: false });
+    const rec: any = await HealthRecord.findById(req.params.id);
+    if (!rec) return res.json({ success: true, deleted: false });
+    if (!(await callerCanAccessOwner(authUserId, String(rec.familyMemberId), 'addRecords'))) {
+      return res.status(403).json({ success: false, message: 'You cannot remove this record' });
+    }
+    await rec.deleteOne();
+    return res.json({ success: true, deleted: true });
+  } catch (err) {
+    console.error('[DELETE /records/:id] ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Could not remove the record' });
+  }
+});
+
 app.get('/api/v1/records', async (req: Request, res: Response) => {
   const authUserId = getAuthUserId(req);
   if (!authUserId) {
@@ -2586,7 +2672,7 @@ app.get('/api/v1/records', async (req: Request, res: Response) => {
 
     if (mongoose.connection.readyState === 1) {
       const records = await HealthRecord.find({ familyMemberId: ownerId }).sort({ createdAt: -1 });
-      return res.json(records);
+      return res.json(records.map((r) => recordForApp(r, authUserId)));
     }
     return res.json([]);
   } catch (err) {
@@ -3291,6 +3377,9 @@ app.post('/api/v1/records/ocr-extract', ocrLimiter, async (req: Request, res: Re
 
   if (!imageBase64) {
     return res.status(400).json({ success: false, message: 'Image data is required' });
+  }
+  if (typeof imageBase64 !== 'string' || imageBase64.length > 13_000_000) {
+    return res.status(413).json({ success: false, message: 'That photo is too large to scan. Take it again at a lower size, or crop it.' });
   }
 
   const visionKey = process.env.GOOGLE_CLOUD_VISION_KEY;

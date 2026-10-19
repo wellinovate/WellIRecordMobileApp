@@ -1949,11 +1949,26 @@ export function useWelliApp() {
         recordsList: [newRec, ...s.recordsList],
         uploadStep: 2,
       }));
+      // Save to the account. If the phone is offline or the call fails, the service keeps it in
+      // the sync queue and sends it later, so the record is not lost.
+      recordsService
+        .createRecord(rec)
+        .then((saved) => {
+          if (saved?.id && saved.id !== newRec.id) {
+            patch((s) => ({ recordsList: s.recordsList.map((r) => (r.id === newRec.id ? { ...r, id: saved.id } : r)) }));
+          }
+        })
+        .catch((err) => reportError(err, { where: 'records.create' }));
       showToast(`Added "${rec.title}" to ${rec.ownerId === 'me' ? 'your vault' : 'family vault'}`);
     },
 
     deleteRecord: (id: string) => {
       hapticFeedback.light();
+      const target = state.recordsList.find((r) => r.id === id);
+      // Locally added records have a temporary id until the server confirms them.
+      if (/^[a-f0-9]{24}$/i.test(id)) {
+        recordsService.deleteRecord(id, target?.ownerId || 'me').catch((err) => reportError(err, { where: 'records.delete' }));
+      }
       patch((s) => ({
         recordsList: s.recordsList.filter((r) => r.id !== id),
         recordDetailId: null,
