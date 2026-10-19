@@ -84,6 +84,28 @@ export function parseCreate(body: any, normalisePhone: (p: string) => string): {
   return { ok: true, value: { recipientName, purpose: clean(body?.purpose, 200) || undefined, sections, hours: rawHours, verification } };
 }
 
+export const MAX_SEALED_CHARS = 400_000; // about 300 KB of ciphertext
+const B64 = /^[A-Za-z0-9+/]+={0,2}$/;
+
+// The phone sends the record already encrypted (AES-256-GCM). The server never sees the key.
+export function parseSealed(body: any): { ok: true; value: { ciphertext: string; iv: string } } | { ok: false; message: string } {
+  const c = body?.sealed?.ciphertext;
+  const iv = body?.sealed?.iv;
+  if (typeof c !== 'string' || typeof iv !== 'string' || !B64.test(c) || !B64.test(iv)) return { ok: false, message: 'The encrypted copy is missing or damaged. Update the app and try again.' };
+  if (c.length < 24 || c.length > MAX_SEALED_CHARS) return { ok: false, message: 'The record is too large to share in one link. Choose fewer sections.' };
+  if (Buffer.from(iv, 'base64').length !== 12) return { ok: false, message: 'The encrypted copy is damaged. Update the app and try again.' };
+  return { ok: true, value: { ciphertext: c, iv } };
+}
+
+// Deletes ciphertext of links that expired or were withdrawn. Run on a timer and when a dead link is opened.
+export async function sweepSealed(now = new Date()) {
+  const r = await ProviderShare.updateMany(
+    { sealed: { $exists: true }, $or: [{ expiresAt: { $lte: now } }, { revokedAt: { $exists: true } }, { lockedAt: { $exists: true } }] },
+    { $unset: { sealed: 1 } }
+  );
+  return r.modifiedCount || 0;
+}
+
 // ----- router -----
 export interface ShareDeps {
   getAuthUserId: (req: Request) => string | null;
@@ -97,6 +119,8 @@ export interface ShareDeps {
   publicBaseUrl: (req: Request) => string;
   /** Which code channels can really deliver. When omitted, both are assumed to work. */
   channels?: () => { email: boolean; sms: boolean };
+  /** Old app builds create links the server can read. Off unless explicitly allowed. */
+  allowLive?: boolean;
 }
 
 export function createProviderShareRouter(deps: ShareDeps) {
@@ -113,6 +137,7 @@ export function createProviderShareRouter(deps: ShareDeps) {
     createdAt: s.createdAt,
     state: shareState(s),
     mode: s.mode,
+    encrypted: Boolean(s.encrypted),
     contact: s.mode === 'contact' ? maskContact(s.contactChannel, s.contact) : '',
     channel: s.contactChannel || null,
     openedCount: (s.views || []).length,
@@ -124,6 +149,7 @@ export function createProviderShareRouter(deps: ShareDeps) {
     return (await ProviderShare.findOne({ tokenHash: hashToken(deps.secret, token) })) as any;
   }
   const badState = (res: Response, state: ShareState) => {
+    sweepSealed().catch(() => {});
     const message =
       state === 'expired' ? 'This link has expired. Ask the patient for a new one.'
       : state === 'revoked' ? 'The patient has withdrawn this link.'
@@ -133,6 +159,42 @@ export function createProviderShareRouter(deps: ShareDeps) {
   const notFound = (res: Response) => res.status(404).json({ success: false, code: 'invalid', message: 'This link is not valid.' });
 
   // ----- patient side -----
+  // Checks the caller may share this profile and trims sections that do not apply. Sends the error itself.
+  async function resolveSubject(req: Request, res: Response, authUserId: string, sectionsIn: string[]) {
+    const rawSubject = String(req.body?.subjectId || 'me');
+    const subjectIsSelf = rawSubject === 'me' || rawSubject === authUserId;
+    const subjectId = subjectIsSelf ? authUserId : rawSubject;
+    if (!mongoose.isValidObjectId(subjectId)) { res.status(400).json({ success: false, message: 'Unknown profile' }); return null; }
+    if (!(await deps.callerCanShare(authUserId, subjectId))) { res.status(403).json({ success: false, message: 'You cannot share this profile' }); return null; }
+    let sections = sectionsIn;
+    if (!subjectIsSelf) {
+      const member: any = await FamilyMember.findById(subjectId).select('custodyLock').lean();
+      if (member?.custodyLock?.active) { res.status(423).json({ success: false, message: 'This profile is locked. Sharing is paused.' }); return null; }
+    } else if (sections.some((s) => s === 'vaccinations' || s === 'growth')) {
+      sections = sections.filter((s) => s !== 'vaccinations' && s !== 'growth');
+      if (!sections.length) { res.status(400).json({ success: false, message: 'Choose at least one thing to share' }); return null; }
+    }
+    return { subjectId, subjectIsSelf, sections };
+  }
+
+  // The record as it would be shared right now. The phone encrypts it before it goes into a link.
+  router.post('/provider-shares/snapshot', deps.limiter, async (req: Request, res: Response) => {
+    try {
+      noStore(res);
+      const authUserId = deps.getAuthUserId(req);
+      if (!authUserId) return res.status(401).json({ success: false, message: 'Authentication required' });
+      const parsed = parseCreate({ ...req.body, recipientName: 'snapshot', verification: { mode: 'passcode' } }, deps.normalisePhone);
+      if ('message' in parsed) return res.status(400).json({ success: false, message: parsed.message });
+      const who = await resolveSubject(req, res, authUserId, parsed.value.sections);
+      if (!who) return;
+      const record = await buildRecord({ subjectId: who.subjectId, subjectIsSelf: who.subjectIsSelf, sections: who.sections, purpose: parsed.value.purpose });
+      return res.json({ success: true, sections: who.sections, record });
+    } catch (err) {
+      console.error('[POST /provider-shares/snapshot] ERROR:', err);
+      return res.status(500).json({ success: false, message: 'Could not prepare the record' });
+    }
+  });
+
   router.post('/provider-shares', deps.limiter, async (req: Request, res: Response) => {
     try {
       const authUserId = deps.getAuthUserId(req);
@@ -147,19 +209,15 @@ export function createProviderShareRouter(deps: ShareDeps) {
           message: `${p.verification.channel === 'email' ? 'Email' : 'SMS'} codes are not set up yet. Choose "I will tell them" and give the provider the passcode yourself.`,
         });
       }
-      const rawSubject = String(req.body?.subjectId || 'me');
-      const subjectIsSelf = rawSubject === 'me' || rawSubject === authUserId;
-      const subjectId = subjectIsSelf ? authUserId : rawSubject;
-      if (!mongoose.isValidObjectId(subjectId)) return res.status(400).json({ success: false, message: 'Unknown profile' });
-      if (!(await deps.callerCanShare(authUserId, subjectId))) {
-        return res.status(403).json({ success: false, message: 'You cannot share this profile' });
-      }
-      if (!subjectIsSelf) {
-        const member: any = await FamilyMember.findById(subjectId).select('custodyLock').lean();
-        if (member?.custodyLock?.active) return res.status(423).json({ success: false, message: 'This profile is locked. Sharing is paused.' });
-      } else if (p.sections.some((s: string) => s === 'vaccinations' || s === 'growth')) {
-        p.sections = p.sections.filter((s: string) => s !== 'vaccinations' && s !== 'growth');
-        if (!p.sections.length) return res.status(400).json({ success: false, message: 'Choose at least one thing to share' });
+      const who = await resolveSubject(req, res, authUserId, p.sections);
+      if (!who) return;
+      const { subjectId, subjectIsSelf } = who;
+      p.sections = who.sections;
+      let sealed: { ciphertext: string; iv: string } | undefined;
+      if (req.body?.sealed || !deps.allowLive) {
+        const sp = parseSealed(req.body);
+        if ('message' in sp) return res.status(400).json({ success: false, code: 'encryption_required', message: sp.message });
+        sealed = sp.value;
       }
       const token = newToken();
       const _id = new mongoose.Types.ObjectId();
@@ -172,6 +230,8 @@ export function createProviderShareRouter(deps: ShareDeps) {
         recipientName: p.recipientName,
         purpose: p.purpose,
         sections: p.sections,
+        encrypted: Boolean(sealed),
+        ...(sealed ? { sealed } : {}),
         expiresAt: new Date(Date.now() + p.hours * HOUR),
         tokenHash: hashToken(deps.secret, token),
         mode: p.verification.mode,
@@ -211,7 +271,7 @@ export function createProviderShareRouter(deps: ShareDeps) {
       if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ success: false, message: 'Link not found' });
       const s: any = await ProviderShare.findOneAndUpdate(
         { _id: req.params.id, ownerId: new mongoose.Types.ObjectId(authUserId), revokedAt: { $exists: false } },
-        { $set: { revokedAt: new Date(), otpHash: undefined } },
+        { $set: { revokedAt: new Date(), otpHash: undefined }, $unset: { sealed: 1 } },
         { new: true }
       );
       if (!s) {
@@ -241,6 +301,7 @@ export function createProviderShareRouter(deps: ShareDeps) {
         sentTo: s.mode === 'contact' ? maskContact(s.contactChannel, s.contact) : '',
         recipientName: s.recipientName,
         purpose: s.purpose || '',
+        encrypted: Boolean(s.encrypted),
         expiresAt: s.expiresAt,
       });
     } catch (err) {
@@ -383,6 +444,11 @@ export function createProviderShareRouter(deps: ShareDeps) {
         } catch { ok = false; }
       }
       if (!ok) return res.status(401).json({ success: false, code: 'need_code', message: 'Enter the code to open this record.' });
+      if (s.encrypted) {
+        // Ciphertext only. The key is in the link the patient gave out and never reaches this server.
+        if (!s.sealed?.ciphertext) return res.status(410).json({ success: false, code: 'expired', message: 'This link is no longer available.' });
+        return res.json({ success: true, expiresAt: s.expiresAt, sealed: { ciphertext: s.sealed.ciphertext, iv: s.sealed.iv } });
+      }
       return res.json({ success: true, expiresAt: s.expiresAt, ...(await buildRecord(s)) });
     } catch (err) {
       console.error('[GET /provider-share/:token/record] ERROR:', err);

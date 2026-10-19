@@ -4,6 +4,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import QRCode from 'react-native-qrcode-svg';
+import * as Crypto from 'expo-crypto';
+import { linkWithKey, sealRecord } from '../utils/sealedShare';
 import { ModalHeader } from '../components/ModalHeader';
 import { useTheme } from '../theme/ThemeContext';
 import type { WelliApp } from '../state/useWelliApp';
@@ -78,11 +80,16 @@ export function ProviderShareModal({ app }: { app: WelliApp }) {
     }
     setBusy(true);
     try {
+      // Encrypt on this phone. The key goes only into the link and QR, after the '#', so our server
+      // stores ciphertext and never receives the key.
+      const snap = await providerShareService.snapshot({ subjectId, sections: picked, purpose: purpose.trim() || undefined });
+      const sealed = sealRecord(snap.record, (n) => Crypto.getRandomBytes(n));
       const r = await providerShareService.create({
-        subjectId, recipientName: name.trim(), purpose: purpose.trim() || undefined, sections: picked, hours,
+        subjectId, recipientName: name.trim(), purpose: purpose.trim() || undefined, sections: snap.sections, hours,
         verification: mode === 'passcode' ? { mode: 'passcode' } : { mode: 'contact', channel: mode, contact: contact.trim() },
+        sealed: { ciphertext: sealed.ciphertext, iv: sealed.iv },
       });
-      setResult({ url: r.url, passcode: r.passcode, expiresAt: r.share.expiresAt, name: name.trim() });
+      setResult({ url: linkWithKey(r.url, sealed.key), passcode: r.passcode, expiresAt: r.share.expiresAt, name: name.trim() });
       setView('done');
       setName(''); setPurpose(''); setContact('');
       load();
@@ -107,7 +114,7 @@ export function ProviderShareModal({ app }: { app: WelliApp }) {
 
   const sendLink = () => {
     if (!result) return;
-    Share.share({ message: `Health information shared with ${result.name} through WelliRecord. Open: ${result.url}` }).catch(() => {});
+    Share.share({ message: `Health information shared with ${result.name} through WelliRecord. This link contains the key to open it, so send it only to them. Open: ${result.url}` }).catch(() => {});
   };
 
   const text = { color: theme.text } as const;
@@ -127,7 +134,7 @@ export function ProviderShareModal({ app }: { app: WelliApp }) {
           {view === 'list' && (
             <>
               <Text style={[s.body, muted]}>
-                Give a doctor or clinic that does not use WelliRecord a link or QR code. It expires, needs a one-time code, and you can withdraw it any time.
+                Give a doctor or clinic that does not use WelliRecord a link or QR code. Your phone encrypts what you choose to share. The key is inside the link and QR code and never reaches our servers, which hold only the encrypted copy. The provider also needs a one-time code. The link expires and you can withdraw it any time. It shows the record as it is when you create the link.
               </Text>
               <TouchableOpacity style={s.primary} onPress={() => setView('new')} accessibilityRole="button">
                 <Text style={s.primaryText}>Create a link</Text>
@@ -233,7 +240,7 @@ export function ProviderShareModal({ app }: { app: WelliApp }) {
               <TouchableOpacity style={s.primary} onPress={sendLink} accessibilityRole="button">
                 <Text style={s.primaryText}>Send the link</Text>
               </TouchableOpacity>
-              <Text style={[s.small, muted, { textAlign: 'center', marginTop: 12 }]} selectable>{result.url}</Text>
+              <Text style={[s.small, muted, { textAlign: 'center', marginTop: 12 }]}>Encrypted on your phone. Anyone with this link or QR code and the one-time code can open the record until it expires or you withdraw it, so share it only with the provider.</Text>
             </View>
           )}
         </ScrollView>

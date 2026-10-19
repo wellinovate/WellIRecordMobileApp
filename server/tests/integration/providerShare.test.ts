@@ -13,6 +13,8 @@ const SECRET = 'integration-share-secret';
 describe('provider share against a real database', { skip: !hasDb && 'set MONGODB_URI_TEST to run' }, () => {
   let server: Server;
   let base = '';
+  let strictServer: Server;
+  let strictBase = '';
   const sent: { to: string; code: string }[] = [];
   const notes: string[] = [];
   const owner = new mongoose.Types.ObjectId();
@@ -38,9 +40,7 @@ describe('provider share against a real database', { skip: !hasDb && 'set MONGOD
     await HealthRecord.create({ userId: owner, familyMemberId: owner, title: 'Malaria test', recordType: 'Lab Result', date: '2026-01-01', provider: 'Test Lab', summary: 'Positive' });
     const app = express();
     app.use(express.json());
-    app.use(
-      '/api/v1',
-      createProviderShareRouter({
+    const deps = () => ({
         getAuthUserId: (req) => (req.headers['x-test-user'] as string) || null,
         callerCanShare: async (a, s) => a === s,
         sendEmail: async (m) => { const c = /\b(\d{6})\b/.exec(m.html); sent.push({ to: m.to, code: c ? c[1] : '' }); },
@@ -50,12 +50,18 @@ describe('provider share against a real database', { skip: !hasDb && 'set MONGOD
         limiter: (_req, _res, next) => next(),
         secret: SECRET,
         publicBaseUrl: () => 'http://x',
-      })
-    );
+    });
+    // The default router refuses links the server could read; the old live mode is kept for these older tests.
+    app.use('/api/v1', createProviderShareRouter({ ...deps(), allowLive: true }));
     server = app.listen(0);
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1`;
+    const strict = express();
+    strict.use(express.json());
+    strict.use('/api/v1', createProviderShareRouter(deps()));
+    strictServer = strict.listen(0);
+    strictBase = `http://127.0.0.1:${(strictServer.address() as AddressInfo).port}/api/v1`;
   });
-  after(async () => { server?.close(); await disconnect(); });
+  after(async () => { server?.close(); strictServer?.close(); await disconnect(); });
 
   const form = (extra: any = {}) => ({
     subjectId: 'me', recipientName: 'Dr Bello', sections: ['allergies', 'medications', 'records'], hours: 2,
@@ -143,5 +149,58 @@ describe('provider share against a real database', { skip: !hasDb && 'set MONGOD
     const kid = await FamilyMember.create({ accountId: stranger, fullName: 'Child', initials: 'C', relationship: 'Child' } as any);
     const r = await call('POST', '/provider-shares', form({ subjectId: String(kid._id) }), as(owner));
     assert.equal(r.status, 403);
+  });
+
+  describe('encrypted links', () => {
+    const sealed = { ciphertext: Buffer.alloc(64, 7).toString('base64'), iv: Buffer.alloc(12, 3).toString('base64') };
+    const post = async (body: any, user = owner) => {
+      const r = await fetch(`${strictBase}/provider-shares`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...as(user) }, body: JSON.stringify(body) });
+      return { status: r.status, ...(await r.json()) } as any;
+    };
+    const get = async (path: string, headers: Record<string, string> = {}) => {
+      const r = await fetch(`${strictBase}${path}`, { headers });
+      return { status: r.status, ...(await r.json()) } as any;
+    };
+
+    it('refuses a link the server could read', async () => {
+      const r = await post(form({ verification: { mode: 'passcode' } }));
+      assert.equal(r.status, 400);
+      assert.equal(r.code, 'encryption_required');
+    });
+
+    it('stores only ciphertext and serves it, never the record in clear', async () => {
+      const c = await post(form({ verification: { mode: 'passcode' }, sealed }));
+      assert.equal(c.status, 201);
+      assert.equal(c.share.encrypted, true);
+      const t = tokenOf(c.url);
+      const row: any = await ProviderShare.findById(c.share.id).lean();
+      assert.equal(row.sealed.ciphertext, sealed.ciphertext);
+      const info = await get(`/provider-share/${t}/info`);
+      assert.equal(info.encrypted, true);
+      const v = await fetch(`${strictBase}/provider-share/${t}/verify`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: c.passcode }) }).then((x) => x.json());
+      const rec = await get(`/provider-share/${t}/record`, { Authorization: `Bearer ${v.session}` });
+      assert.deepEqual(rec.sealed, sealed);
+      assert.equal(rec.patient, undefined);
+      assert.equal(JSON.stringify(rec).includes('Penicillin'), false);
+    });
+
+    it('rejects damaged ciphertext and withdrawing deletes the encrypted copy', async () => {
+      assert.equal((await post(form({ verification: { mode: 'passcode' }, sealed: { ciphertext: 'not base64!', iv: sealed.iv } }))).status, 400);
+      assert.equal((await post(form({ verification: { mode: 'passcode' }, sealed: { ciphertext: sealed.ciphertext, iv: 'AAAA' } }))).status, 400);
+      const c = await post(form({ verification: { mode: 'passcode' }, sealed }));
+      const r = await fetch(`${strictBase}/provider-shares/${c.share.id}/revoke`, { method: 'POST', headers: as(owner) });
+      assert.equal(r.status, 200);
+      const row: any = await ProviderShare.findById(c.share.id).lean();
+      assert.equal(row.sealed?.ciphertext, undefined);
+    });
+
+    it('the snapshot returns the record for the owner only', async () => {
+      const ok = await fetch(`${strictBase}/provider-shares/snapshot`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...as(owner) }, body: JSON.stringify({ subjectId: 'me', sections: ['allergies'] }) }).then((x) => x.json());
+      assert.equal(ok.record.patient.name, 'Ada Test');
+      assert.equal(ok.record.allergies, 'Penicillin');
+      const kid = await FamilyMember.create({ accountId: stranger, fullName: 'Child2', initials: 'C', relationship: 'Child' } as any);
+      const no = await fetch(`${strictBase}/provider-shares/snapshot`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...as(owner) }, body: JSON.stringify({ subjectId: String(kid._id), sections: ['allergies'] }) });
+      assert.equal(no.status, 403);
+    });
   });
 });

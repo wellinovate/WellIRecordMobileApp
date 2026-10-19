@@ -28,7 +28,7 @@ const SECTIONS = [
   },
   {
     heading: 'Sharing and Smart Consent',
-    body: 'When you share a record with a provider or facility, we generate a time-limited grant that you can revoke at any time. You choose exactly which categories or records are shared.',
+    body: 'When you share a record with a provider or facility, we generate a time-limited grant that you can revoke at any time. You choose exactly which categories or records are shared. For a provider without WelliRecord, your phone encrypts the shared copy before it is uploaded. The key is in the link and QR code and is not sent to us, so we store only the encrypted copy. Anyone with the full link and the one-time code can open it until it expires or you withdraw it.',
   },
   {
     heading: 'Security and Encryption',
