@@ -1491,7 +1491,7 @@ export function useWelliApp() {
       const name = externalFacility?.name || facility!.name;
       patch({ bookingSubmitting: true });
       try {
-        const created = await careService.requestAppointment({
+        const { appointment: created, notice } = await careService.requestAppointment({
           facilityId: facility?.id,
           facilityName: name,
           facilityAddress: externalFacility?.address || facility?.address,
@@ -1513,7 +1513,7 @@ export function useWelliApp() {
         }));
         if (externalFacility) {
           // Google listings are not on WelliRecord, so nobody is notified. Hand the request to the person to send.
-          showToast(`Request saved. Send it to ${name} so they can confirm.`);
+          showToast(`Request saved. ${notice || `Send it to ${name} so they can confirm.`}`);
           Share.share({
             message: buildShareMessage({
               facility: name,
@@ -1525,7 +1525,7 @@ export function useWelliApp() {
             }),
           }).catch(() => {});
         } else {
-          showToast(`Request sent to ${name}. They will confirm your visit.`);
+          showToast(`Request sent to ${name}. ${notice || 'They will confirm your visit.'}`);
         }
       } catch (err: any) {
         patch({ bookingSubmitting: false });
