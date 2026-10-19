@@ -389,6 +389,19 @@ export function CareScreen({ app }: { app: WelliApp }) {
           </Text>
         </TouchableOpacity>
 
+        <TouchableOpacity
+          activeOpacity={0.82}
+          onPress={actions.openCareLocator}
+          className="mt-3 rounded-2xl border border-slate-200 bg-[#F8FAFD] p-4"
+        >
+          <Text className="text-[14px] font-bold text-[#173B68]">
+            Hospitals, clinics and maternity
+          </Text>
+          <Text className="mt-1 text-[11.5px] leading-[17px] text-slate-500">
+            Find care near your current location, in any city
+          </Text>
+        </TouchableOpacity>
+
         <View className="mt-3 flex-row gap-3">
           <TouchableOpacity
             activeOpacity={0.82}

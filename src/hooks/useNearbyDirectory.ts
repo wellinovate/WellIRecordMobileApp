@@ -10,6 +10,7 @@ interface Fetched<T> { items: T[]; usedFallback: boolean; radiusKm?: number }
 export function useNearbyDirectory<T extends { placeId: string }>(
   visible: boolean,
   fetcher: (pos?: Position) => Promise<Fetched<T>>,
+  key: string = '',
 ) {
   const [items, setItems] = useState<T[]>([]);
   const [pos, setPos] = useState<Position | null>(null);
@@ -18,18 +19,25 @@ export function useNearbyDirectory<T extends { placeId: string }>(
   const [radiusKm, setRadiusKm] = useState<number | undefined>();
   const [loading, setLoading] = useState(false);
   const run = useRef(0);
+  const posRef = useRef<{ pos?: Position; loc: LocState } | null>(null);
   const fetchRef = useRef(fetcher);
   fetchRef.current = fetcher;
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (refreshPosition = true) => {
     const id = ++run.current;
     setLoading(true);
-    setLoc('locating');
-    const got = await getDevicePosition();
-    if (id !== run.current) return;
-    const p = got.ok ? got.pos : undefined;
-    setPos(p ?? null);
-    setLoc(got.ok ? 'ok' : got.reason);
+    let p: Position | undefined;
+    if (!refreshPosition && posRef.current) {
+      p = posRef.current.pos;
+    } else {
+      setLoc('locating');
+      const got = await getDevicePosition();
+      if (id !== run.current) return;
+      p = got.ok ? got.pos : undefined;
+      posRef.current = { pos: p, loc: got.ok ? 'ok' : got.reason };
+      setPos(p ?? null);
+      setLoc(posRef.current.loc);
+    }
     try {
       const r = await fetchRef.current(p);
       if (id !== run.current) return;
@@ -45,9 +53,12 @@ export function useNearbyDirectory<T extends { placeId: string }>(
 
   useEffect(() => {
     if (!visible) { run.current++; return; }
-    load();
+    load(!posRef.current);
     return () => { run.current++; };
-  }, [visible, load]);
+  }, [visible, key, load]);
 
-  return { items, pos, loc, usedFallback, radiusKm, loading, reload: load };
+  useEffect(() => { if (!visible) posRef.current = null; }, [visible]);
+
+  const reload = useCallback(() => load(true), [load]);
+  return { items, pos, loc, usedFallback, radiusKm, loading, reload };
 }

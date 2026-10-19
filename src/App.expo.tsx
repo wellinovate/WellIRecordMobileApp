@@ -92,6 +92,7 @@ import { UpcomingVisitsModal } from "./modals/UpcomingVisitsModal";
 import { VitalsTrendsModal } from "./modals/VitalsTrendsModal";
 
 import { LabDirectoryModal } from "./modals/LabDirectoryModal";
+import { CareLocatorModal } from "./modals/CareLocatorModal";
 
 import { VaultExportModal } from "./modals/VaultExportModal";
 
@@ -462,6 +463,7 @@ function MainWelliApp() {
           {Boolean(state.showVitalsTrends) && <VitalsTrendsModal app={app} />}
 
           {Boolean(state.showLabDirectory) && <LabDirectoryModal app={app} />}
+          {Boolean(state.showCareLocator) && <CareLocatorModal app={app} />}
 
           {Boolean(state.showVaultExport) && <VaultExportModal app={app} />}
 

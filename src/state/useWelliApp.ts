@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, AppState as RNAppState, Linking } from 'react-native';
+import { Alert, AppState as RNAppState, Linking, Share } from 'react-native';
 import {
   CONSENT_SCOPES,
   LINKED_ACCOUNTS,
@@ -23,6 +23,7 @@ import type {
 } from '../data/types';
 import { EXPIRY_SHORT_LABEL_MAP } from '../utils/expiry';
 import { hapticFeedback } from '../utils/haptics';
+import { buildShareMessage } from '../utils/providerRemark';
 import { storage } from '../utils/storage';
 import { reportError } from '../utils/errorReporting';
 import { authenticateWithBiometrics, getBiometricStatus } from '../utils/biometrics';
@@ -114,6 +115,7 @@ export interface AppState {
   appointments: AppointmentItem[];
   bookingSubmitting: boolean;
   showLabDirectory: boolean;
+  showCareLocator: boolean;
   inCall: boolean;
   telehealthSession: { url: string; token: string; room: string; facilityName: string } | null;
   joiningVisitId: string | null;
@@ -327,6 +329,7 @@ const initialState: AppState = {
   appointments: [],
   bookingSubmitting: false,
   showLabDirectory: false,
+  showCareLocator: false,
   inCall: false,
   telehealthSession: null,
   joiningVisitId: null,
@@ -938,6 +941,7 @@ export function useWelliApp() {
       const facility = (state.facilitiesList ?? []).find((f) => f.id === facilityId);
       patch({
         showLabDirectory: false,
+        showCareLocator: false,
         showPharmacyDirectory: false,
         showSmartConsent: true,
         consentGranteeType: 'organization',
@@ -1460,6 +1464,7 @@ export function useWelliApp() {
       patch({
         showBookAppointment: true,
         showLabDirectory: false,
+        showCareLocator: false,
         showPharmacyDirectory: false,
         bookingFacilityId: externalFacility ? null : facilityId,
         externalBookingFacility: externalFacility || null,
@@ -1470,7 +1475,7 @@ export function useWelliApp() {
       patch({ showBookAppointment: false, externalBookingFacility: null }),
     setBookingDate: (v: string) => patch({ bookingDate: v }),
     setBookingTimeSlot: (v: string) => patch({ bookingTimeSlot: v }),
-    confirmBooking: async (extra?: { familyMemberId?: string; reason?: string; visitType?: 'in_person' | 'video' }) => {
+    confirmBooking: async (extra?: { familyMemberId?: string; reason?: string; visitType?: 'in_person' | 'video'; providerRemark?: string; patientName?: string }) => {
       if (state.bookingSubmitting) return;
       const externalFacility = state.externalBookingFacility;
       const allFacilities = state.facilitiesList ?? [];
@@ -1495,6 +1500,8 @@ export function useWelliApp() {
           timeSlot: state.bookingTimeSlot,
           reason: extra?.reason?.trim() || undefined,
           visitType: extra?.visitType === 'video' ? 'video' : 'in_person',
+          externalFacility: externalFacility ? true : undefined,
+          providerRemark: externalFacility ? extra?.providerRemark?.trim() || undefined : undefined,
         });
         patch((s) => ({
           showBookAppointment: false,
@@ -1504,7 +1511,22 @@ export function useWelliApp() {
             (a, b) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime()
           ),
         }));
-        showToast(`Request sent to ${name}. They will confirm your visit.`);
+        if (externalFacility) {
+          // Google listings are not on WelliRecord, so nobody is notified. Hand the request to the person to send.
+          showToast(`Request saved. Send it to ${name} so they can confirm.`);
+          Share.share({
+            message: buildShareMessage({
+              facility: name,
+              patient: extra?.patientName || 'Patient',
+              date: state.bookingDate,
+              timeSlot: state.bookingTimeSlot,
+              reason: extra?.reason?.trim(),
+              remark: extra?.providerRemark?.trim(),
+            }),
+          }).catch(() => {});
+        } else {
+          showToast(`Request sent to ${name}. They will confirm your visit.`);
+        }
       } catch (err: any) {
         patch({ bookingSubmitting: false });
         showToast(err?.message || 'Could not send the request. Try again.');
@@ -2049,6 +2071,11 @@ export function useWelliApp() {
       patch({ showLabDirectory: true });
     },
     closeLabDirectory: () => patch({ showLabDirectory: false }),
+    openCareLocator: () => {
+      hapticFeedback.light();
+      patch({ showCareLocator: true });
+    },
+    closeCareLocator: () => patch({ showCareLocator: false }),
 
     requestRefill: async (data: { prescriptionId: string; deliveryAddress: string; notes?: string }) => {
       try {

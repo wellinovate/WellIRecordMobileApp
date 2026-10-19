@@ -1,8 +1,9 @@
 import {useMemo,useState} from "react";
-import { Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Modal, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg,{Path} from "react-native-svg";
 import { hapticFeedback } from "../utils/haptics";
+import { buildProviderRemark } from "../utils/providerRemark";
 import type { WelliApp } from "../state/useWelliApp";
 
 const TIMES=["09:30 AM","10:30 AM","01:00 PM","03:30 PM"];
@@ -16,6 +17,7 @@ export function BookAppointmentModal({app}:{app:WelliApp}){
   const [memberId,setMemberId]=useState(state.activeFamilyId||"me");
   const [reason,setReason]=useState("");
   const [visitType,setVisitType]=useState<"in_person"|"video">("in_person");
+  const [includeRemark,setIncludeRemark]=useState(true);
   const [month,setMonth]=useState(()=>new Date());
   const days=useMemo(()=>daysFor(month),[month]);
   if(!state.showBookAppointment) return null;
@@ -28,6 +30,7 @@ export function BookAppointmentModal({app}:{app:WelliApp}){
   const address=ext?.address||(facility as any)?.address||"";
   const specialty=(facility as any)?.specialty||"Primary care";
   const patient=family.find(f=>f.id===memberId)||family[0];
+  const remark=buildProviderRemark((patient as any)?.wrId||(patient as any)?.memberId||undefined);
   const disabled=!state.bookingDate||!state.bookingTimeSlot||!!state.bookingSubmitting;
 
   return <Modal visible={state.showBookAppointment} animationType="slide" transparent={false} onRequestClose={actions.closeBookAppointment}>
@@ -57,9 +60,15 @@ export function BookAppointmentModal({app}:{app:WelliApp}){
         <Text className="mt-6 text-[12px] font-semibold text-[#173B68]">Note for the care team</Text>
         <TextInput value={reason} onChangeText={setReason} placeholder="What would you like to discuss?" placeholderTextColor="#94A3B8" multiline textAlignVertical="top" className="mt-2 min-h-[92px] rounded-2xl border border-slate-200 p-4 text-[14px] leading-[20px] text-slate-900"/>
 
+        {ext?<View className="mt-4 rounded-2xl border border-[#D7E2F1] bg-[#F3F6FB] p-4">
+          <View className="flex-row items-center justify-between"><Text className="flex-1 pr-3 text-[13px] font-bold text-[#173B68]">Tell the facility about WelliRecord</Text><Switch value={includeRemark} onValueChange={setIncludeRemark}/></View>
+          <Text className="mt-2 text-[11.5px] leading-[17px] text-[#536A84]">This facility is not on WelliRecord yet, so we cannot notify it. After you send, your phone opens the share sheet so you can pass the request to them by WhatsApp, SMS or email.</Text>
+          {includeRemark?<Text className="mt-2 text-[11.5px] leading-[17px] text-slate-600">{remark}</Text>:null}
+        </View>:null}
+
         {patient?.insuranceProvider?<View className="mt-4 rounded-2xl border border-[#D7E2F1] bg-[#F3F6FB] p-4"><Text className="text-[13px] font-bold text-[#173B68]">Insurance on file</Text><Text className="mt-2 text-[11.5px] leading-[17px] text-[#536A84]">{patient.insuranceProvider}. Coverage is confirmed by the facility, not this screen.</Text></View>:null}
 
-        <TouchableOpacity disabled={disabled} onPress={()=>{hapticFeedback.success();actions.confirmBooking({familyMemberId:memberId,reason,visitType})}} className={`mt-6 min-h-[48px] items-center justify-center rounded-xl ${disabled?"bg-slate-200":"bg-[#082F67]"}`}><Text className={`text-[14px] font-semibold ${disabled?"text-slate-400":"text-white"}`}>{state.bookingSubmitting?"Sending…":"Send request"}</Text></TouchableOpacity>
+        <TouchableOpacity disabled={disabled} onPress={()=>{hapticFeedback.success();actions.confirmBooking({familyMemberId:memberId,reason,visitType,providerRemark:ext&&includeRemark?remark:undefined,patientName:patient?.name})}} className={`mt-6 min-h-[48px] items-center justify-center rounded-xl ${disabled?"bg-slate-200":"bg-[#082F67]"}`}><Text className={`text-[14px] font-semibold ${disabled?"text-slate-400":"text-white"}`}>{state.bookingSubmitting?"Sending…":ext?"Save and share request":"Send request"}</Text></TouchableOpacity>
         <TouchableOpacity onPress={actions.closeBookAppointment} className="mt-2 min-h-[44px] items-center justify-center"><Text className="text-[13px] font-semibold text-slate-500">Cancel</Text></TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
