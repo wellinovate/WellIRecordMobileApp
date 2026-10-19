@@ -47,7 +47,7 @@ import { createChildDevelopmentRouter } from './childDevelopment';
 import { createChildFacilityRouter } from './childFacility';
 import { createProviderShareRouter } from './providerShare';
 import { cleanAvatar } from './avatar';
-import { anthropicCall, createAssistantRouter } from './assistant';
+import { anthropicCall, createAssistantRouter, geminiCall, parseGeminiSse } from './assistant';
 import { providerSharePage } from './providerSharePage';
 import { childToFhirBundle } from './fhir';
 import { createChildReminderRouter, startChildReminderSweep, type ReminderDeps } from './childReminders';
@@ -2530,9 +2530,13 @@ app.use(
   createAssistantRouter({
     getAuthUserId,
     limiter: assistantLimiter,
-    call: process.env.ANTHROPIC_API_KEY
-      ? anthropicCall(process.env.ANTHROPIC_API_KEY, process.env.ASSISTANT_MODEL || 'claude-haiku-5-5')
-      : null,
+    // Gemini when GEMINI_API_KEY is set (preferred when both are), otherwise Claude.
+    call: process.env.GEMINI_API_KEY
+      ? geminiCall(process.env.GEMINI_API_KEY, process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite')
+      : process.env.ANTHROPIC_API_KEY
+        ? anthropicCall(process.env.ANTHROPIC_API_KEY, process.env.ASSISTANT_MODEL || 'claude-haiku-5-5')
+        : null,
+    parse: process.env.GEMINI_API_KEY ? parseGeminiSse : undefined,
   })
 );
 app.get('/share/:token', (req, res) => {
