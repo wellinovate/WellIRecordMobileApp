@@ -63,7 +63,8 @@ test('provider page uses the nonce and no inline handlers', () => {
 
 import express from 'express';
 import type { AddressInfo } from 'node:net';
-import { createProviderShareRouter } from '../providerShare';
+import { createProviderShareRouter, parseSealed } from '../providerShare';
+import { SEAL_JS } from '../providerSharePage';
 
 test('a code channel that cannot deliver is refused before anything is created', async () => {
   const app = express();
@@ -84,4 +85,25 @@ test('a code channel that cannot deliver is refused before anything is created',
     const b = await post({ mode: 'contact', channel: 'sms', contact: '08012345678' });
     assert.equal(b.status, 400);
   } finally { srv.close(); }
+});
+
+test('encrypted copies are validated before they are stored', () => {
+  const iv = Buffer.alloc(12, 1).toString('base64');
+  const c = Buffer.alloc(48, 2).toString('base64');
+  assert.equal(parseSealed({ sealed: { ciphertext: c, iv } }).ok, true);
+  assert.equal(parseSealed({}).ok, false);
+  assert.equal(parseSealed({ sealed: { ciphertext: 'x y', iv } }).ok, false);
+  assert.equal(parseSealed({ sealed: { ciphertext: c, iv: Buffer.alloc(8).toString('base64') } }).ok, false);
+  assert.equal(parseSealed({ sealed: { ciphertext: 'A'.repeat(400_004), iv } }).ok, false);
+});
+
+test('the provider page reads the key from the fragment and clears it, and never sends it', () => {
+  const html = providerSharePage('abc');
+  assert.ok(html.includes('location.hash'));
+  assert.ok(html.includes("history.replaceState(null,'',location.pathname)"));
+  assert.ok(html.includes('crypto.subtle.decrypt'));
+  assert.ok(SEAL_JS.includes('AES-GCM'));
+  // the key is never put in a request
+  assert.ok(!/fetch\([^)]*fragKey/.test(html));
+  assert.ok(!/api\([^)]*fragKey/.test(html));
 });

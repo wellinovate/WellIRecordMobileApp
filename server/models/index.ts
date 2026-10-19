@@ -1246,6 +1246,9 @@ export interface IProviderShare extends Document {
   recipientName: string;
   purpose?: string;
   sections: string[];
+  /** True when the record was encrypted on the patient's phone; the server holds only ciphertext. */
+  encrypted?: boolean;
+  sealed?: { ciphertext: string; iv: string };
   expiresAt: Date;
   revokedAt?: Date;
   lockedAt?: Date;
@@ -1272,6 +1275,8 @@ const ProviderShareSchema = new Schema<IProviderShare>(
     recipientName: { type: String, required: true },
     purpose: { type: String },
     sections: { type: [String], default: [] },
+    encrypted: { type: Boolean, default: false },
+    sealed: { ciphertext: { type: String }, iv: { type: String } },
     expiresAt: { type: Date, required: true },
     revokedAt: { type: Date },
     lockedAt: { type: Date },

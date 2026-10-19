@@ -45,7 +45,7 @@ import { createWellipayRouter } from './wellipayPartner';
 import { IMMUNIZATION_SCHEDULE, scheduleDoseByCode } from './data/immunizationSchedule';
 import { createChildDevelopmentRouter } from './childDevelopment';
 import { createChildFacilityRouter } from './childFacility';
-import { createProviderShareRouter } from './providerShare';
+import { createProviderShareRouter, sweepSealed } from './providerShare';
 import { cleanAvatar } from './avatar';
 import { anthropicCall, createAssistantRouter, geminiCall, parseGeminiSse } from './assistant';
 import { providerSharePage } from './providerSharePage';
@@ -120,7 +120,7 @@ const smallJson = express.json();
 app.use((req, res, next) => {
   // A scanned document photo is sent as base64, which is about a third bigger than the file.
   if (/^\/(api\/v1\/)?records\/ocr-extract\/?$/i.test(req.path)) return photoJson(req, res, next);
-  if (/^\/(api\/v1\/)?(profile\/update|family\/[a-f0-9]{24})\/?$/i.test(req.path)) return bigJson(req, res, next);
+  if (/^\/(api\/v1\/)?(profile\/update|family\/[a-f0-9]{24}|provider-shares)\/?$/i.test(req.path)) return bigJson(req, res, next);
   return smallJson(req, res, next);
 });
 
@@ -2508,6 +2508,7 @@ app.use(
       const r = await sendWelliEmail(m);
       if (!r.success || !r.delivered) throw new Error('email not delivered');
     },
+    allowLive: process.env.ALLOW_LIVE_PROVIDER_SHARE === 'true',
     channels: () => ({ email: Boolean(process.env.RESEND_API_KEY || process.env.SENDGRID_API_KEY), sms: smsConfigured() }),
     sendSms: sendWelliSms,
     normalisePhone: normalizeNigerianPhone,
@@ -2591,6 +2592,8 @@ app.post('/api/v1/client-errors', clientErrorLimiter, async (req: Request, res: 
   return res.status(204).end();
 });
 startChildReminderSweep(reminderDeps);
+// Delete the encrypted copy of expired or withdrawn WelliBridge links.
+setInterval(() => { sweepSealed().catch((e) => console.error('[sweepSealed]', e)); }, 60 * 60 * 1000).unref();
 app.use(
   '/api/v1',
   createChildAccessRouter({

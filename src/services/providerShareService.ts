@@ -12,6 +12,8 @@ export interface ProviderShare {
   createdAt: string;
   state: 'active' | 'expired' | 'revoked' | 'locked';
   mode: 'contact' | 'passcode';
+  /** True when the record was encrypted on the phone and the server holds only ciphertext. */
+  encrypted?: boolean;
   contact: string;
   channel: 'email' | 'sms' | null;
   openedCount: number;
@@ -29,8 +31,13 @@ export interface CreateProviderShare {
     | { mode: 'contact'; channel: 'email' | 'sms'; contact: string };
 }
 
+export interface SealedCopy { ciphertext: string; iv: string }
+
 export const providerShareService = {
-  create: (body: CreateProviderShare) =>
+  /** The record as it would be shared now. The app encrypts it before it is uploaded. */
+  snapshot: (body: { subjectId: string; sections: ShareSection[]; purpose?: string }) =>
+    apiClient.post<{ sections: ShareSection[]; record: unknown }>('/provider-shares/snapshot', body),
+  create: (body: CreateProviderShare & { sealed: SealedCopy }) =>
     apiClient.post<{ share: ProviderShare; url: string; passcode?: string }>('/provider-shares', body),
   list: async () => (await apiClient.get<{ shares: ProviderShare[] }>('/provider-shares')).shares,
   revoke: async (id: string) =>

@@ -16,11 +16,26 @@ table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;p
 @media print{button,.noprint{display:none!important}body{background:#fff}.card{border:0;padding:0}}
 `;
 
+// Decrypts a sealed record with the key from the link. Exported as text so a test can run the exact code.
+export const SEAL_JS = `
+function b64(s){s=s.replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';var b=atob(s),u=new Uint8Array(b.length);for(var i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u}
+function openSealed(sealed){
+  if(!fragKey||!crypto||!crypto.subtle)return Promise.reject(new Error('key'));
+  return crypto.subtle.importKey('raw',b64(fragKey),'AES-GCM',false,['decrypt']).then(function(k){
+    return crypto.subtle.decrypt({name:'AES-GCM',iv:b64(sealed.iv),additionalData:new TextEncoder().encode('wellibridge:v1')},k,b64(sealed.ciphertext))
+  }).then(function(buf){return JSON.parse(new TextDecoder().decode(buf))});
+}
+`;
+
 const JS = `
 (function(){
 var token=location.pathname.split('/').pop();
 var base='/api/v1/provider-share/'+encodeURIComponent(token);
 var session=null;var sessionMinutes=15;
+var fragKey=(location.hash.match(/[#&]k=([A-Za-z0-9_-]{43})/)||[])[1]||null;
+// The key stays in the page. Remove it from the address bar and history.
+if(location.hash)history.replaceState(null,'',location.pathname);
+${SEAL_JS}
 var $=function(id){return document.getElementById(id)};
 function show(id){['s-load','s-dead','s-code','s-rec'].forEach(function(x){$(x).classList.toggle('hidden',x!==id)})}
 function el(tag,text,cls){var e=document.createElement(tag);if(text!==undefined&&text!==null)e.textContent=String(text);if(cls)e.className=cls;return e}
@@ -35,6 +50,7 @@ function loadInfo(){
   api('GET','/info').then(function(j){
     if(!j.success){dead(j.message||'This link is not valid.');return}
     info=j;
+    if(j.encrypted&&!fragKey){dead('This link is incomplete. Open the full link the patient sent, or scan their QR code again.');return}
     $('who').textContent=j.recipientName;
     $('exp').textContent='This link works until '+new Date(j.expiresAt).toLocaleString()+'.';
     if(j.mode==='passcode'){
@@ -107,7 +123,11 @@ function render(r){
 }
 function loadRecord(){
   api('GET','/record',null,session).then(function(j){
-    if(j.success){render(j);show('s-rec');
+    if(j.success&&j.sealed){
+      openSealed(j.sealed).then(function(r){render(r);show('s-rec');
+        $('sess').textContent='Decrypted in this browser. This view closes after '+sessionMinutes+' minutes. Print or save what you need, then close the page.'})
+      .catch(function(){dead('This record could not be decrypted. The link may be incomplete or damaged. Ask the patient for a new link.')})}
+    else if(j.success){render(j);show('s-rec');
       $('sess').textContent='This view closes after '+sessionMinutes+' minutes. Print or save what you need, then close the page.'}
     else if(j.__status===410)dead(j.message);
     else{session=null;show('s-code');$('code-err').textContent=j.message||'Enter the code again.'}
