@@ -47,6 +47,7 @@ import { createChildDevelopmentRouter } from './childDevelopment';
 import { createChildFacilityRouter } from './childFacility';
 import { createProviderShareRouter } from './providerShare';
 import { cleanAvatar } from './avatar';
+import { anthropicCall, createAssistantRouter } from './assistant';
 import { providerSharePage } from './providerSharePage';
 import { childToFhirBundle } from './fhir';
 import { createChildReminderRouter, startChildReminderSweep, type ReminderDeps } from './childReminders';
@@ -2513,6 +2514,25 @@ app.use(
     limiter: providerShareLimiter,
     secret: JWT_SECRET,
     publicBaseUrl: (req) => process.env.PUBLIC_API_BASE_URL || `${req.protocol}://${req.get('host')}`,
+  })
+);
+// Live assistant. 30 questions an hour per signed-in person (per IP when signed out, which is refused anyway).
+const assistantLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => getAuthUserId(req) || req.ip || 'anon',
+  message: { success: false, message: 'You have asked a lot of questions this hour. Try again later.' },
+});
+app.use(
+  '/api/v1',
+  createAssistantRouter({
+    getAuthUserId,
+    limiter: assistantLimiter,
+    call: process.env.ANTHROPIC_API_KEY
+      ? anthropicCall(process.env.ANTHROPIC_API_KEY, process.env.ASSISTANT_MODEL || 'claude-haiku-5-5')
+      : null,
   })
 );
 app.get('/share/:token', (req, res) => {

@@ -147,6 +147,17 @@ A patient or guardian shares part of a record with a provider who has no WelliRe
 - Each successful open is logged on the link (time, IP, user agent) and the patient gets a notification.
 - SMS needs `TERMII_API_KEY`; email needs the Resend settings. Not built: attachments, export as FHIR, staff-side view of these links. Integration test: `server/tests/integration/providerShare.test.ts` (CI only).
 
+## Live Assistant
+
+Tab: Assistant (`src/screens/ChatScreen.tsx`). Typed questions go to `POST /api/v1/assistant/message` (`server/assistant.ts`), which calls the Anthropic Messages API with the WelliRecord knowledge base in `server/data/assistantKnowledge.ts` and streams the answer as server-sent events (`notice`, `delta`, `error`, `done`). The app reads the stream with `expo/fetch` (`chatbotService.ask`, parser in `src/utils/sse.ts`). The old menu buttons (`/chatbot/open`, `/chatbot/respond`) stay as quick starts.
+
+- Needs `ANTHROPIC_API_KEY` on Render. Model from `ASSISTANT_MODEL` (default `claude-haiku-5-5`; check the id against the current Anthropic model list). Without the key the route returns 503 and the app tells the user to use the quick questions. `GET /assistant/status` reports whether it is live.
+- It has no tools and no access to the user's records or account. Only the typed conversation (last 20 turns, 2000 characters each) is sent. Nothing is stored on our side.
+- Signed-in only. 30 questions an hour per person.
+- Emergency words in the last message (breathing, chest pain, seizure, bleeding, stroke, overdose, self-harm) make the server send a fixed notice to call 112 before the answer. The prompt forbids diagnosis, doses and starting or stopping medicines.
+- When a feature ships or changes, update the knowledge base file. It must say only what the app does. Vaccine timing is deliberately not in it.
+- Tests: `server/tests/assistant.test.ts` (fake model, no database), `tests/sse.test.ts`.
+
 ## Rules for changes
 
 - Health documents must not be sent to third-party services. Open them in-app or hand the
