@@ -20,6 +20,7 @@ export function BookAppointmentModal({app}:{app:WelliApp}){
   const [includeRemark,setIncludeRemark]=useState(true);
   const [month,setMonth]=useState(()=>new Date());
   const days=useMemo(()=>daysFor(month),[month]);
+  const today=ymd(new Date());
   if(!state.showBookAppointment) return null;
 
   const ext=state.externalBookingFacility;
@@ -31,7 +32,7 @@ export function BookAppointmentModal({app}:{app:WelliApp}){
   const specialty=(facility as any)?.specialty||"Primary care";
   const patient=family.find(f=>f.id===memberId)||family[0];
   const remark=buildProviderRemark((patient as any)?.wrId||(patient as any)?.memberId||undefined);
-  const disabled=!state.bookingDate||!state.bookingTimeSlot||!!state.bookingSubmitting;
+  const disabled=!state.bookingDate||state.bookingDate<today||!state.bookingTimeSlot||!!state.bookingSubmitting;
 
   return <Modal visible={state.showBookAppointment} animationType="slide" transparent={false} onRequestClose={actions.closeBookAppointment}>
     <SafeAreaView className="flex-1 bg-white">
@@ -51,7 +52,7 @@ export function BookAppointmentModal({app}:{app:WelliApp}){
         <View className="mt-6 rounded-2xl border border-slate-200 p-4">
           <View className="flex-row items-center justify-between"><TouchableOpacity onPress={()=>setMonth(x=>new Date(x.getFullYear(),x.getMonth()-1,1))} className="h-9 w-9 items-center justify-center rounded-full bg-slate-50"><Text className="text-[20px] text-[#315B90]">‹</Text></TouchableOpacity><Text className="text-[15px] font-extrabold text-[#082F67]">{label(month)}</Text><TouchableOpacity onPress={()=>setMonth(x=>new Date(x.getFullYear(),x.getMonth()+1,1))} className="h-9 w-9 items-center justify-center rounded-full bg-slate-50"><Text className="text-[20px] text-[#315B90]">›</Text></TouchableOpacity></View>
           <View className="mt-4 flex-row">{["S","M","T","W","T","F","S"].map((x,i)=><View key={`${x}${i}`} className="flex-1 items-center"><Text className="text-[10.5px] font-semibold text-slate-400">{x}</Text></View>)}</View>
-          <View className="mt-2 flex-row flex-wrap">{days.map(d=>{const on=state.bookingDate===d.value;return <View key={d.value} style={{width:"14.2857%"}}><TouchableOpacity onPress={()=>{hapticFeedback.selection();actions.setBookingDate(d.value)}} className={`mx-auto my-1 h-9 w-9 items-center justify-center rounded-full ${on?"bg-[#082F67]":""}`}><Text className={`text-[12px] font-semibold ${on?"text-white":d.inside?"text-[#173B68]":"text-slate-300"}`}>{d.n}</Text></TouchableOpacity></View>})}</View>
+          <View className="mt-2 flex-row flex-wrap">{days.map(d=>{const past=d.value<today;const on=!past&&state.bookingDate===d.value;return <View key={d.value} style={{width:"14.2857%"}}><TouchableOpacity disabled={past} accessibilityState={{disabled:past}} onPress={()=>{hapticFeedback.selection();actions.setBookingDate(d.value)}} className={`mx-auto my-1 h-9 w-9 items-center justify-center rounded-full ${on?"bg-[#082F67]":""}`}><Text className={`text-[12px] font-semibold ${on?"text-white":past?"text-slate-300 line-through":d.inside?"text-[#173B68]":"text-slate-300"}`}>{d.n}</Text></TouchableOpacity></View>})}</View>
         </View>
 
         <Text className="mt-6 text-[16px] font-extrabold text-[#082F67]">Time</Text>

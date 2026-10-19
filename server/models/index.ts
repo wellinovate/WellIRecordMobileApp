@@ -981,6 +981,8 @@ export interface IAppointmentRequest extends Document {
   visitType?: 'in_person' | 'video';
   externalFacility?: boolean;
   providerRemark?: string;
+  /** What was actually delivered when the request was made. */
+  notified?: any;
   status: 'requested' | 'confirmed' | 'cancelled' | 'completed';
   visitSummary?: { diagnosis?: string; notes?: string; authoredBy?: string; authoredAt?: Date };
   notifiedStatus?: string;
@@ -999,6 +1001,7 @@ const AppointmentRequestSchema = new Schema<IAppointmentRequest>(
     visitType: { type: String, enum: ['in_person', 'video'], default: 'in_person' },
     externalFacility: { type: Boolean, default: false },
     providerRemark: { type: String, default: '' },
+    notified: { type: Schema.Types.Mixed },
     status: { type: String, enum: ['requested', 'confirmed', 'cancelled', 'completed'], default: 'requested' },
     visitSummary: {
       diagnosis: { type: String },

@@ -49,6 +49,7 @@ import { createProviderShareRouter, sweepSealed } from './providerShare';
 import { cleanAvatar } from './avatar';
 import { anthropicCall, createAssistantRouter, geminiCall, parseGeminiSse } from './assistant';
 import { providerSharePage } from './providerSharePage';
+import { notifyRequested, notifyStatus, summarise, type NotifyDeps } from './appointmentNotify';
 import { nearAbuja, nearbyCached, parseCoords, PLACE_KINDS, type PlaceKind } from './nearbyPlaces';
 import { childToFhirBundle } from './fhir';
 import { createChildReminderRouter, startChildReminderSweep, type ReminderDeps } from './childReminders';
@@ -3991,6 +3992,44 @@ async function callerProfileIds(authUserId: string): Promise<mongoose.Types.Obje
   return profiles.map((p: any) => p._id);
 }
 
+// Email, SMS and push for appointment events. A channel counts as delivered only if it said so.
+function appointmentChannels(userId: string, targetId: string): NotifyDeps {
+  return {
+    push: async ({ title, body }) => {
+      await dispatchPushNotification({
+        userId, type: 'system', emoji: '📅', tint: '#e0f2fe', categoryLabel: 'Appointment', title, body,
+        actionLabel: 'View visits', targetModal: 'visits', targetTab: 'care', targetId,
+      });
+    },
+    email: async (to, subject, text, html) => {
+      const r = await sendWelliEmail({ to, subject, text, html });
+      return Boolean(r.success && r.delivered);
+    },
+    sms: async (phone, message) => {
+      const p = normalizeNigerianPhone(phone);
+      if (!/^\+234[789]\d{9}$/.test(p)) return false;
+      await sendWelliSms(p, message);
+      return true;
+    },
+  };
+}
+
+async function accountContact(accountId: string): Promise<{ email?: string; phone?: string; name: string }> {
+  const a: any = await Account.findById(accountId).select('email phone phoneNumber fullName name').lean();
+  return { email: a?.email || undefined, phone: a?.phone || a?.phoneNumber || undefined, name: a?.fullName || a?.name || 'A patient' };
+}
+
+// Contact details for a facility that is on WelliRecord, read from its organisation profile.
+async function facilityContact(facilityId?: string): Promise<{ email?: string; phone?: string } | null> {
+  if (!facilityId) return null;
+  const org: any = await OrganizationProfile.findOne(
+    mongoose.isValidObjectId(facilityId) ? { $or: [{ _id: facilityId }, { wrOrgId: facilityId }] } : { wrOrgId: facilityId },
+    'phone email officeEmail contactEmail adminEmail'
+  ).lean();
+  if (!org) return null;
+  return { email: org.email || org.officeEmail || org.contactEmail || org.adminEmail || undefined, phone: org.phone || undefined };
+}
+
 function normalizeAppointmentRequest(doc: any) {
   return {
     id: String(doc._id),
@@ -4247,7 +4286,29 @@ app.post('/api/v1/appointments/requests', appointmentLimiter, async (req: Reques
       providerRemark: typeof providerRemark === 'string' ? providerRemark.trim() : '',
       status: 'requested',
     });
-    return res.status(201).json({ success: true, appointment: normalizeAppointmentRequest(doc) });
+    // Tell the patient (push, email, SMS) and the facility where we have a contact for it.
+    let notifiedText = '';
+    try {
+      const me = await accountContact(authUserId);
+      let patientName = me.name;
+      if (familyMemberId) {
+        const fm: any = await FamilyMember.findById(String(familyMemberId)).select('fullName name').lean();
+        patientName = fm?.fullName || fm?.name || patientName;
+      }
+      const external = externalFacility === true;
+      const fc = external ? null : await facilityContact(facilityId ? String(facilityId) : undefined);
+      const result = await Promise.race([
+        notifyRequested({ patient: appointmentChannels(authUserId, String(doc._id)) }, doc, patientName, me, fc),
+        new Promise<null>((r) => setTimeout(() => r(null), 10000)),
+      ]);
+      if (result) {
+        notifiedText = summarise(result, external);
+        await AppointmentRequest.updateOne({ _id: doc._id }, { $set: { notified: result } });
+      }
+    } catch (nErr) {
+      console.error('[POST /appointments/requests] notify failed:', nErr);
+    }
+    return res.status(201).json({ success: true, appointment: normalizeAppointmentRequest(doc), notice: notifiedText });
   } catch (err) {
     console.error('[POST /appointments/requests] ERROR:', err);
     return res.status(500).json({ success: false, message: 'Failed to create appointment request' });
@@ -5436,26 +5497,8 @@ async function sweepAppointmentStatusNotifications() {
         { $set: { notifiedStatus: appt.status } }
       );
       if (!claimed.modifiedCount) continue;
-      const day = new Date(appt.scheduledFor).toLocaleDateString('en-GB', {
-        weekday: 'short', day: '2-digit', month: 'short', timeZone: 'Africa/Lagos',
-      });
-      const confirmed = appt.status === 'confirmed';
-      const video = appt.visitType === 'video';
-      await dispatchPushNotification({
-        userId: String(appt.accountId),
-        type: 'system',
-        emoji: confirmed ? '✅' : '📅',
-        tint: confirmed ? '#dcfce7' : '#fee2e2',
-        categoryLabel: 'Appointment',
-        title: confirmed ? 'Visit confirmed' : 'Visit cancelled',
-        body: confirmed
-          ? `${appt.facilityName} confirmed your ${video ? 'video visit' : 'visit'} on ${day}, ${appt.timeSlot}.${video ? ' Join from Upcoming visits on the day.' : ''}`
-          : `${appt.facilityName} cancelled your visit on ${day}, ${appt.timeSlot}.`,
-        actionLabel: 'View visits',
-        targetModal: 'visits',
-        targetTab: 'care',
-        targetId: String(appt._id),
-      });
+      const me = await accountContact(String(appt.accountId));
+      await notifyStatus(appointmentChannels(String(appt.accountId), String(appt._id)), appt, appt.status as 'confirmed' | 'cancelled', me);
     }
   } catch (err) {
     console.warn('[Appointment sweep] failed:', err);

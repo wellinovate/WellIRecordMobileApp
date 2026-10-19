@@ -108,12 +108,12 @@ export const careService = {
   /**
    * Sends an appointment request to the server. The facility confirms it.
    */
-  async requestAppointment(payload: AppointmentRequestPayload): Promise<AppointmentItem> {
-    const res = await apiClient.post<{ success: boolean; appointment: AppointmentItem }>(
+  async requestAppointment(payload: AppointmentRequestPayload): Promise<{ appointment: AppointmentItem; notice: string }> {
+    const res = await apiClient.post<{ success: boolean; appointment: AppointmentItem; notice?: string }>(
       '/appointments/requests',
       payload
     );
-    return res.appointment;
+    return { appointment: res.appointment, notice: res.notice || '' };
   },
 
   /**

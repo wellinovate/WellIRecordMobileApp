@@ -169,6 +169,10 @@ Tab: Assistant (`src/screens/ChatScreen.tsx`). Typed questions go to `POST /api/
 
 Booking at a Google listing (`externalBookingFacility`) saves an `AppointmentRequest` with `externalFacility: true` and an optional `providerRemark` (built in `src/utils/providerRemark.ts`: says the patient uses WelliRecord, gives the WelliID, points to a WelliBridge link and wellirecord.com). The facility is not notified by us; after saving, the app opens the share sheet with the request so the person sends it. The remark can be switched off per booking.
 
+## Appointment notifications
+
+`POST /appointments/requests` now notifies after saving (`server/appointmentNotify.ts`): the patient gets an in-app notification, an email (if the account has one and an email provider is set) and an SMS (Nigerian mobile and `TERMII_API_KEY`). The facility gets an email and an SMS only if it is a WelliRecord organisation (`OrganizationProfile` found by `facilityId`) with `email`, `officeEmail`, `contactEmail`, `adminEmail` or `phone` on file; the mobile `Facility` directory and Google listings have no contact, so nobody is messaged and the app says so. Messages carry patient name, date, time, visit type and a 6 character reference, never the reason. A channel counts as delivered only when the sender reports it (`sendWelliEmail` returns `delivered`); what was delivered is stored on the request as `notified` and summarised in the `notice` field the app shows. When a facility confirms or cancels (found by the one-minute sweep, because the web console changes the status), the patient gets push, email and SMS. Not built: retry of a failed email or SMS, facility notification for non-WelliRecord facilities.
+
 ## Rules for changes
 
 - Health documents must not be sent to third-party services. Open them in-app or hand the
