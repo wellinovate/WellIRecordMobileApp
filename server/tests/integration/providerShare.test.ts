@@ -43,7 +43,7 @@ describe('provider share against a real database', { skip: !hasDb && 'set MONGOD
     const deps = () => ({
         getAuthUserId: (req) => (req.headers['x-test-user'] as string) || null,
         callerCanShare: async (a, s) => a === s,
-        sendEmail: async (m) => { const c = /\b(\d{6})\b/.exec(m.html); sent.push({ to: m.to, code: c ? c[1] : '' }); },
+        sendEmail: async (m) => { const c = /id="code">(\d{6})</.exec(m.html); sent.push({ to: m.to, code: c ? c[1] : '' }); },
         sendSms: async () => {},
         normalisePhone: (p) => p,
         notify: async (_u, title) => { notes.push(title); },

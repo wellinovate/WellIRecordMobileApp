@@ -2,6 +2,7 @@
 // has no WelliRecord account, by link or QR code. The link expires, can be withdrawn, and opens only
 // after a one-time code. The code goes to the provider's own email or phone, or the patient reads it
 // out (passcode). Link token and codes are stored only as keyed hashes.
+import { shareCodeHtml, shareCodeSubject, shareCodeText } from './shareEmail';
 import crypto from 'crypto';
 import express, { Request, RequestHandler, Response } from 'express';
 import jwt from 'jsonwebtoken';
@@ -110,7 +111,7 @@ export async function sweepSealed(now = new Date()) {
 export interface ShareDeps {
   getAuthUserId: (req: Request) => string | null;
   callerCanShare: (authUserId: string, subjectId: string) => Promise<boolean>;
-  sendEmail: (m: { to: string; subject: string; html: string }) => Promise<void>;
+  sendEmail: (m: { to: string; subject: string; html: string; text?: string }) => Promise<void>;
   sendSms: (phone: string, message: string) => Promise<void>;
   normalisePhone: (p: string) => string;
   notify: (userId: string, title: string, body: string, critical?: boolean) => Promise<void>;
@@ -339,11 +340,8 @@ export function createProviderShareRouter(deps: ShareDeps) {
       );
       try {
         if (s.contactChannel === 'email') {
-          await deps.sendEmail({
-            to: s.contact,
-            subject: 'Your WelliRecord access code',
-            html: `<p>A patient has shared health information with you through WelliRecord.</p><p>Your code is <strong style="font-size:22px;letter-spacing:3px">${code}</strong></p><p>It works for ${OTP_MINUTES} minutes. Do not share it. If you were not expecting this, ignore this message.</p>`,
-          });
+          const mail = { recipientName: s.recipientName, code, minutes: OTP_MINUTES, linkExpiresAt: s.expiresAt };
+          await deps.sendEmail({ to: s.contact, subject: shareCodeSubject(), html: shareCodeHtml(mail), text: shareCodeText(mail) });
         } else {
           await deps.sendSms(s.contact, `WelliRecord code: ${code}. A patient shared records with you. Valid ${OTP_MINUTES} minutes. Do not share this code.`);
         }
