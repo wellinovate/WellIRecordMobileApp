@@ -71,6 +71,7 @@ import { FaceIdLockScreen } from "./modals/FaceIdLockScreen";
 import { MfaChallengeModal } from "./modals/MfaChallengeModal";
 import { TwoStepModal } from "./modals/TwoStepModal";
 import { AccountLogModal } from "./modals/AccountLogModal";
+import { ConsultBookingModal } from "./modals/ConsultBookingModal";
 import { useInactivityLogout } from "./hooks/useInactivityLogout";
 import { markActivity } from "./utils/inactivityCore";
 
@@ -423,6 +424,7 @@ function MainWelliApp() {
           <ProviderShareModal app={app} />
           <TwoStepModal app={app} />
           <AccountLogModal app={app} />
+          <ConsultBookingModal app={app} />
 
           {Boolean(state.showChildProfile) && <ChildProfileModal app={app} />}
 

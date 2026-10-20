@@ -376,8 +376,22 @@ export function CareScreen({ app }: { app: WelliApp }) {
 
         <TouchableOpacity
           activeOpacity={0.82}
+          onPress={() => actions.openConsultBooking()}
+          accessibilityRole="button"
+          className="mt-6 rounded-2xl border border-[#315B90] bg-[#EEF3FA] p-4"
+        >
+          <Text className="text-[14px] font-bold text-[#173B68]">
+            Book a consultation
+          </Text>
+          <Text className="mt-1 text-[11.5px] leading-[17px] text-slate-500">
+            In person or virtual. Compare fees, pick a time, pay online, at the visit or with your HMO.
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          activeOpacity={0.82}
           onPress={actions.openUpcomingVisits}
-          className="mt-6 rounded-2xl border border-slate-200 bg-[#F8FAFD] p-4"
+          className="mt-3 rounded-2xl border border-slate-200 bg-[#F8FAFD] p-4"
         >
           <Text className="text-[14px] font-bold text-[#173B68]">
             My appointments

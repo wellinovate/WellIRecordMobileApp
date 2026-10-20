@@ -39,6 +39,7 @@ import { childOfflineQueue, clearChildOfflineData } from '../utils/childOfflineQ
 import { facilityService } from '../services/facilityService';
 import { pointsFromProvider, latestProviderLogs, type VitalPoint } from '../utils/vitalsSeries';
 import { careService, type AppointmentItem } from '../services/careService';
+import { bookingService } from '../services/bookingService';
 import { sharingService } from '../services/sharingService';
 import { notificationService } from '../services/notificationService';
 import type { CareFacility } from '../data/types';
@@ -74,6 +75,9 @@ export interface AppState {
   showTwoStep: boolean;
   deviceCompromised: boolean;
   showAccountLog: boolean;
+  showConsultBooking: boolean;
+  /** Set when the booking flow was opened for one facility. */
+  consultFacilityId: string | null;
   providerShareDraft: { subjectId?: string; sections?: ('allergies' | 'conditions' | 'medications' | 'records' | 'vaccinations' | 'growth')[]; recordIds?: string[]; label?: string } | null;
   /** Set when the family list could not be loaded. Null when it loaded or has not been tried. */
   familyLoadError: string | null;
@@ -294,6 +298,8 @@ const initialState: AppState = {
   showTwoStep: false,
   deviceCompromised: false,
   showAccountLog: false,
+  showConsultBooking: false,
+  consultFacilityId: null,
   providerShareDraft: null,
   familyLoadError: null,
   showChildProfile: false,
@@ -1081,6 +1087,23 @@ export function useWelliApp() {
     closeProviderShare: () => patch({ showProviderShare: false, providerShareDraft: null }),
     openTwoStep: () => patch({ showTwoStep: true }),
     closeTwoStep: () => patch({ showTwoStep: false }),
+    openConsultBooking: (facilityId?: string) =>
+      patch({
+        showConsultBooking: true,
+        consultFacilityId: facilityId || null,
+        showBookAppointment: false,
+        showLabDirectory: false,
+        showCareLocator: false,
+        showPharmacyDirectory: false,
+      }),
+    closeConsultBooking: () => patch({ showConsultBooking: false, consultFacilityId: null }),
+    /** Adds or replaces a booking the server just created or updated. */
+    upsertAppointment: (a: AppointmentItem) =>
+      patch((s) => ({
+        appointments: [...s.appointments.filter((x) => x.id !== a.id), a].sort(
+          (x, y) => new Date(x.scheduledFor).getTime() - new Date(y.scheduledFor).getTime()
+        ),
+      })),
     openAccountLog: () => patch({ showAccountLog: true }),
     closeAccountLog: () => patch({ showAccountLog: false }),
     submitMfaCode: async (proof: { code: string } | { recoveryCode: string }) => {
@@ -1541,17 +1564,35 @@ export function useWelliApp() {
     openBookAppointment: (
       facilityId: string,
       externalFacility?: { name: string; address: string; placeId?: string }
-    ) =>
-      patch({
-        showBookAppointment: true,
-        showLabDirectory: false,
-        showCareLocator: false,
-        showPharmacyDirectory: false,
-        bookingFacilityId: externalFacility ? null : facilityId,
-        externalBookingFacility: externalFacility || null,
-        bookingDate: '',
-        bookingTimeSlot: '',
-      }),
+    ) => {
+      const legacy = () =>
+        patch({
+          showBookAppointment: true,
+          showLabDirectory: false,
+          showCareLocator: false,
+          showPharmacyDirectory: false,
+          bookingFacilityId: externalFacility ? null : facilityId,
+          externalBookingFacility: externalFacility || null,
+          bookingDate: '',
+          bookingTimeSlot: '',
+        });
+      if (externalFacility || !facilityId) return legacy();
+      // A facility that has published fees and hours uses the consultation booking flow.
+      bookingService
+        .offers(facilityId)
+        .then((o) =>
+          o.inPerson || o.virtual
+            ? patch({
+                showConsultBooking: true,
+                consultFacilityId: facilityId,
+                showLabDirectory: false,
+                showCareLocator: false,
+                showPharmacyDirectory: false,
+              })
+            : legacy()
+        )
+        .catch(legacy);
+    },
     closeBookAppointment: () =>
       patch({ showBookAppointment: false, externalBookingFacility: null }),
     setBookingDate: (v: string) => patch({ bookingDate: v }),

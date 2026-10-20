@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { clinicPage, ordersPage } from '../consolePages';
+import { clinicPage, consultationsPage, ordersPage } from '../consolePages';
 
 function render(handler: any) {
   const headers: Record<string, string> = {};
@@ -15,7 +15,7 @@ function render(handler: any) {
 }
 
 describe('staff pages', () => {
-  for (const [name, h] of [['clinic', clinicPage], ['orders', ordersPage]] as const) {
+  for (const [name, h] of [['clinic', clinicPage], ['orders', ordersPage], ['consultations', consultationsPage]] as const) {
     it(`${name}: signs in with a staff account, never the shared secret`, () => {
       const { body } = render(h);
       assert.ok(!/x-admin-secret/i.test(body));
@@ -38,6 +38,10 @@ describe('staff pages', () => {
       assert.doesNotThrow(() => new Function(m[1]));
     });
   }
+  it('consultations page uses the booking staff endpoints', () => {
+    const { body } = render(consultationsPage);
+    for (const p of ['/staff/providers', '/staff/facility-options', '/staff/bookings', '/hmo']) assert.ok(body.includes(p), p);
+  });
   it('clinic page writes through the clinic endpoints', () => {
     const { body } = render(clinicPage);
     for (const p of ['/staff/users', '/staff/actions', '/reset-mfa', '/facility/child/lookup', '/facility/child/vaccinations', '/facility/child/growth']) assert.ok(body.includes(p), p);
