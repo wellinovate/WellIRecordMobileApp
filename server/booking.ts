@@ -8,7 +8,6 @@
 //
 // The fee always comes from the provider's record on the server, never from the app.
 
-import crypto from 'crypto';
 import mongoose from 'mongoose';
 import express, { Request, RequestHandler, Response, Router } from 'express';
 import { AppointmentRequest, BookingSlot, ProviderService, StaffRole } from './models';
@@ -89,6 +88,8 @@ export interface BookingDeps {
   /** Facilities a provider profile can be set up for (the app's facility list and registered organisations). */
   listFacilities: () => Promise<{ id: string; name: string; address: string }[]>;
   paystack: PaystackClient;
+  /** Payment references that are not consultation bookings (pharmacy orders). Return true if handled. */
+  otherReference?: (reference: string) => Promise<boolean>;
   now?: () => number;
 }
 
@@ -483,7 +484,10 @@ export function createBooking(deps: BookingDeps) {
       const evt: any = JSON.parse(raw.toString('utf8'));
       if (evt?.event !== 'charge.success') return;
       const reference = String(evt?.data?.reference || '');
-      if (!/^wr-[a-f0-9]{24}$/.test(reference)) return;
+      if (!/^wr-[a-f0-9]{24}$/.test(reference)) {
+        if (deps.otherReference) await deps.otherReference(reference);
+        return;
+      }
       const appt: any = await AppointmentRequest.findOne({ paymentRef: reference });
       if (!appt) return;
       // Do not trust the body for the amount: ask Paystack.

@@ -65,4 +65,6 @@ export const ACTION_LABELS: Record<string, string> = {
   share_locked: 'Provider link locked after wrong codes',
   record_shared_consent: 'Record shared with a provider',
   emergency_scan: 'Emergency card scanned',
+  prescription_shared: 'Prescription sent to a pharmacy',
+  prescription_viewed: 'Prescription opened by a pharmacy',
 };

@@ -491,6 +491,252 @@ async function decide(id,what){
 }
 `;
 
+const PHARMACY_HTML = String.raw`
+<div class="wrap">
+  <div class="top"><div><h1>Pharmacy orders</h1><div class="sub">Review prescriptions, send quotes, dispatch and confirm handover.</div></div><div id="who" class="muted hide"></div></div>
+  ${'__AUTH__'}
+  <div id="app" class="hide">
+    <div id="note" class="msg hide"></div>
+    <button class="alt" id="b-out">Sign out</button>
+    <div class="card gap">
+      <div class="top"><h2>Orders</h2><button class="alt nt" id="b-ref">Refresh</button></div>
+      <label for="st">Show</label>
+      <select id="st">
+        <option value="awaiting_review">Awaiting review</option>
+        <option value="awaiting_hmo">Awaiting HMO</option>
+        <option value="confirmed">Confirmed, to dispatch or ready</option>
+        <option value="dispatched">Out for delivery</option>
+        <option value="ready_for_pickup">Ready for pickup</option>
+        <option value="quoted">Quoted, waiting for the patient</option>
+        <option value="awaiting_payment">Awaiting payment</option>
+        <option value="delivered">Delivered</option>
+        <option value="collected">Collected</option>
+        <option value="cancelled">Cancelled</option>
+        <option value="rejected">Rejected</option>
+        <option value="expired">Expired</option>
+      </select>
+      <div id="list"></div>
+    </div>
+    <div class="card gap hide" id="detail"></div>
+    <div class="card gap hide" id="setup">
+      <h2>Pharmacy settings</h2>
+      <p class="muted">Only an admin can save. Each pharmacy sets its own delivery fee by distance. Fees are in naira.</p>
+      <div id="slist"></div>
+      <label for="fp">Pick a facility</label><select id="fp"></select>
+      <div class="row">
+        <div><label for="fn">Name</label><input id="fn"></div>
+        <div><label for="fa">Address</label><input id="fa"></div>
+        <div><label for="fph">Phone</label><input id="fph"></div>
+        <div><label for="fi">Facility ID (set by the picker)</label><input id="fi"></div>
+        <div><label for="flat">Latitude</label><input id="flat" inputmode="decimal" placeholder="9.0765"></div>
+        <div><label for="flng">Longitude</label><input id="flng" inputmode="decimal" placeholder="7.3986"></div>
+      </div>
+      <div class="row">
+        <div><label><input type="checkbox" class="chk" id="de" checked> Delivers</label></div>
+        <div><label><input type="checkbox" class="chk" id="pe" checked> Offers pickup</label></div>
+      </div>
+      <label for="fb">Delivery fee bands, one per line: up to km, fee in naira. Example: 5km 1500</label>
+      <textarea id="fb" rows="4" placeholder="3km 1000&#10;8km 2000&#10;15km 3500"></textarea>
+      <label for="eta">Delivery time shown to patients</label><input id="eta" value="Within 2 to 4 hours">
+      <div class="row">
+        <div><label><input type="checkbox" class="chk" id="po" checked> Online payment</label></div>
+        <div><label><input type="checkbox" class="chk" id="pd"> Pay on delivery</label></div>
+        <div><label><input type="checkbox" class="chk" id="pp" checked> Pay at pickup</label></div>
+      </div>
+      <label for="fh">HMOs accepted (separated by commas)</label><input id="fh" placeholder="Hygeia, AXA Mansard">
+      <label>Staff who can see these orders</label><div id="staffbox"></div>
+      <label><input type="checkbox" class="chk" id="fz" checked> Taking orders</label>
+      <button id="b-save">Save pharmacy</button><div class="err" id="e-save"></div>
+    </div>
+  </div>
+</div>`;
+
+const PHARMACY_JS = String.raw`
+function add(parent,tag,text,cls){var e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;parent.appendChild(e);return e}
+function note(t,good){var n=$('note');n.textContent=t;n.className='msg '+(good?'good':'bad');setTimeout(function(){n.className='msg hide'},6000)}
+function naira(minor){return minor==null?'':String(minor/100)}
+function money(minor){return '₦'+(Number(minor||0)/100).toLocaleString()}
+function toMinor(v){v=String(v||'').replace(/[^0-9.]/g,'');if(!v)return undefined;return Math.round(parseFloat(v)*100)}
+var ME=null,FAC=[],STAFF=[],OPEN=null;
+window.onSignedIn=function(staff){
+  ME=staff;$('app').classList.remove('hide');$('who').classList.remove('hide');$('who').textContent=staff.name+' ('+staff.role.replace('_',' ')+')';
+  loadSettings();loadList();
+  if(staff.role==='admin'){$('setup').classList.remove('hide');loadFacilities();loadStaff()}
+};
+$('b-out').onclick=signOut;$('b-ref').onclick=function(){loadList()};$('st').onchange=function(){loadList()};
+async function loadList(){
+  var l=$('list');l.textContent='Loading...';
+  var st=$('st').value;
+  var d=await api('/staff/pharmacy/orders?status='+encodeURIComponent(st));l.textContent='';
+  if(!d.success){add(l,'div',d.message||'Could not load orders.','msg bad');return}
+  if(!d.orders.length){add(l,'div','Nothing here.','muted');return}
+  d.orders.forEach(function(o){
+    var it=add(l,'div',null,'item');
+    add(it,'strong',o.pharmacyName+' · ref '+o.ref);
+    add(it,'div',o.subjectName+' · '+o.itemCount+' item(s) · '+o.fileCount+' file(s) · '+new Date(o.createdAt).toLocaleString()+(o.totalMinor?' · '+money(o.totalMinor):''),'muted');
+    var b=add(it,'button','Open','alt');b.onclick=function(){openOrder(o.id)};
+  });
+}
+async function act(id,what,body,msg){
+  var d=await api('/staff/pharmacy/orders/'+encodeURIComponent(id)+'/'+what,{method:'POST',body:body||{}});
+  if(d.success){note(msg,true);loadList();openOrder(id)}else note(d.message||'Failed.',false);
+}
+async function showFile(id,fid){
+  var d=await api('/staff/pharmacy/orders/'+encodeURIComponent(id)+'/files/'+encodeURIComponent(fid));
+  if(!d.success){note(d.message||'Could not open the file.',false);return}
+  var bin=atob(d.dataBase64),u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+  var url=URL.createObjectURL(new Blob([u],{type:d.contentType}));
+  var box=$('filebox');box.textContent='';
+  if(d.contentType==='application/pdf'){var a=add(box,'a','Download the PDF');a.href=url;a.download='prescription.pdf'}
+  else{var img=add(box,'img');img.src=url;img.style.maxWidth='100%';img.alt='Prescription'}
+}
+async function openOrder(id){
+  var c=$('detail');c.classList.remove('hide');c.textContent='Loading...';
+  var d=await api('/staff/pharmacy/orders/'+encodeURIComponent(id));
+  c.textContent='';
+  if(!d.success){add(c,'div',d.message||'Could not load the order.','msg bad');return}
+  var o=d.order;OPEN=o;
+  add(c,'h2',o.pharmacy.name+' · ref '+o.ref);
+  add(c,'div','Status: '+o.status.replace(/_/g,' ')+' · patient '+o.subjectName+(o.patientPhone?' · '+o.patientPhone:''),'muted');
+  add(c,'h2','Requested');
+  o.requested.forEach(function(r){add(c,'div',r.name+(r.strength?' '+r.strength:'')+' x '+r.quantity+(r.notes?' ('+r.notes+')':''),'item')});
+  if(o.files.length){
+    add(c,'h2','Prescription');
+    o.files.forEach(function(f,i){var b=add(c,'button','View file '+(i+1)+' ('+f.contentType.split('/')[1]+')','alt');b.onclick=function(){showFile(o.id,f.id)}});
+    add(c,'div',null,'').id='filebox';
+    add(c,'div','Opening a file is recorded in the patient\'s access log.','muted');
+  }
+  if(o.linkToRecord)add(c,'div','The patient agreed to add the dispensed medication to their record.','muted');
+  if(o.quote){
+    add(c,'h2','Quote');
+    o.quote.lines.forEach(function(l){add(c,'div',(l.available?'':'Not available: ')+l.name+(l.strength?' '+l.strength:'')+' x '+l.quantity+' · '+money(l.unitPriceMinor)+(l.alternative?' · alternative':''),'item')});
+  }
+  if(o.fulfilment){
+    add(c,'h2',o.fulfilment==='delivery'?'Delivery':'Pickup');
+    if(o.address){add(c,'div',o.address.text+(o.address.landmark?' (near '+o.address.landmark+')':''));add(c,'div','Recipient '+(o.address.recipientName||'')+' '+(o.address.recipientPhone||''),'muted')}
+    add(c,'div','Medication '+money(o.medsMinor)+' · delivery '+money(o.deliveryFeeMinor)+(o.feeEstimated?' (estimate)':'')+' · total '+money(o.totalMinor)+' · due '+money(o.dueMinor),'muted');
+    add(c,'div','Payment: '+(o.paymentMethod||'-').replace(/_/g,' ')+' · '+(o.paymentStatus||'-').replace(/_/g,' '),'muted');
+    if(o.hmo)add(c,'div','HMO '+o.hmo.provider+' · member '+(o.hmoMemberId||'-')+' · '+o.hmo.status,'muted');
+  }
+  if(o.dispatch)add(c,'div','Rider '+o.dispatch.riderName+' '+o.dispatch.riderPhone,'muted');
+  if(o.status==='awaiting_review')reviewForm(c,o);
+  if(o.status==='awaiting_hmo')hmoForm(c,o);
+  if(o.status==='confirmed'&&o.fulfilment==='delivery')dispatchForm(c,o);
+  if(o.status==='confirmed'&&o.fulfilment==='pickup'){var rb=add(c,'button','Mark ready for pickup','ok');rb.onclick=function(){act(o.id,'ready',{},'Marked ready. The patient was told.')}}
+  if(o.status==='dispatched')codeForm(c,o,'deliver','Confirm delivery');
+  if(o.status==='ready_for_pickup')codeForm(c,o,'collect','Confirm pickup');
+  if(['awaiting_payment','awaiting_hmo','confirmed','ready_for_pickup'].indexOf(o.status)>=0){
+    var cb=add(c,'button','Cancel order','no');cb.className='no sp';
+    cb.onclick=function(){var why=prompt('Reason for the patient (required):');if(!why||!why.trim())return;act(o.id,'cancel',{reason:why},'Order cancelled.')};
+  }
+  c.scrollIntoView();
+}
+function reviewForm(c,o){
+  add(c,'h2','Send a quote');
+  add(c,'div','Enter the price for each unit in naira. Tick "alternative" for a substitute the patient may leave out. Untick "available" for anything you cannot supply.','muted');
+  var rows=[];var box=add(c,'div');
+  function addRow(r){
+    var w=add(box,'div',null,'item');
+    var n=add(w,'input');n.placeholder='Medication';n.value=(r.name||'')+(r.strength?' '+r.strength:'');
+    var q=add(w,'input');q.placeholder='Quantity';q.value=r.quantity||1;q.inputMode='numeric';
+    var p=add(w,'input');p.placeholder='Price per unit (naira)';p.inputMode='decimal';
+    var a=add(w,'label');var av=add(a,'input');av.type='checkbox';av.className='chk';av.checked=true;a.appendChild(document.createTextNode('available'));
+    var b=add(w,'label');var al=add(b,'input');al.type='checkbox';al.className='chk';b.appendChild(document.createTextNode('alternative'));
+    rows.push({n:n,q:q,p:p,av:av,al:al,strength:r.strength||''});
+  }
+  o.requested.forEach(addRow);
+  var more=add(c,'button','Add an alternative line','alt');more.onclick=function(){addRow({name:'',quantity:1})};
+  var nl=add(c,'label','Note to the patient (optional)');nl.setAttribute('for','qn');var nn=add(c,'textarea');nn.id='qn';nn.rows=2;
+  var s=add(c,'button','Send quote','ok');var e=add(c,'div',null,'err');
+  s.onclick=function(){
+    var lines=rows.map(function(r){return {name:r.n.value,strength:'',quantity:Number(r.q.value),unitPriceMinor:toMinor(r.p.value)||0,available:r.av.checked,alternative:r.al.checked}});
+    e.textContent='';
+    api('/staff/pharmacy/orders/'+encodeURIComponent(o.id)+'/quote',{method:'POST',body:{lines:lines,note:nn.value}}).then(function(d){
+      if(d.success){note('Quote sent. The patient was told.',true);loadList();openOrder(o.id)}else e.textContent=d.message||'Could not send the quote.';
+    });
+  };
+  var rj=add(c,'button','Reject order','no');rj.className='no sp';
+  rj.onclick=function(){var why=prompt('Reason for the patient (required):');if(!why||!why.trim())return;act(o.id,'reject',{reason:why},'Order rejected.')};
+}
+function hmoForm(c,o){
+  add(c,'h2','HMO cover');
+  var l=add(c,'label','Amount the HMO covers (naira)');l.setAttribute('for','hc');var i=add(c,'input');i.id='hc';i.inputMode='decimal';
+  var a=add(c,'button','Approve cover','ok');a.onclick=function(){var m=toMinor(i.value);if(!m){note('Enter the covered amount.',false);return}act(o.id,'hmo',{decision:'approve',coveredMinor:m},'Cover approved.')};
+  var n=add(c,'button','Decline','no');n.className='no sp';n.onclick=function(){var why=prompt('Reason (optional):');if(why===null)return;act(o.id,'hmo',{decision:'decline',reason:why},'Declined. The patient can choose another way to pay.')};
+}
+function dispatchForm(c,o){
+  add(c,'h2','Dispatch');
+  add(c,'div','Assign your rider or logistics partner. WelliRecord does not dispatch for you.','muted');
+  var a=add(c,'input');a.placeholder='Rider name';var b=add(c,'input');b.placeholder='Rider phone';var t=add(c,'input');t.placeholder='Arrival note, e.g. about 45 minutes';
+  var s=add(c,'button','Dispatch','ok');s.onclick=function(){act(o.id,'dispatch',{riderName:a.value,riderPhone:b.value,etaNote:t.value},'Dispatched. The patient was told.')};
+}
+function codeForm(c,o,what,label){
+  add(c,'h2','Handover');
+  add(c,'div','Ask the patient for their six digit code. Five wrong codes lock this step for 15 minutes.','muted');
+  var i=add(c,'input');i.placeholder='Six digit code';i.inputMode='numeric';i.maxLength=6;
+  var s=add(c,'button',label,'ok');s.onclick=function(){act(o.id,what,{code:i.value},'Done.')};
+}
+// ----- settings (admin) -----
+function parseBands(text){
+  var out=[],lines=String(text||'').split('\n');
+  for(var k=0;k<lines.length;k++){
+    var l=lines[k].trim().toLowerCase();if(!l)continue;
+    var m=/^(\d+(?:\.\d+)?)\s*km\s+(\d+(?:\.\d+)?)$/.exec(l);
+    if(!m)return {error:'Line '+(k+1)+' should look like: 5km 1500'};
+    out.push({maxKm:parseFloat(m[1]),feeMinor:Math.round(parseFloat(m[2])*100)});
+  }
+  return {bands:out};
+}
+function bandsText(b){return (b||[]).map(function(x){return x.maxKm+'km '+(x.feeMinor/100)}).join('\n')}
+async function loadFacilities(){
+  var d=await api('/staff/pharmacy/facility-options');FAC=d.success?d.facilities:[];
+  var s=$('fp');s.textContent='';var o=add(s,'option','Choose...');o.value='';
+  FAC.forEach(function(f,i){var e=add(s,'option',f.name+(f.address?' - '+f.address:''));e.value=String(i)});
+}
+async function loadStaff(){
+  var d=await api('/staff/users');var box=$('staffbox');box.textContent='';
+  STAFF=(d.success&&d.staff)||[];
+  STAFF.filter(function(u){return u.role==='pharmacist'&&u.status!=='disabled'}).forEach(function(u){
+    var l=add(box,'label');var c=add(l,'input');c.type='checkbox';c.className='chk';c.value=String(u.id);l.appendChild(document.createTextNode(u.name+' ('+u.email+')'));
+  });
+  if(!box.childNodes.length)add(box,'div','No pharmacist accounts yet. Add one in the clinic console.','muted');
+}
+$('fp').onchange=function(){var f=FAC[Number($('fp').value)];if(!f)return;$('fi').value=f.id;$('fn').value=f.name;$('fa').value=f.address||''};
+function fill(p){
+  $('fi').value=p.facilityId;$('fn').value=p.name;$('fa').value=p.address||'';$('fph').value=p.phone||'';
+  $('flat').value=p.lat==null?'':p.lat;$('flng').value=p.lng==null?'':p.lng;
+  $('de').checked=!!p.deliveryEnabled;$('pe').checked=!!p.pickupEnabled;$('fb').value=bandsText(p.feeBands);$('eta').value=p.deliveryEta||'';
+  $('po').checked=p.onlinePayment!==false;$('pd').checked=!!p.payOnDelivery;$('pp').checked=p.payAtPickup!==false;
+  $('fh').value=(p.acceptsHmo||[]).join(', ');$('fz').checked=p.active!==false;
+  var ids=p.staffIds||[];Array.prototype.forEach.call($('staffbox').querySelectorAll('input'),function(c){c.checked=ids.indexOf(c.value)>=0});
+  $('setup').scrollIntoView();
+}
+async function loadSettings(){
+  var l=$('slist');l.textContent='';
+  var d=await api('/staff/pharmacy/services');
+  if(!d.success||!d.services.length)return;
+  d.services.forEach(function(p){
+    var it=add(l,'div',null,'item');add(it,'strong',p.name);add(it,'span',p.active===false?'paused':'live','tag '+(p.active===false?'p':'v'));
+    if(ME&&ME.role==='admin'){var b=add(it,'button','Edit','alt');b.onclick=function(){fill(p)}}
+  });
+}
+$('b-save').onclick=async function(){
+  say('e-save','');
+  var bd=parseBands($('fb').value);if(bd.error){say('e-save',bd.error);return}
+  var id=$('fi').value.trim();if(!id){say('e-save','Pick a facility first.');return}
+  var ids=[];Array.prototype.forEach.call($('staffbox').querySelectorAll('input'),function(c){if(c.checked)ids.push(c.value)});
+  var body={
+    name:$('fn').value,address:$('fa').value,phone:$('fph').value,lat:$('flat').value.trim(),lng:$('flng').value.trim(),
+    deliveryEnabled:$('de').checked,pickupEnabled:$('pe').checked,feeBands:bd.bands,deliveryEta:$('eta').value,
+    onlinePayment:$('po').checked,payOnDelivery:$('pd').checked,payAtPickup:$('pp').checked,
+    acceptsHmo:$('fh').value.split(',').map(function(x){return x.trim()}).filter(Boolean),staffIds:ids,active:$('fz').checked
+  };
+  var d=await api('/staff/pharmacy/services/'+encodeURIComponent(id),{method:'PUT',body:body});
+  if(!d.success){say('e-save',d.message||'Could not save');return}
+  note('Saved.',true);loadSettings();
+};
+`;
+
 function page(title: string, body: string, js: string, nonce: string) {
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="robots" content="noindex">
 <title>${title}</title><style nonce="${nonce}">${STYLE}</style></head><body>${body.replace('__AUTH__', AUTH_HTML)}
@@ -501,7 +747,7 @@ function send(res: Response, title: string, body: string, js: string) {
   const nonce = crypto.randomBytes(16).toString('base64');
   res.setHeader(
     'Content-Security-Policy',
-    `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`
+    `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; img-src 'self' blob:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`
   );
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Referrer-Policy', 'no-referrer');
@@ -511,3 +757,4 @@ function send(res: Response, title: string, body: string, js: string) {
 export const clinicPage = (_req: Request, res: Response) => send(res, 'WelliRecord clinic', CLINIC_HTML, CLINIC_JS);
 export const consultationsPage = (_req: Request, res: Response) => send(res, 'WelliRecord consultation booking', CONSULT_HTML, CONSULT_JS);
 export const ordersPage = (_req: Request, res: Response) => send(res, 'WelliRecord order review', ORDERS_HTML, ORDERS_JS);
+export const pharmacyPage = (_req: Request, res: Response) => send(res, 'WelliRecord pharmacy orders', PHARMACY_HTML, PHARMACY_JS);

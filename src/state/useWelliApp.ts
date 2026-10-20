@@ -78,6 +78,11 @@ export interface AppState {
   showConsultBooking: boolean;
   /** Set when the booking flow was opened for one facility. */
   consultFacilityId: string | null;
+  showPharmacyOrders: boolean;
+  /** Pharmacy to start a new order with, when opened from the directory. */
+  pharmacyOrderFacilityId: string | null;
+  /** Order to open on the detail view, when opened from a notification. */
+  pharmacyOrderOpenId: string | null;
   providerShareDraft: { subjectId?: string; sections?: ('allergies' | 'conditions' | 'medications' | 'records' | 'vaccinations' | 'growth')[]; recordIds?: string[]; label?: string } | null;
   /** Set when the family list could not be loaded. Null when it loaded or has not been tried. */
   familyLoadError: string | null;
@@ -300,6 +305,9 @@ const initialState: AppState = {
   showAccountLog: false,
   showConsultBooking: false,
   consultFacilityId: null,
+  showPharmacyOrders: false,
+  pharmacyOrderFacilityId: null,
+  pharmacyOrderOpenId: null,
   providerShareDraft: null,
   familyLoadError: null,
   showChildProfile: false,
@@ -1097,6 +1105,15 @@ export function useWelliApp() {
         showPharmacyDirectory: false,
       }),
     closeConsultBooking: () => patch({ showConsultBooking: false, consultFacilityId: null }),
+    openPharmacyOrders: (opts?: { facilityId?: string; orderId?: string }) =>
+      patch({
+        showPharmacyOrders: true,
+        pharmacyOrderFacilityId: opts?.facilityId || null,
+        pharmacyOrderOpenId: opts?.orderId || null,
+        showPharmacyDirectory: false,
+        showOrderMedication: false,
+      }),
+    closePharmacyOrders: () => patch({ showPharmacyOrders: false, pharmacyOrderFacilityId: null, pharmacyOrderOpenId: null }),
     /** Adds or replaces a booking the server just created or updated. */
     upsertAppointment: (a: AppointmentItem) =>
       patch((s) => ({
@@ -1778,6 +1795,8 @@ export function useWelliApp() {
         patch({ showFamilyAccess: true });
       } else if (notif.targetModal === 'visits') {
         actions.openUpcomingVisits();
+      } else if (notif.targetModal === 'pharmacyOrders') {
+        actions.openPharmacyOrders({ orderId: notif.targetId });
       }
     },
 

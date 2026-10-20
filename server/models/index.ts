@@ -1118,6 +1118,183 @@ export const ProviderService: Model<IProviderService> =
 export const BookingSlot: Model<IBookingSlot> =
   mongoose.models.BookingSlot || mongoose.model<IBookingSlot>('BookingSlot', BookingSlotSchema, 'bookingslots');
 
+// What a pharmacy offers for ordering: its own delivery fee bands, payment options and location.
+// Keyed by the same facilityId the app uses (a mobile Facility id or an organisation id).
+export interface IPharmacyService extends Document {
+  facilityId: string;
+  name: string;
+  address?: string;
+  phone?: string;
+  lat?: number;
+  lng?: number;
+  deliveryEnabled: boolean;
+  pickupEnabled: boolean;
+  /** Distance bands, each with its own fee in kobo. Beyond the last band the pharmacy does not deliver. */
+  feeBands: { maxKm: number; feeMinor: number }[];
+  deliveryEta: string;
+  onlinePayment: boolean;
+  payOnDelivery: boolean;
+  payAtPickup: boolean;
+  acceptsHmo: string[];
+  /** Staff accounts that may see this pharmacy's orders. Admin sees all. */
+  staffIds: string[];
+  active: boolean;
+  updatedBy?: string;
+}
+const PharmacyServiceSchema = new Schema<IPharmacyService>(
+  {
+    facilityId: { type: String, required: true, unique: true },
+    name: { type: String, required: true },
+    address: { type: String, default: '' },
+    phone: { type: String, default: '' },
+    lat: { type: Number },
+    lng: { type: Number },
+    deliveryEnabled: { type: Boolean, default: true },
+    pickupEnabled: { type: Boolean, default: true },
+    feeBands: { type: [{ _id: false, maxKm: Number, feeMinor: Number }], default: [] },
+    deliveryEta: { type: String, default: 'Within 2 to 4 hours' },
+    onlinePayment: { type: Boolean, default: true },
+    payOnDelivery: { type: Boolean, default: false },
+    payAtPickup: { type: Boolean, default: true },
+    acceptsHmo: { type: [String], default: [] },
+    staffIds: { type: [String], default: [], index: true },
+    active: { type: Boolean, default: true },
+    updatedBy: { type: String },
+  },
+  { timestamps: true }
+);
+
+// A prescription or report photo sent with an order. Stored sealed (AES-256-GCM) in our own database,
+// never passed to a third party. Deleted 30 days after the order ends.
+export interface IPharmacyAttachment extends Document {
+  accountId: mongoose.Types.ObjectId;
+  orderId?: mongoose.Types.ObjectId;
+  contentType: string;
+  bytes: number;
+  sealed: string;
+  expiresAt?: Date;
+}
+const PharmacyAttachmentSchema = new Schema<IPharmacyAttachment>(
+  {
+    accountId: { type: Schema.Types.ObjectId, required: true, index: true },
+    orderId: { type: Schema.Types.ObjectId, index: true },
+    contentType: { type: String, required: true },
+    bytes: { type: Number, required: true },
+    sealed: { type: String, required: true },
+    expiresAt: { type: Date },
+  },
+  { timestamps: true }
+);
+PharmacyAttachmentSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
+export interface IPharmacyOrder extends Document {
+  accountId: mongoose.Types.ObjectId;
+  subjectName: string;
+  patientPhone?: string;
+  pharmacyId: string;
+  pharmacyName: string;
+  pharmacyAddress?: string;
+  items: { name: string; strength: string; quantity: number; notes: string }[];
+  attachmentIds: mongoose.Types.ObjectId[];
+  /** The patient agreed to link the prescription to their health record. */
+  linkToRecord: boolean;
+  consentAt?: Date;
+  status: string;
+  quote?: {
+    lines: { name: string; strength: string; quantity: number; unitPriceMinor: number; available: boolean; alternative: boolean; note: string }[];
+    note?: string;
+    quotedBy?: string;
+    quotedAt?: Date;
+    expiresAt?: Date;
+  };
+  excluded: number[];
+  fulfilment?: 'delivery' | 'pickup';
+  address?: { text: string; landmark?: string; lat?: number; lng?: number; recipientName?: string; recipientPhone?: string };
+  distanceKm?: number | null;
+  medsMinor: number;
+  deliveryFeeMinor: number;
+  feeEstimated: boolean;
+  totalMinor: number;
+  dueMinor: number;
+  currency: string;
+  paymentMethod?: string;
+  paymentStatus?: string;
+  paymentRef?: string;
+  paymentStartedAt?: Date;
+  hmo?: { provider: string; memberId?: string; coveredMinor?: number; status?: string; decidedBy?: string; reason?: string };
+  handoverSealed?: string;
+  codeAttempts: number;
+  codeLockedUntil?: Date | null;
+  dispatch?: { riderName?: string; riderPhone?: string; assignedAt?: Date; etaNote?: string };
+  events: { at: Date; status: string; by: string; note?: string }[];
+  notifiedStatus?: string;
+  closedAt?: Date;
+  cancelReason?: string;
+}
+const PharmacyOrderSchema = new Schema<IPharmacyOrder>(
+  {
+    accountId: { type: Schema.Types.ObjectId, required: true, index: true },
+    subjectName: { type: String, required: true },
+    patientPhone: { type: String },
+    pharmacyId: { type: String, required: true, index: true },
+    pharmacyName: { type: String, required: true },
+    pharmacyAddress: { type: String },
+    items: { type: [{ _id: false, name: String, strength: String, quantity: Number, notes: String }], default: [] },
+    attachmentIds: { type: [Schema.Types.ObjectId], default: [] },
+    linkToRecord: { type: Boolean, default: false },
+    consentAt: { type: Date },
+    status: { type: String, default: 'awaiting_review', index: true },
+    quote: {
+      type: new Schema(
+        {
+          lines: { type: [{ _id: false, name: String, strength: String, quantity: Number, unitPriceMinor: Number, available: Boolean, alternative: Boolean, note: String }], default: [] },
+          note: String,
+          quotedBy: String,
+          quotedAt: Date,
+          expiresAt: Date,
+        },
+        { _id: false }
+      ),
+    },
+    excluded: { type: [Number], default: [] },
+    fulfilment: { type: String, enum: ['delivery', 'pickup'] },
+    address: {
+      type: new Schema({ text: String, landmark: String, lat: Number, lng: Number, recipientName: String, recipientPhone: String }, { _id: false }),
+    },
+    distanceKm: { type: Number },
+    medsMinor: { type: Number, default: 0 },
+    deliveryFeeMinor: { type: Number, default: 0 },
+    feeEstimated: { type: Boolean, default: false },
+    totalMinor: { type: Number, default: 0 },
+    dueMinor: { type: Number, default: 0 },
+    currency: { type: String, default: 'NGN' },
+    paymentMethod: { type: String },
+    paymentStatus: { type: String },
+    paymentRef: { type: String, index: true },
+    paymentStartedAt: { type: Date },
+    hmo: {
+      type: new Schema({ provider: String, memberId: String, coveredMinor: Number, status: String, decidedBy: String, reason: String }, { _id: false }),
+    },
+    handoverSealed: { type: String },
+    codeAttempts: { type: Number, default: 0 },
+    codeLockedUntil: { type: Date },
+    dispatch: { type: new Schema({ riderName: String, riderPhone: String, assignedAt: Date, etaNote: String }, { _id: false }) },
+    events: { type: [{ _id: false, at: Date, status: String, by: String, note: String }], default: [] },
+    notifiedStatus: { type: String },
+    closedAt: { type: Date },
+    cancelReason: { type: String },
+  },
+  { timestamps: true }
+);
+PharmacyOrderSchema.index({ pharmacyId: 1, status: 1, createdAt: -1 });
+
+export const PharmacyService: Model<IPharmacyService> =
+  mongoose.models.PharmacyService || mongoose.model<IPharmacyService>('PharmacyService', PharmacyServiceSchema, 'pharmacyservices');
+export const PharmacyAttachment: Model<IPharmacyAttachment> =
+  mongoose.models.PharmacyAttachment || mongoose.model<IPharmacyAttachment>('PharmacyAttachment', PharmacyAttachmentSchema, 'pharmacyattachments');
+export const PharmacyOrder: Model<IPharmacyOrder> =
+  mongoose.models.PharmacyOrder || mongoose.model<IPharmacyOrder>('PharmacyOrder', PharmacyOrderSchema, 'pharmacyorders');
+
 // Export Mongoose Models
 export const User: Model<IUser> = mongoose.models.User || mongoose.model<IUser>('User', UserSchema);
 export const Account: Model<IAccount> = mongoose.models.Account || mongoose.model<IAccount>('Account', AccountSchema, 'accounts');
