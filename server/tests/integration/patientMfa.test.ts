@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import { after, before, describe, it } from 'node:test';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
@@ -9,7 +10,8 @@ import { createPatientAuth } from '../../patientAuth';
 import { AccountAuditLog, PatientMfa } from '../../models';
 import { totp } from '../../totp';
 
-const SECRET = 'integration-mfa-secret-0123456789abcdef';
+// Made fresh each run so no secret-shaped string sits in the repository.
+const SECRET = crypto.randomBytes(32).toString('hex');
 
 describe('patient second step against a real database', { skip: !hasDb && 'set MONGODB_URI_TEST to run' }, () => {
   let server: Server;
@@ -23,7 +25,7 @@ describe('patient second step against a real database', { skip: !hasDb && 'set M
     const r = await fetch(`${base}${path}`, {
       method,
       headers: { 'Content-Type': 'application/json', ...(user ? { 'x-test-user': String(user) } : {}) },
-      body: body ? JSON.stringify(body) : undefined,
+      body: body && method !== 'GET' ? JSON.stringify(body) : undefined,
     });
     let json: any = {};
     try { json = await r.json(); } catch {}
