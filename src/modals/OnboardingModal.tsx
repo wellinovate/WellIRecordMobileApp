@@ -3,9 +3,9 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Modal,
   ScrollView,
 } from 'react-native';
+import { Modal } from '../components/ActivityModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Logo } from '../components/Logo';
 import { SocialAuthButtons } from '../components/SocialAuthButtons';

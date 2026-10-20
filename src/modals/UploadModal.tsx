@@ -1,20 +1,13 @@
 import { useMemo, useState } from "react";
 
 import {
-
-  Modal,
-
   ScrollView,
-
   Text,
-
   TextInput,
-
   TouchableOpacity,
-
   View,
-
-} from "react-native";
+} from 'react-native';
+import { Modal } from '../components/ActivityModal';
 
 import { SafeAreaView } from "react-native-safe-area-context";
 

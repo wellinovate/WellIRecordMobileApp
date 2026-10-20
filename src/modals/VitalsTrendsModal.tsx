@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Modal, useWindowDimensions } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, useWindowDimensions } from 'react-native';
+import { Modal } from '../components/ActivityModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ModalHeader } from '../components/ModalHeader';
 import { TrendChart, type TrendLine } from '../components/TrendChart';

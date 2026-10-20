@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { Modal } from '../components/ActivityModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Track } from 'livekit-client';
 import {

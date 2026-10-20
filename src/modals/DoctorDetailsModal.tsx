@@ -1,4 +1,5 @@
-import { Modal, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Modal } from '../components/ActivityModal';
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg,{Path} from "react-native-svg";
 

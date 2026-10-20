@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
-  Modal,
   ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
   View,
-} from "react-native";
+} from 'react-native';
+import { Modal } from '../components/ActivityModal';
 import { SafeAreaView } from "react-native-safe-area-context";
 import QRCode from "react-native-qrcode-svg";
 import Svg, { Circle, Path } from "react-native-svg";

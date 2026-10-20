@@ -2120,6 +2120,27 @@ export function useWelliApp() {
       });
       showToast('Logged out of vault');
     },
+    // Called by the inactivity timer. Same clean-up as logOut, with a message saying why.
+    autoLogOut: async () => {
+      try { await authService.logout(); } catch { /* sign out locally even if the server call fails */ }
+      setAuthToken(null);
+      await clearChildOfflineData();
+      patch({
+        familyLoadError: null,
+        isAuthenticated: false,
+        user: null,
+        loggedOut: false,
+        showWelcomeHome: false,
+        familyMembers: [DEFAULT_PRIMARY_USER],
+        recordsList: [],
+        prescriptions: [],
+        vitalsLogs: [],
+        vitalsSeries: [],
+        tab: 'home',
+        tabHistory: [],
+      });
+      showToast('You were signed out after 20 minutes of inactivity. Sign in again to continue.');
+    },
     logBackIn: () => {
       hapticFeedback.selection();
       patch({

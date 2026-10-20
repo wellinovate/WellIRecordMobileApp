@@ -60,6 +60,8 @@ or offline-fake mode. `offlineSyncService` queues mutations while offline.
 **Auth.** Clerk (`@clerk/expo`) with tokens in `expo-secure-store` (`src/utils/tokenCache.ts`).
 Auth screens live in `src/features/auth/`.
 
+**Inactivity sign-out.** After 20 minutes with no touch the app signs out (`actions.autoLogOut`, same clean-up as `logOut`, with a message). `src/utils/inactivityCore.ts` holds the clock (`INACTIVITY_MS`, `markActivity`); `src/hooks/useInactivityLogout.ts` checks it every 15 seconds and when the app returns to the foreground, so time in the background counts. Touches are reported by the root view and by `src/components/ActivityModal.tsx`. A React Native `Modal` draws in its own window, so **always import `Modal` from `components/ActivityModal`, not from `react-native`**, or touches inside it will not count as activity and the person can be signed out mid-task. It is held off during a video visit (`state.inCall`). Typing on the keyboard alone does not count; a touch does.
+
 **Styling.** NativeWind `className` plus inline style objects. `nativewind-env.d.ts` is
 included in `tsconfig.app.json` so `className` type-checks. Theme colors come from
 `ThemeContext` (`LIGHT_THEME` / `DARK_THEME` in `src/data/mockData.ts`).

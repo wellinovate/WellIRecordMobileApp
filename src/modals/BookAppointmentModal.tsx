@@ -1,5 +1,6 @@
 import {useMemo,useState} from "react";
-import { Modal, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Modal } from '../components/ActivityModal';
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg,{Path} from "react-native-svg";
 import { hapticFeedback } from "../utils/haptics";
