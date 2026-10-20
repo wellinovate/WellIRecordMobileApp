@@ -35,7 +35,7 @@ export interface SealedCopy { ciphertext: string; iv: string }
 
 export const providerShareService = {
   /** The record as it would be shared now. The app encrypts it before it is uploaded. */
-  snapshot: (body: { subjectId: string; sections: ShareSection[]; purpose?: string }) =>
+  snapshot: (body: { subjectId: string; sections: ShareSection[]; purpose?: string; recordIds?: string[] }) =>
     apiClient.post<{ sections: ShareSection[]; record: unknown }>('/provider-shares/snapshot', body),
   create: (body: CreateProviderShare & { sealed: SealedCopy }) =>
     apiClient.post<{ share: ProviderShare; url: string; passcode?: string }>('/provider-shares', body),

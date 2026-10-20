@@ -279,6 +279,20 @@ export function RecordDetailSheet({ app }: { app: WelliApp }) {
             </TouchableOpacity>
 
             <TouchableOpacity
+              activeOpacity={0.86}
+              onPress={() => actions.shareRecordEncrypted(record.id)}
+              accessibilityRole="button"
+              className="mt-3 rounded-xl border border-[#0f766e] bg-[#F0FDFA] px-4 py-3"
+            >
+              <Text className="text-[13px] font-semibold text-[#0f766e]">
+                Share by encrypted link or QR
+              </Text>
+              <Text className="mt-1 text-[11.5px] leading-[17px] text-[#536A84]">
+                For a doctor or clinic that is not on WelliRecord. Sends this result as text, with a one-time code to open it.
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
               activeOpacity={0.8}
               onPress={openPreview}
               className="mt-3 min-h-[48px] flex-row items-center justify-between rounded-xl border border-slate-200 bg-white px-4"

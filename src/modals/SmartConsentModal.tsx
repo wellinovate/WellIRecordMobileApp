@@ -223,6 +223,26 @@ export function SmartConsentModal({ app }: { app: WelliApp }) {
               </Text>
             </View>
 
+            <TouchableOpacity
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              onPress={() => {
+                hapticFeedback.selection();
+                actions.openProviderShare();
+              }}
+              style={[styles.infoBanner, { backgroundColor: theme.surface, borderColor: '#0f766e', marginTop: 10 }]}
+            >
+              <Text style={{ fontSize: 18 }}>🔗</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.infoBannerText, { color: '#0f766e', fontWeight: '700' }]}>
+                  Provider not on WelliRecord?
+                </Text>
+                <Text style={[styles.infoBannerText, { color: theme.muted, marginTop: 2 }]}>
+                  Share an encrypted link or QR code instead. They open it with a one-time code, no account needed.
+                </Text>
+              </View>
+            </TouchableOpacity>
+
             <Text style={[styles.sectionHeading, { color: theme.text }]}>Grantee Type</Text>
             <View style={styles.segmentedRow}>
               <TouchableOpacity
