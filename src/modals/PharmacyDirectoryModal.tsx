@@ -275,6 +275,16 @@ export function PharmacyDirectoryModal({ app }: { app: WelliApp }) {
                     </Text>
                   </View>
 
+                  {selectedPharmacy.welliRecord && selectedPharmacy.facilityId ? (
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      onPress={() => actions.openPharmacyOrders({ facilityId: selectedPharmacy.facilityId })}
+                      accessibilityRole="button"
+                      style={[styles.directionsBtn, { backgroundColor: '#059669', marginBottom: 8 }]}
+                    >
+                      <Text style={styles.directionsBtnText}>Order here ›</Text>
+                    </TouchableOpacity>
+                  ) : null}
                   <TouchableOpacity
                     activeOpacity={0.8}
                     onPress={() => handleOpenDirections(selectedPharmacy)}

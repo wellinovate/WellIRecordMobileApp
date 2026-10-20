@@ -290,7 +290,7 @@ export interface Notification {
   | 'care'
   | 'chat'
   | 'profile';
-  targetModal?: 'proxyLog' | 'activity' | 'billing' | 'family' | 'linkedAccounts' | 'emergency';
+  targetModal?: 'proxyLog' | 'activity' | 'billing' | 'family' | 'linkedAccounts' | 'emergency' | 'visits' | 'pharmacyOrders';
   targetId?: string;
 }
 

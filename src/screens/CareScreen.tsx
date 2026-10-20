@@ -416,6 +416,20 @@ export function CareScreen({ app }: { app: WelliApp }) {
           </Text>
         </TouchableOpacity>
 
+        <TouchableOpacity
+          activeOpacity={0.82}
+          onPress={() => actions.openPharmacyOrders()}
+          accessibilityRole="button"
+          className="mt-3 rounded-2xl border border-[#315B90] bg-[#EEF3FA] p-4"
+        >
+          <Text className="text-[14px] font-bold text-[#173B68]">
+            Order medication
+          </Text>
+          <Text className="mt-1 text-[11.5px] leading-[17px] text-slate-500">
+            Send a prescription to a pharmacy, get a price, then choose delivery or pickup. Track your orders here.
+          </Text>
+        </TouchableOpacity>
+
         <View className="mt-3 flex-row gap-3">
           <TouchableOpacity
             activeOpacity={0.82}

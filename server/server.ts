@@ -3,7 +3,7 @@
  * Node.js / Express backend with Mongoose, Termii SMS Gateway & NDPR Compliant Endpoints.
  */
 
-import { clinicPage, consultationsPage, ordersPage } from './consolePages';
+import { clinicPage, consultationsPage, ordersPage, pharmacyPage } from './consolePages';
 import { deleteClerkIdentity, eraseChildData } from './accountErasure';
 import { accountDeletionPage } from './publicPages';
 import crypto from 'crypto';
@@ -48,6 +48,7 @@ import {
 } from './models';
 import { createWellipayRouter } from './wellipayPartner';
 import { createBooking, createPaystack } from './booking';
+import { createPharmacyOrders } from './pharmacyOrders';
 import { joinWindow } from './bookingCore';
 import { BookingSlot } from './models';
 import { IMMUNIZATION_SCHEDULE, scheduleDoseByCode } from './data/immunizationSchedule';
@@ -131,11 +132,13 @@ app.use('/api/v1', (req, res, next) => (bookingWebhook ? bookingWebhook(req, res
 // take a larger body than the 100kb default.
 const bigJson = express.json({ limit: '1500kb' });
 const photoJson = express.json({ limit: '14mb' });
+const attachJson = express.json({ limit: '4mb' });
 const smallJson = express.json();
 app.use((req, res, next) => {
   // A scanned document photo is sent as base64, which is about a third bigger than the file.
   if (/^\/(api\/v1\/)?records\/ocr-extract\/?$/i.test(req.path)) return photoJson(req, res, next);
   if (/^\/(api\/v1\/)?(profile\/update|family\/[a-f0-9]{24}|provider-shares)\/?$/i.test(req.path)) return bigJson(req, res, next);
+  if (/^\/(api\/v1\/)?pharmacy-orders\/attachments\/?$/i.test(req.path)) return attachJson(req, res, next);
   return smallJson(req, res, next);
 });
 
@@ -3483,6 +3486,7 @@ app.post('/api/v1/pharmacy/orders/:id/reject', staff.requireStaff('pharmacist'),
 app.get('/admin/orders', ordersPage);
 app.get('/clinic', clinicPage);
 app.get('/admin/consultations', consultationsPage);
+app.get('/admin/pharmacy', pharmacyPage);
 app.get('/account-deletion', accountDeletionPage);
 
 // 5. Pre-signed Encrypted S3 Upload URL Generator
@@ -4598,6 +4602,9 @@ app.post('/api/v1/appointments/:id/cancel', appointmentLimiter, async (req: Requ
   }
 });
 
+// Pharmacy orders are built after booking but share its Paystack webhook, so the handler is looked up late.
+let pharmacyOrders: ReturnType<typeof createPharmacyOrders> | null = null;
+
 // Consultation booking (fees, hours, slot holds, payment). See booking.ts.
 const booking = createBooking({
   getAuthUserId,
@@ -4618,10 +4625,39 @@ const booking = createBooking({
     ];
   },
   paystack: createPaystack(process.env.PAYSTACK_SECRET_KEY),
+  otherReference: async (reference) => (pharmacyOrders ? pharmacyOrders.verifyAndSettle(reference) : false),
 });
 bookingWebhook = booking.webhook;
 app.use('/api/v1', booking.router);
 booking.startSweeps();
+
+// Pharmacy ordering (quote, checkout, payment, handover code). See pharmacyOrders.ts.
+pharmacyOrders = createPharmacyOrders({
+  getAuthUserId,
+  limiter: appointmentLimiter,
+  requireStaff: staff.requireStaff,
+  paystack: createPaystack(process.env.PAYSTACK_SECRET_KEY),
+  accountContact,
+  notify: async (accountId, orderId, title, body) => {
+    await dispatchPushNotification({
+      userId: accountId, type: 'prescription', emoji: '💊', tint: '#dcfce7', categoryLabel: 'Pharmacy', title, body,
+      actionLabel: 'View order', targetModal: 'pharmacyOrders', targetTab: 'care', targetId: orderId,
+    });
+  },
+  audit: (req, accountId, action, actor, detail) => auditAccount(req, accountId, 'access', action, actor, detail),
+  sealKey: process.env.PHARMACY_SEAL_KEY || JWT_SECRET,
+  listFacilities: async () => {
+    const mobile: any[] = await Facility.find({}, 'name address city').limit(300).lean();
+    const registered = await welliProviders();
+    return [
+      ...mobile.map((f) => ({ id: String(f._id), name: String(f.name), address: [f.address, f.city].filter(Boolean).join(', ') })),
+      ...registered.map((p) => ({ id: p.id, name: p.name, address: p.address })),
+    ];
+  },
+  registeredIds: async () => new Set((await welliProviders()).map((p) => p.id)),
+});
+app.use('/api/v1', pharmacyOrders.router);
+pharmacyOrders.startSweeps();
 
 // 7. Create Share Grant & Audit Log (MongoDB)
 // Not in the original audit, found while reviewing a later feature: this was

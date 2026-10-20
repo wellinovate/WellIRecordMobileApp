@@ -72,6 +72,7 @@ import { MfaChallengeModal } from "./modals/MfaChallengeModal";
 import { TwoStepModal } from "./modals/TwoStepModal";
 import { AccountLogModal } from "./modals/AccountLogModal";
 import { ConsultBookingModal } from "./modals/ConsultBookingModal";
+import { PharmacyOrdersModal } from "./modals/PharmacyOrdersModal";
 import { useInactivityLogout } from "./hooks/useInactivityLogout";
 import { markActivity } from "./utils/inactivityCore";
 
@@ -425,6 +426,7 @@ function MainWelliApp() {
           <TwoStepModal app={app} />
           <AccountLogModal app={app} />
           <ConsultBookingModal app={app} />
+          <PharmacyOrdersModal app={app} />
 
           {Boolean(state.showChildProfile) && <ChildProfileModal app={app} />}
 
