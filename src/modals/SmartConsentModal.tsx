@@ -126,7 +126,7 @@ export function SmartConsentModal({ app }: { app: WelliApp }) {
       return;
     }
     if (!state.consentProviderWrId.trim()) {
-      actions.showToast(isOrg ? 'Please select a verified partner facility' : "Enter the provider's WelliRecord ID");
+      actions.showToast(isOrg ? 'Please select a verified partner facility' : "Enter the provider's WelliID");
       return;
     }
     if (!state.consentScope) {
@@ -359,7 +359,7 @@ export function SmartConsentModal({ app }: { app: WelliApp }) {
             {!isOrg && (
               <>
                 <Text style={[styles.sectionHeading, { color: theme.text }]}>
-                  Provider's WelliRecord ID
+                  Provider's WelliID
                 </Text>
                 <TextInput
                   value={state.consentProviderWrId}
@@ -377,7 +377,7 @@ export function SmartConsentModal({ app }: { app: WelliApp }) {
                   ]}
                 />
                 <Text style={{ fontSize: 11.5, color: theme.mutedLight, marginTop: -14, marginBottom: 18 }}>
-                  Ask the doctor for their WelliRecord Member ID — found on their provider profile.
+                  Ask the doctor for their WelliID, found on their provider profile.
                 </Text>
               </>
             )}

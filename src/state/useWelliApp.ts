@@ -991,12 +991,12 @@ export function useWelliApp() {
         return;
       }
       if (!providerWrId) {
-        showToast("Enter the provider's WelliRecord ID (e.g. WR-1234-ABCD)");
+        showToast("Enter the provider's WelliID (e.g. WR-1234-ABCD)");
         return;
       }
       const isIndividual = state.consentGranteeType === 'individual';
       if (isIndividual && !/^WR-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(providerWrId)) {
-        showToast('WelliRecord ID must be in the format WR-XXXX-XXXX');
+        showToast('WelliID must be in the format WR-XXXX-XXXX');
         return;
       }
       try {
