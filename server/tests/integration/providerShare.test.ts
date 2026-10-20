@@ -202,5 +202,17 @@ describe('provider share against a real database', { skip: !hasDb && 'set MONGOD
       const no = await fetch(`${strictBase}/provider-shares/snapshot`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...as(owner) }, body: JSON.stringify({ subjectId: String(kid._id), sections: ['allergies'] }) });
       assert.equal(no.status, 403);
     });
+
+    it('a snapshot can be limited to chosen records, and never reaches another person\'s', async () => {
+      const mine = await HealthRecord.create({ userId: owner, familyMemberId: owner, title: 'Only this one', recordType: 'Lab Result', date: '2026-02-01', summary: 'x' });
+      const theirs = await HealthRecord.create({ userId: stranger, familyMemberId: stranger, title: 'Not mine', recordType: 'Lab Result', date: '2026-02-02', summary: 'y' });
+      const snap = (recordIds: string[]) => fetch(`${strictBase}/provider-shares/snapshot`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...as(owner) }, body: JSON.stringify({ subjectId: 'me', sections: ['records'], recordIds }) }).then((x) => x.json());
+      const one = await snap([String(mine._id)]);
+      assert.deepEqual(one.record.records.map((r: any) => r.title), ['Only this one']);
+      const other = await snap([String(theirs._id)]);
+      assert.equal(other.record.records.length, 0, 'an id that is not the subject\'s matches nothing');
+      const all = await snap([]);
+      assert.ok(all.record.records.length >= 2);
+    });
   });
 });

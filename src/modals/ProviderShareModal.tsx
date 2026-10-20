@@ -46,6 +46,7 @@ export function ProviderShareModal({ app }: { app: WelliApp }) {
   const [contact, setContact] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ url: string; passcode?: string; expiresAt: string; name: string } | null>(null);
+  const draft = state.providerShareDraft;
 
   const subject = family.find((f) => f.id === subjectId) || family[0];
   const isChild = Boolean(subject) && subject.role === 'dependent' && subject.id !== 'me';
@@ -66,6 +67,19 @@ export function ProviderShareModal({ app }: { app: WelliApp }) {
     if (state.showProviderShare) load();
   }, [state.showProviderShare, load]);
 
+  // Opened from a record or from consent: start on the new-link form with that choice filled in.
+  useEffect(() => {
+    if (!state.showProviderShare) return;
+    if (draft) {
+      if (draft.subjectId) setSubjectId(draft.subjectId);
+      if (draft.sections?.length) setSections(draft.sections);
+      setResult(null);
+      setView('new');
+    } else {
+      setView('list');
+    }
+  }, [state.showProviderShare, draft]);
+
   if (!state.showProviderShare) return null;
 
   const toggle = (s: ShareSection) =>
@@ -82,7 +96,7 @@ export function ProviderShareModal({ app }: { app: WelliApp }) {
     try {
       // Encrypt on this phone. The key goes only into the link and QR, after the '#', so our server
       // stores ciphertext and never receives the key.
-      const snap = await providerShareService.snapshot({ subjectId, sections: picked, purpose: purpose.trim() || undefined });
+      const snap = await providerShareService.snapshot({ subjectId, sections: picked, purpose: purpose.trim() || undefined, recordIds: draft?.recordIds?.length && picked.includes('records') ? draft.recordIds : undefined });
       const sealed = sealRecord(snap.record, (n) => Crypto.getRandomBytes(n));
       const r = await providerShareService.create({
         subjectId, recipientName: name.trim(), purpose: purpose.trim() || undefined, sections: snap.sections, hours,
@@ -165,6 +179,14 @@ export function ProviderShareModal({ app }: { app: WelliApp }) {
 
           {view === 'new' && (
             <>
+              {draft?.recordIds?.length ? (
+                <View style={[s.card, card, { marginBottom: 12 }]}>
+                  <Text style={[s.h, text, { marginTop: 0 }]}>Sharing one result</Text>
+                  <Text style={[s.small, muted]}>
+                    Only {draft.label ? `"${draft.label}"` : 'this record'} is included, as text. The file or scan itself is never sent. Anyone with the link and the code can read it until it expires, or until you withdraw it.
+                  </Text>
+                </View>
+              ) : null}
               {family.length > 1 && (
                 <>
                   <Text style={[s.h, text]}>Whose record</Text>

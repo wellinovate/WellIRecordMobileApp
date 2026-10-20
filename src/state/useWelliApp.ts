@@ -68,6 +68,7 @@ export interface AppState {
   consentPurpose: string;
   showFamilyAccess: boolean;
   showProviderShare: boolean;
+  providerShareDraft: { subjectId?: string; sections?: ('allergies' | 'conditions' | 'medications' | 'records' | 'vaccinations' | 'growth')[]; recordIds?: string[]; label?: string } | null;
   /** Set when the family list could not be loaded. Null when it loaded or has not been tried. */
   familyLoadError: string | null;
   showChildProfile: boolean;
@@ -283,6 +284,7 @@ const initialState: AppState = {
   consentPurpose: '',
   showFamilyAccess: false,
   showProviderShare: false,
+  providerShareDraft: null,
   familyLoadError: null,
   showChildProfile: false,
   childProfileMemberId: null,
@@ -1033,8 +1035,15 @@ export function useWelliApp() {
     closeEmergency: () => patch({ showEmergency: false }),
     openFamilyAccess: () => patch({ showFamilyAccess: true }),
     closeFamilyAccess: () => patch({ showFamilyAccess: false }),
-    openProviderShare: () => patch({ showProviderShare: true }),
-    closeProviderShare: () => patch({ showProviderShare: false }),
+    openProviderShare: (draft?: AppState['providerShareDraft']) =>
+      patch({ showProviderShare: true, providerShareDraft: draft ?? null, showSmartConsent: false }),
+    closeProviderShare: () => patch({ showProviderShare: false, providerShareDraft: null }),
+    // From a record: share just that record as an encrypted link or QR, for a provider that is not on WelliRecord.
+    shareRecordEncrypted: (recordId: string) => {
+      const r = (state.recordsList ?? []).find((x) => x.id === recordId);
+      patch({ recordDetailId: null });
+      actions.openProviderShare({ subjectId: r?.ownerId || 'me', sections: ['records'], recordIds: [recordId], label: r?.title });
+    },
     reloadFamily: reloadFamilyNow,
     acceptGuardianInvite: async (code: string): Promise<boolean> => {
       try {

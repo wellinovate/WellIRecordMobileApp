@@ -187,7 +187,8 @@ export function createProviderShareRouter(deps: ShareDeps) {
       if ('message' in parsed) return res.status(400).json({ success: false, message: parsed.message });
       const who = await resolveSubject(req, res, authUserId, parsed.value.sections);
       if (!who) return;
-      const record = await buildRecord({ subjectId: who.subjectId, subjectIsSelf: who.subjectIsSelf, sections: who.sections, purpose: parsed.value.purpose });
+      const recordIds = (Array.isArray(req.body?.recordIds) ? req.body.recordIds : []).map(String).slice(0, 20);
+      const record = await buildRecord({ subjectId: who.subjectId, subjectIsSelf: who.subjectIsSelf, sections: who.sections, purpose: parsed.value.purpose, recordIds });
       return res.json({ success: true, sections: who.sections, record });
     } catch (err) {
       console.error('[POST /provider-shares/snapshot] ERROR:', err);
@@ -495,7 +496,9 @@ export async function buildRecord(s: any) {
     }));
   }
   if (sections.includes('records')) {
-    const rows: any[] = await HealthRecord.find({ familyMemberId: { $in: ownerKeys } }).sort({ date: -1 }).limit(100).lean();
+    // Optional: only these records. Still limited to the subject's own, so an id from someone else matches nothing.
+    const only: any[] = Array.isArray(s.recordIds) ? s.recordIds.filter((x: any) => mongoose.isValidObjectId(x)).map((x: any) => new mongoose.Types.ObjectId(String(x))) : [];
+    const rows: any[] = await HealthRecord.find({ familyMemberId: { $in: ownerKeys }, ...(only.length ? { _id: { $in: only } } : {}) }).sort({ date: -1 }).limit(100).lean();
     out.records = rows.map((r) => ({
       title: r.title, type: r.recordType, date: r.date, provider: r.provider || '', summary: r.summary || '',
       lab: r.labReportDetails
