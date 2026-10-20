@@ -24,6 +24,8 @@ export interface AppointmentRequestPayload {
 
 export type AppointmentStatus =
   | 'requested'
+  | 'awaiting_payment'
+  | 'awaiting_hmo'
   | 'confirmed'
   | 'checked_in'
   | 'completed'
@@ -43,6 +45,15 @@ export interface AppointmentItem {
   externalFacility?: boolean;
   providerRemark?: string;
   status: AppointmentStatus | string;
+  /** Set for visits booked from a provider's published hours. */
+  startsAt?: string;
+  bookingRef?: string;
+  feeMinor?: number;
+  currency?: string;
+  paymentMethod?: 'online' | 'in_person' | 'hmo';
+  paymentStatus?: string;
+  /** When the Join button for a virtual visit opens. */
+  joinOpensAt?: string;
   visitSummary?: { diagnosis: string; notes: string; authoredBy: string };
 }
 

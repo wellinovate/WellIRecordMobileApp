@@ -28,6 +28,7 @@ button.ok{background:#059669}button.no{background:#fff;color:#B91C1C;border:1px 
 .tag.v{background:#DCFCE7;color:#166534}.tag.p{background:#FEF3C7;color:#92400E}
 .nt{margin-top:0}.sp{margin-left:8px}details{margin-top:10px}#rcodes{white-space:pre-line}#list{margin-top:14px}.gap{margin-top:18px}.hide{display:none}.top{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .muted{color:#64748B;font-size:12.5px}
+input.chk{width:auto;margin-right:6px}
 @media(max-width:560px){.row{grid-template-columns:1fr}}
 `;
 
@@ -350,6 +351,146 @@ async function decide(id,what){
 }
 `;
 
+
+const CONSULT_HTML = String.raw`
+<div class="wrap">
+  <div class="top"><div><h1>Consultation booking</h1><div class="sub">Fees, weekly hours and HMO confirmations for patient bookings.</div></div><div id="who" class="muted hide"></div></div>
+  ${'__AUTH__'}
+  <div id="app" class="hide">
+    <div id="note" class="msg hide"></div>
+    <button class="alt" id="b-out">Sign out</button>
+    <div class="card gap">
+      <div class="top"><h2>Awaiting HMO confirmation</h2><button class="alt nt" id="b-href">Refresh</button></div>
+      <div id="hmo"></div>
+    </div>
+    <div class="card">
+      <h2>Providers</h2>
+      <div id="plist"></div>
+    </div>
+    <div class="card" id="form">
+      <h2 id="ft">Provider settings</h2>
+      <p class="muted">Only an admin can save. Fees are in naira. Patients see only the fee for the visit type they choose.</p>
+      <label for="fp">Pick a facility</label><select id="fp"></select>
+      <div class="row">
+        <div><label for="fn">Name</label><input id="fn"></div>
+        <div><label for="fa">Address</label><input id="fa"></div>
+        <div><label for="fs">Specialty</label><input id="fs" placeholder="Primary care"></div>
+        <div><label for="fi">Facility ID (set by the picker)</label><input id="fi"></div>
+      </div>
+      <div class="row">
+        <div><label><input type="checkbox" class="chk" id="oi" checked> Offers in-person visits</label><label for="fpi">In-person fee (naira)</label><input id="fpi" inputmode="decimal"></div>
+        <div><label><input type="checkbox" class="chk" id="ov"> Offers virtual visits</label><label for="fpv">Virtual fee (naira)</label><input id="fpv" inputmode="decimal"></div>
+      </div>
+      <label for="fh">HMOs accepted (separated by commas, spelled as patients' plans are)</label><input id="fh" placeholder="Hygeia, AXA Mansard">
+      <div class="row">
+        <div><label><input type="checkbox" class="chk" id="pv"> Allow pay at the visit</label></div>
+        <div><label><input type="checkbox" class="chk" id="po" checked> Allow online payment</label></div>
+      </div>
+      <label for="fm">Slot length (minutes)</label><input id="fm" value="30" inputmode="numeric">
+      <label for="fw">Weekly hours, one window per line, Lagos time. Example: Mon 09:00-13:00</label>
+      <textarea id="fw" rows="6" placeholder="Mon 09:00-13:00&#10;Mon 14:00-17:00&#10;Wed 09:00-13:00"></textarea>
+      <label><input type="checkbox" class="chk" id="fz" checked> Taking bookings</label>
+      <button id="b-save">Save provider</button><div class="err" id="e-save"></div>
+    </div>
+  </div>
+</div>`;
+
+const CONSULT_JS = String.raw`
+var DAYS=['sun','mon','tue','wed','thu','fri','sat'];
+function add(parent,tag,text,cls){var e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;parent.appendChild(e);return e}
+function note(t,good){var n=$('note');n.textContent=t;n.className='msg '+(good?'good':'bad');setTimeout(function(){n.className='msg hide'},6000)}
+function naira(minor){return minor==null?'':String(minor/100)}
+function toMinor(v){v=String(v||'').replace(/[^0-9.]/g,'');if(!v)return undefined;return Math.round(parseFloat(v)*100)}
+function parseHours(text){
+  var out=[];var lines=String(text||'').split('\n');
+  for(var i=0;i<lines.length;i++){
+    var l=lines[i].trim().toLowerCase();if(!l)continue;
+    var m=/^([a-z]{3})[a-z]*\s+(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})$/.exec(l);
+    var d=m?DAYS.indexOf(m[1]):-1;
+    if(!m||d<0)return {error:'Line '+(i+1)+' should look like: Mon 09:00-13:00'};
+    out.push({day:d,start:m[2],end:m[3]});
+  }
+  return {weekly:out};
+}
+function hoursText(w){return (w||[]).map(function(x){var n=DAYS[x.day];return n.charAt(0).toUpperCase()+n.slice(1)+' '+x.start+'-'+x.end}).join('\n')}
+var FAC=[];
+window.onSignedIn=function(staff){
+  $('app').classList.remove('hide');$('who').classList.remove('hide');$('who').textContent=staff.name+' ('+staff.role.replace('_',' ')+')';
+  loadFacilities();loadProviders();loadHmo();
+};
+$('b-out').onclick=signOut;$('b-href').onclick=function(){loadHmo()};
+async function loadFacilities(){
+  var d=await api('/staff/facility-options');FAC=d.success?d.facilities:[];
+  var s=$('fp');s.textContent='';var o=add(s,'option','Choose...');o.value='';
+  FAC.forEach(function(f,i){var e=add(s,'option',f.name+(f.address?' - '+f.address:''));e.value=String(i)});
+}
+$('fp').onchange=function(){
+  var f=FAC[Number($('fp').value)];if(!f)return;
+  $('fi').value=f.id;$('fn').value=f.name;$('fa').value=f.address||'';
+};
+function fill(p){
+  $('fi').value=p.facilityId;$('fn').value=p.facilityName;$('fa').value=p.facilityAddress||'';$('fs').value=p.specialty||'';
+  $('oi').checked=!!p.offersInPerson;$('ov').checked=!!p.offersVirtual;
+  $('fpi').value=naira(p.feeInPersonMinor);$('fpv').value=naira(p.feeVirtualMinor);
+  $('fh').value=(p.acceptsHmo||[]).join(', ');$('pv').checked=!!p.payAtVisit;$('po').checked=p.onlinePayment!==false;
+  $('fm').value=String(p.slotMinutes||30);$('fw').value=hoursText(p.weekly);$('fz').checked=p.active!==false;
+  $('form').scrollIntoView();
+}
+async function loadProviders(){
+  var l=$('plist');l.textContent='Loading...';
+  var d=await api('/staff/providers');l.textContent='';
+  if(!d.success){add(l,'div',d.message||'Could not load providers.','msg bad');return}
+  if(!d.providers.length){add(l,'div','No provider is set up yet. Use the form below.','muted');return}
+  d.providers.forEach(function(p){
+    var it=add(l,'div',null,'item');
+    add(it,'strong',p.facilityName);
+    add(it,'span',p.active===false?'paused':'live','tag '+(p.active===false?'p':'v'));
+    var bits=[];
+    if(p.offersInPerson)bits.push('In person '+naira(p.feeInPersonMinor));
+    if(p.offersVirtual)bits.push('Virtual '+naira(p.feeVirtualMinor));
+    add(it,'div',bits.join(' · ')+' · '+(p.weekly||[]).length+' time windows','muted');
+    var b=add(it,'button','Edit','alt');b.onclick=function(){fill(p)};
+  });
+}
+$('b-save').onclick=async function(){
+  say('e-save','');
+  var h=parseHours($('fw').value);if(h.error){say('e-save',h.error);return}
+  var id=$('fi').value.trim();if(!id){say('e-save','Pick a facility first.');return}
+  var body={
+    facilityName:$('fn').value,facilityAddress:$('fa').value,specialty:$('fs').value,
+    offersInPerson:$('oi').checked,offersVirtual:$('ov').checked,
+    feeInPersonMinor:toMinor($('fpi').value),feeVirtualMinor:toMinor($('fpv').value),
+    acceptsHmo:$('fh').value.split(',').map(function(x){return x.trim()}).filter(Boolean),
+    payAtVisit:$('pv').checked,onlinePayment:$('po').checked,
+    slotMinutes:Number($('fm').value),weekly:h.weekly,active:$('fz').checked
+  };
+  var d=await api('/staff/providers/'+encodeURIComponent(id)+'/service',{method:'PUT',body:body});
+  if(!d.success){say('e-save',d.message||'Could not save');return}
+  note('Saved.',true);loadProviders();
+};
+async function loadHmo(){
+  var l=$('hmo');l.textContent='Loading...';
+  var d=await api('/staff/bookings?status=awaiting_hmo');l.textContent='';
+  if(!d.success){add(l,'div',d.message||'Could not load bookings.','msg bad');return}
+  if(!d.bookings.length){add(l,'div','Nothing is waiting.','muted');return}
+  d.bookings.forEach(function(b){
+    var it=add(l,'div',null,'item');
+    add(it,'strong',b.facilityName+' · ref '+b.bookingRef);
+    add(it,'div',new Date(b.startsAt).toLocaleString()+' · '+(b.visitType==='video'?'Virtual':'In person')+' · fee '+naira(b.feeMinor),'muted');
+    if(b.hmo)add(it,'div','Plan: '+(b.hmo.policyLabel||'-')+' · pre-authorisation '+(b.hmo.preAuthId||'none')+(b.hmo.clientStatus?' ('+b.hmo.clientStatus+' on the patient phone, not verified)':''),'muted');
+    var a=add(it,'button','Approve cover','ok');a.onclick=function(){decide(b.id,'approve')};
+    var n=add(it,'button','Decline','no');n.className='no sp';n.onclick=function(){decide(b.id,'decline')};
+  });
+}
+async function decide(id,what){
+  var body={decision:what};
+  if(what==='approve'){var c=prompt('Approval code from the HMO (optional):');if(c===null)return;body.approvalCode=c}
+  else if(!confirm('Decline? The patient is told and the time is released.'))return;
+  var d=await api('/staff/bookings/'+encodeURIComponent(id)+'/hmo',{method:'POST',body:body});
+  if(d.success){note(what==='approve'?'Cover approved. The booking is confirmed.':'Declined. The time was released.',true);loadHmo()}else note(d.message||'Failed.',false);
+}
+`;
+
 function page(title: string, body: string, js: string, nonce: string) {
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="robots" content="noindex">
 <title>${title}</title><style nonce="${nonce}">${STYLE}</style></head><body>${body.replace('__AUTH__', AUTH_HTML)}
@@ -368,4 +509,5 @@ function send(res: Response, title: string, body: string, js: string) {
 }
 
 export const clinicPage = (_req: Request, res: Response) => send(res, 'WelliRecord clinic', CLINIC_HTML, CLINIC_JS);
+export const consultationsPage = (_req: Request, res: Response) => send(res, 'WelliRecord consultation booking', CONSULT_HTML, CONSULT_JS);
 export const ordersPage = (_req: Request, res: Response) => send(res, 'WelliRecord order review', ORDERS_HTML, ORDERS_JS);

@@ -3,7 +3,7 @@
  * Node.js / Express backend with Mongoose, Termii SMS Gateway & NDPR Compliant Endpoints.
  */
 
-import { clinicPage, ordersPage } from './consolePages';
+import { clinicPage, consultationsPage, ordersPage } from './consolePages';
 import { deleteClerkIdentity, eraseChildData } from './accountErasure';
 import { accountDeletionPage } from './publicPages';
 import crypto from 'crypto';
@@ -47,6 +47,9 @@ import {
   AccountAuditLog,
 } from './models';
 import { createWellipayRouter } from './wellipayPartner';
+import { createBooking, createPaystack } from './booking';
+import { joinWindow } from './bookingCore';
+import { BookingSlot } from './models';
 import { IMMUNIZATION_SCHEDULE, scheduleDoseByCode } from './data/immunizationSchedule';
 import { createChildDevelopmentRouter } from './childDevelopment';
 import { createChildFacilityRouter } from './childFacility';
@@ -120,6 +123,10 @@ app.use(
     },
   })
 );
+// Paystack payment webhook for consultation bookings. It needs the raw body for the signature check,
+// so it is mounted before the JSON parser. The router is filled in once the booking module is built.
+let bookingWebhook: express.Router | null = null;
+app.use('/api/v1', (req, res, next) => (bookingWebhook ? bookingWebhook(req, res, next) : next()));
 // Profile photos arrive as a small base64 JPEG inside the profile update, so those two routes
 // take a larger body than the 100kb default.
 const bigJson = express.json({ limit: '1500kb' });
@@ -3475,6 +3482,7 @@ app.post('/api/v1/pharmacy/orders/:id/reject', staff.requireStaff('pharmacist'),
 // the staff token; see server/consolePages.ts. /admin/orders no longer takes the shared secret.
 app.get('/admin/orders', ordersPage);
 app.get('/clinic', clinicPage);
+app.get('/admin/consultations', consultationsPage);
 app.get('/account-deletion', accountDeletionPage);
 
 // 5. Pre-signed Encrypted S3 Upload URL Generator
@@ -4227,6 +4235,13 @@ function normalizeAppointmentRequest(doc: any) {
     externalFacility: Boolean(doc.externalFacility),
     providerRemark: doc.providerRemark || '',
     status: doc.status as string,
+    startsAt: doc.startsAt || undefined,
+    bookingRef: doc.bookingRef || undefined,
+    feeMinor: typeof doc.feeMinor === 'number' ? doc.feeMinor : undefined,
+    currency: doc.currency || undefined,
+    paymentMethod: doc.paymentMethod || undefined,
+    paymentStatus: doc.paymentStatus || undefined,
+    joinOpensAt: doc.startsAt && doc.visitType === 'video' ? joinWindow(new Date(doc.startsAt), doc.durationMin || 30, Date.now()).opensAt : undefined,
     visitSummary: doc.visitSummary?.authoredAt
       ? {
           diagnosis: doc.visitSummary.diagnosis || '',
@@ -4381,10 +4396,18 @@ app.post('/api/v1/telehealth/appointments/:id/token', appointmentLimiter, async 
     if (appt.status !== 'confirmed') {
       return res.status(409).json({ success: false, message: 'This visit has not been confirmed by the facility yet.' });
     }
-    const lagosToday = new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 10);
-    const visitDay = new Date(appt.scheduledFor).toISOString().slice(0, 10);
-    if (lagosToday !== visitDay) {
-      return res.status(409).json({ success: false, message: 'You can join on the day of your visit.' });
+    if (appt.startsAt) {
+      // Booked from the provider's own hours: the join button works from 10 minutes before the start.
+      const w = joinWindow(new Date(appt.startsAt), appt.durationMin || 30, Date.now());
+      if (!w.open) {
+        return res.status(409).json({ success: false, message: Date.now() < w.opensAt.getTime() ? 'The visit is not ready yet. You can join 10 minutes before the start.' : 'This visit has ended.', code: 'join_window_closed', opensAt: w.opensAt });
+      }
+    } else {
+      const lagosToday = new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 10);
+      const visitDay = new Date(appt.scheduledFor).toISOString().slice(0, 10);
+      if (lagosToday !== visitDay) {
+        return res.status(409).json({ success: false, message: 'You can join on the day of your visit.' });
+      }
     }
 
     const profile: any = await UserProfile.findOne({ accountId: new mongoose.Types.ObjectId(authUserId) }, 'fullName name').lean();
@@ -4548,8 +4571,13 @@ app.post('/api/v1/appointments/:id/cancel', appointmentLimiter, async (req: Requ
       if (own.status === 'cancelled') {
         return res.json({ success: true, appointment: normalizeAppointmentRequest(own) });
       }
+      if (own.status === 'completed') {
+        return res.status(409).json({ success: false, message: 'A completed visit cannot be cancelled' });
+      }
       own.status = 'cancelled';
+      if (own.paymentStatus === 'paid') own.paymentStatus = 'refund_due';
       await own.save();
+      if (own.startsAt) await BookingSlot.deleteMany({ appointmentId: own._id });
       return res.json({ success: true, appointment: normalizeAppointmentRequest(own) });
     }
 
@@ -4569,6 +4597,31 @@ app.post('/api/v1/appointments/:id/cancel', appointmentLimiter, async (req: Requ
     return res.status(500).json({ success: false, message: 'Failed to cancel appointment' });
   }
 });
+
+// Consultation booking (fees, hours, slot holds, payment). See booking.ts.
+const booking = createBooking({
+  getAuthUserId,
+  limiter: appointmentLimiter,
+  requireStaff: staff.requireStaff,
+  callerCanBook: (authUserId, familyMemberId) => callerCanAccessOwner(authUserId, familyMemberId, 'bookAppointments'),
+  accountEmail: async (accountId) => (await accountContact(accountId)).email,
+  normalize: normalizeAppointmentRequest,
+  push: async (accountId, appointmentId, title, body) => {
+    await appointmentChannels(accountId, appointmentId).push({ title, body });
+  },
+  listFacilities: async () => {
+    const mobile: any[] = await Facility.find({}, 'name address city').limit(300).lean();
+    const registered = await welliProviders();
+    return [
+      ...mobile.map((f) => ({ id: String(f._id), name: String(f.name), address: [f.address, f.city].filter(Boolean).join(', ') })),
+      ...registered.map((p) => ({ id: p.id, name: p.name, address: p.address })),
+    ];
+  },
+  paystack: createPaystack(process.env.PAYSTACK_SECRET_KEY),
+});
+bookingWebhook = booking.webhook;
+app.use('/api/v1', booking.router);
+booking.startSweeps();
 
 // 7. Create Share Grant & Audit Log (MongoDB)
 // Not in the original audit, found while reviewing a later feature: this was

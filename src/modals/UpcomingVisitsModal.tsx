@@ -5,9 +5,12 @@ import { ModalHeader } from '../components/ModalHeader';
 import { useTheme } from '../theme/ThemeContext';
 import type { WelliApp } from '../state/useWelliApp';
 import type { AppointmentItem } from '../services/careService';
+import { formatMinor } from '../services/wellipayService';
 
 const STATUS_LABEL: Record<string, string> = {
   requested: 'Awaiting confirmation',
+  awaiting_payment: 'Awaiting payment',
+  awaiting_hmo: 'Awaiting HMO confirmation',
   confirmed: 'Confirmed',
   checked_in: 'Checked in',
   completed: 'Completed',
@@ -17,6 +20,8 @@ const STATUS_LABEL: Record<string, string> = {
 
 const STATUS_COLOR: Record<string, string> = {
   requested: '#b45309',
+  awaiting_payment: '#b45309',
+  awaiting_hmo: '#b45309',
   confirmed: '#15803d',
   checked_in: '#0369a1',
   completed: '#475569',
@@ -36,8 +41,20 @@ function isToday(iso: string) {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === lagos;
 }
 
+const ACTIVE = ['requested', 'awaiting_payment', 'awaiting_hmo', 'confirmed'];
+
+/** A virtual visit booked from the provider's hours can be joined from 10 minutes before the start. */
+function canJoinNow(a: AppointmentItem) {
+  if (a.visitType !== 'video' || a.status !== 'confirmed') return false;
+  if (a.startsAt) {
+    const start = new Date(a.startsAt).getTime();
+    return Date.now() >= start - 10 * 60 * 1000 && Date.now() <= start + 90 * 60 * 1000;
+  }
+  return isToday(a.scheduledFor);
+}
+
 export function isUpcoming(a: AppointmentItem) {
-  if (a.status !== 'requested' && a.status !== 'confirmed') return false;
+  if (!ACTIVE.includes(a.status)) return false;
   const t = new Date(a.scheduledFor).getTime();
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
@@ -75,6 +92,25 @@ export function UpcomingVisitsModal({ app }: { app: WelliApp }) {
       {a.visitType === 'video' && (
         <Text style={[styles.sub, { color: theme.muted }]}>Video visit</Text>
       )}
+      {!!a.bookingRef && <Text style={[styles.sub, { color: theme.muted }]}>Reference {a.bookingRef}</Text>}
+      {a.feeMinor != null && (
+        <Text style={[styles.sub, { color: theme.muted }]}>
+          {formatMinor(a.feeMinor, a.currency || 'NGN')} ·{' '}
+          {a.paymentStatus === 'paid'
+            ? 'paid online'
+            : a.paymentStatus === 'pay_at_visit'
+              ? 'pay at the visit'
+              : a.paymentStatus === 'awaiting_hmo'
+                ? 'waiting for HMO confirmation'
+                : a.paymentStatus === 'pending'
+                  ? 'waiting for payment'
+                  : a.paymentStatus === 'hmo_approved'
+                    ? 'covered by your HMO'
+                    : a.paymentStatus === 'refund_due'
+                      ? 'refund being reviewed'
+                      : ''}
+        </Text>
+      )}
       {!!a.visitSummary && (
         <View style={[styles.summary, { borderColor: theme.border }]}>
           {!!a.visitSummary.diagnosis && (
@@ -87,7 +123,7 @@ export function UpcomingVisitsModal({ app }: { app: WelliApp }) {
           <Text style={[styles.sub, { color: theme.muted }]}>Also saved in your records.</Text>
         </View>
       )}
-      {a.visitType === 'video' && a.status === 'confirmed' && isToday(a.scheduledFor) && (
+      {canJoinNow(a) && (
         <TouchableOpacity
           onPress={() => actions.joinVideoVisit({ id: a.id, facilityName: a.facilityName })}
           disabled={state.joiningVisitId === a.id}
@@ -97,7 +133,7 @@ export function UpcomingVisitsModal({ app }: { app: WelliApp }) {
           <Text style={styles.joinText}>{state.joiningVisitId === a.id ? 'Connecting…' : 'Join video visit'}</Text>
         </TouchableOpacity>
       )}
-      {canCancel && (a.status === 'requested' || a.status === 'confirmed') && (
+      {canCancel && ACTIVE.includes(a.status) && (
         <TouchableOpacity onPress={() => confirmCancel(a)} style={styles.cancelBtn} accessibilityRole="button">
           <Text style={styles.cancelText}>Cancel visit</Text>
         </TouchableOpacity>

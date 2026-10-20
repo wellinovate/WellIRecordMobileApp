@@ -983,7 +983,18 @@ export interface IAppointmentRequest extends Document {
   providerRemark?: string;
   /** What was actually delivered when the request was made. */
   notified?: any;
-  status: 'requested' | 'confirmed' | 'cancelled' | 'completed';
+  status: 'requested' | 'awaiting_payment' | 'awaiting_hmo' | 'confirmed' | 'cancelled' | 'completed';
+  /** Set when the visit was booked from a provider's published hours (the consultation booking flow). */
+  startsAt?: Date;
+  durationMin?: number;
+  bookingRef?: string;
+  feeMinor?: number;
+  currency?: string;
+  paymentMethod?: 'online' | 'in_person' | 'hmo';
+  paymentStatus?: 'pending' | 'paid' | 'pay_at_visit' | 'awaiting_hmo' | 'hmo_approved' | 'hmo_declined' | 'refund_due';
+  paymentRef?: string;
+  hmo?: { policyId?: string; policyLabel?: string; preAuthId?: string; clientStatus?: string; decidedBy?: string; decidedAt?: Date; approvalCode?: string };
+  termsAcceptedAt?: Date;
   visitSummary?: { diagnosis?: string; notes?: string; authoredBy?: string; authoredAt?: Date };
   notifiedStatus?: string;
 }
@@ -1002,7 +1013,25 @@ const AppointmentRequestSchema = new Schema<IAppointmentRequest>(
     externalFacility: { type: Boolean, default: false },
     providerRemark: { type: String, default: '' },
     notified: { type: Schema.Types.Mixed },
-    status: { type: String, enum: ['requested', 'confirmed', 'cancelled', 'completed'], default: 'requested' },
+    status: { type: String, enum: ['requested', 'awaiting_payment', 'awaiting_hmo', 'confirmed', 'cancelled', 'completed'], default: 'requested' },
+    startsAt: { type: Date, index: true },
+    durationMin: { type: Number },
+    bookingRef: { type: String, index: true },
+    feeMinor: { type: Number },
+    currency: { type: String },
+    paymentMethod: { type: String, enum: ['online', 'in_person', 'hmo'] },
+    paymentStatus: { type: String, enum: ['pending', 'paid', 'pay_at_visit', 'awaiting_hmo', 'hmo_approved', 'hmo_declined', 'refund_due'] },
+    paymentRef: { type: String, index: true },
+    hmo: {
+      policyId: String,
+      policyLabel: String,
+      preAuthId: String,
+      clientStatus: String,
+      decidedBy: String,
+      decidedAt: Date,
+      approvalCode: String,
+    },
+    termsAcceptedAt: { type: Date },
     visitSummary: {
       diagnosis: { type: String },
       notes: { type: String },
@@ -1014,6 +1043,80 @@ const AppointmentRequestSchema = new Schema<IAppointmentRequest>(
   },
   { timestamps: true }
 );
+
+// What a provider offers for consultation booking: fees per mode and weekly hours.
+// Keyed by the same facilityId the app books with (a mobile Facility id or an organisation id).
+export interface IProviderService extends Document {
+  facilityId: string;
+  facilityName: string;
+  facilityAddress?: string;
+  specialty?: string;
+  offersInPerson: boolean;
+  offersVirtual: boolean;
+  feeInPersonMinor?: number;
+  feeVirtualMinor?: number;
+  currency: string;
+  acceptsHmo: string[];
+  payAtVisit: boolean;
+  onlinePayment: boolean;
+  slotMinutes: number;
+  /** day 0 = Sunday. start and end are Lagos local time, HH:MM. */
+  weekly: { day: number; start: string; end: string }[];
+  active: boolean;
+  updatedBy?: string;
+}
+const ProviderServiceSchema = new Schema<IProviderService>(
+  {
+    facilityId: { type: String, required: true, unique: true },
+    facilityName: { type: String, required: true },
+    facilityAddress: { type: String, default: '' },
+    specialty: { type: String, default: '' },
+    offersInPerson: { type: Boolean, default: true },
+    offersVirtual: { type: Boolean, default: false },
+    feeInPersonMinor: { type: Number },
+    feeVirtualMinor: { type: Number },
+    currency: { type: String, default: 'NGN' },
+    acceptsHmo: { type: [String], default: [] },
+    payAtVisit: { type: Boolean, default: false },
+    onlinePayment: { type: Boolean, default: true },
+    slotMinutes: { type: Number, default: 30 },
+    weekly: { type: [{ _id: false, day: Number, start: String, end: String }], default: [] },
+    active: { type: Boolean, default: true },
+    updatedBy: { type: String },
+  },
+  { timestamps: true }
+);
+
+// One row per taken or held slot. The unique index is what stops two people booking the same time.
+// A held row has holdExpiresAt and is removed by the TTL index; booking removes that field.
+export interface IBookingSlot extends Document {
+  facilityId: string;
+  startsAt: Date;
+  state: 'held' | 'booked';
+  accountId: mongoose.Types.ObjectId;
+  mode: 'in_person' | 'video';
+  holdExpiresAt?: Date;
+  appointmentId?: mongoose.Types.ObjectId;
+}
+const BookingSlotSchema = new Schema<IBookingSlot>(
+  {
+    facilityId: { type: String, required: true },
+    startsAt: { type: Date, required: true },
+    state: { type: String, enum: ['held', 'booked'], required: true },
+    accountId: { type: Schema.Types.ObjectId, required: true, index: true },
+    mode: { type: String, enum: ['in_person', 'video'], required: true },
+    holdExpiresAt: { type: Date },
+    appointmentId: { type: Schema.Types.ObjectId },
+  },
+  { timestamps: true }
+);
+BookingSlotSchema.index({ facilityId: 1, startsAt: 1 }, { unique: true });
+BookingSlotSchema.index({ holdExpiresAt: 1 }, { expireAfterSeconds: 0 });
+
+export const ProviderService: Model<IProviderService> =
+  mongoose.models.ProviderService || mongoose.model<IProviderService>('ProviderService', ProviderServiceSchema, 'providerservices');
+export const BookingSlot: Model<IBookingSlot> =
+  mongoose.models.BookingSlot || mongoose.model<IBookingSlot>('BookingSlot', BookingSlotSchema, 'bookingslots');
 
 // Export Mongoose Models
 export const User: Model<IUser> = mongoose.models.User || mongoose.model<IUser>('User', UserSchema);
