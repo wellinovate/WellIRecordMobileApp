@@ -46,7 +46,8 @@
         "POST_NOTIFICATIONS",
         "RECORD_AUDIO",
         "MODIFY_AUDIO_SETTINGS"
-      ]
+      ],
+      "allowBackup": false
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -84,7 +85,8 @@
         }
       ],
       "@livekit/react-native-expo-plugin",
-      "@config-plugins/react-native-webrtc"
+      "@config-plugins/react-native-webrtc",
+      "./plugins/withApiPinning"
     ]
   }
 }

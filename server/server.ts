@@ -14,6 +14,10 @@ import jwt from 'jsonwebtoken';
 import { AccessToken } from 'livekit-server-sdk';
 import bcrypt from 'bcryptjs';
 import { createStaff } from './staff';
+import { createPatientAuth } from './patientAuth';
+import { verifyClerkSession } from './clerkVerify';
+import { auditAccount, ACTION_LABELS } from './accountAudit';
+import { reportSecrets } from './secretsCheck';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 dotenv.config();
@@ -40,6 +44,7 @@ import {
   AppointmentRequest,
   AppointmentRead,
   AccessGrant,
+  AccountAuditLog,
 } from './models';
 import { createWellipayRouter } from './wellipayPartner';
 import { IMMUNIZATION_SCHEDULE, scheduleDoseByCode } from './data/immunizationSchedule';
@@ -66,6 +71,7 @@ const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   throw new Error('JWT_SECRET environment variable is required — refusing to start without it.');
 }
+reportSecrets();
 const TERMII_API_KEY = process.env.TERMII_API_KEY || 'TL_TEST_KEY';
 
 // CORS: allow explicit production, staging, and local preview/dev origins, or custom via ALLOWED_ORIGINS env var
@@ -159,6 +165,59 @@ const passwordResetLimiter = rateLimit({
 // Staff accounts and roles (replaces the shared ADMIN_SECRET).
 const staff = createStaff({ jwtSecret: JWT_SECRET, limiter: passwordResetLimiter });
 app.use('/api/v1', staff.router);
+
+// Patient second sign-in step (authenticator app code). Sign-in routes below call patientAuth.gate().
+function issuePatientToken(p: { userId: string; email?: string | null; phoneNumber?: string | null }) {
+  return jwt.sign(
+    { userId: p.userId, ...(p.phoneNumber ? { phoneNumber: p.phoneNumber } : {}), email: p.email ?? null, role: 'patient' },
+    JWT_SECRET as string,
+    { expiresIn: '30d' }
+  );
+}
+const patientAuth = createPatientAuth({
+  jwtSecret: JWT_SECRET,
+  sealKey: process.env.MFA_SECRET_KEY || undefined,
+  limiter: passwordResetLimiter,
+  getAuthUserId: (req) => getAuthUserId(req),
+  accountLabel: async (id) => {
+    if (!mongoose.isValidObjectId(id)) return '';
+    const a: any = (await Account.findById(id).select('email phone').lean()) || (await User.findById(id).select('email phoneNumber').lean());
+    return a?.email || a?.phone || a?.phoneNumber || '';
+  },
+  issueToken: issuePatientToken,
+  onSignedIn: (req, p) => {
+    if (!p.email) return;
+    sendWelliEmail({
+      to: p.email,
+      subject: '🔐 New sign-in to your WelliRecord™ account',
+      html: renderSignInNotificationEmailHtml({
+        fullName: p.fullName || '',
+        signedInAt: new Date().toLocaleString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }),
+        method: `${p.method} + authenticator code`,
+        device: String(req.headers['user-agent'] || 'WelliRecord Mobile App'),
+      }),
+    }).catch((e) => console.error('[Sign-In Email Error]', e));
+  },
+});
+app.use('/api/v1', patientAuth.router);
+
+// Password sign-in: 8 tries per 15 minutes for one identifier from one address, 40 per address.
+// A bcrypt check is slow on purpose, so unlimited guessing is also a way to tie the server up.
+const loginIdentifierLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => `${req.ip}:${String(req.body?.identifier ?? '').toLowerCase().trim().slice(0, 120)}`,
+  message: { success: false, message: 'Too many sign-in attempts. Please try again in 15 minutes.' },
+});
+const loginIpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many sign-in attempts. Please try again in 15 minutes.' },
+});
 
 const appointmentLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
@@ -996,7 +1055,8 @@ app.post('/api/v1/auth/email/send', otpLimiter, async (req: Request, res: Respon
     });
   } catch (err: any) {
     console.error('[EMAIL SEND ERROR]', err);
-    return res.status(500).json({ success: false, message: 'Failed to send verification email', error: err.message });
+    console.error('[500]', req.method, req.path, err);
+    return res.status(500).json({ success: false, message: 'Failed to send verification email' });
   }
 });
 
@@ -1016,7 +1076,8 @@ app.post('/api/v1/notifications/email', async (req: Request, res: Response) => {
     });
     return res.json({ success: true, ...result });
   } catch (err: any) {
-    return res.status(500).json({ success: false, message: 'Notification dispatch error', error: err.message });
+    console.error('[500]', req.method, req.path, err);
+    return res.status(500).json({ success: false, message: 'Notification dispatch error' });
   }
 });
 
@@ -1248,7 +1309,19 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
     const userId = user._id.toString();
     const phone = user.phoneNumber || user.phone || phoneNumber || '';
     const userEmail = user.email || profile?.email || cleanEmail || null;
+    // Second step, if the person turned it on. A code by SMS or email can be intercepted (SIM swap,
+    // mailbox takeover), so it does not replace the authenticator code.
+    const mfaChallenge = await patientAuth.gate({
+      userId,
+      email: userEmail,
+      phoneNumber: phone,
+      fullName: profile?.fullName || user.fullName || null,
+      method: cleanEmail ? 'Email code' : 'SMS code',
+    });
+    if (mfaChallenge) return res.json(mfaChallenge);
+
     const token = jwt.sign({ userId, phoneNumber: phone, email: userEmail, role: 'patient' }, JWT_SECRET, { expiresIn: '30d' });
+    void auditAccount(req, userId, 'security', 'sign_in', 'You', cleanEmail ? 'Email code' : 'SMS code');
 
     // Send Sign-In Notification Email Asynchronously
     if (userEmail) {
@@ -1298,7 +1371,8 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
 
     return res.json(userSessionData);
   } catch (err) {
-    return res.status(500).json({ success: false, message: 'Authentication error', error: err });
+    console.error('[500]', req.method, req.path, err);
+    return res.status(500).json({ success: false, message: 'Authentication error' });
   }
 });
 
@@ -1307,16 +1381,28 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
 // fallback user; email is required since that's the reliable match key
 // across web and mobile.
 app.post('/api/v1/auth/social/verify', async (req: Request, res: Response) => {
-  const { provider, email, fullName } = req.body;
+  const { provider, fullName, clerkToken } = req.body;
 
-  if (!provider || !email) {
-    return res.status(400).json({ success: false, message: 'Provider and email are required' });
+  if (!provider || !clerkToken) {
+    return res.status(400).json({ success: false, message: 'Provider and a Clerk session token are required' });
   }
   if (!['google', 'apple'].includes(provider)) {
     return res.status(400).json({ success: false, message: 'Unsupported provider' });
   }
 
-  const cleanEmail = email.toLowerCase().trim();
+  // The email comes from Clerk, never from the request. An email typed into the body proves nothing.
+  const proof = await verifyClerkSession(clerkToken);
+  if (!proof.ok) {
+    if (proof.reason === 'not_configured') {
+      console.error('[POST /auth/social/verify] CLERK_SECRET_KEY is not set; social sign-in is refused.');
+      return res.status(503).json({ success: false, message: 'Social sign-in is not available right now.' });
+    }
+    if (proof.reason === 'upstream') {
+      return res.status(503).json({ success: false, message: 'Could not check your sign-in. Please try again.' });
+    }
+    return res.status(401).json({ success: false, message: 'Your sign-in could not be verified. Please try again.' });
+  }
+  const cleanEmail = proof.identity!.email;
 
   try {
     let account = await Account.findOne({ email: cleanEmail });
@@ -1372,7 +1458,17 @@ app.post('/api/v1/auth/social/verify', async (req: Request, res: Response) => {
     }
 
     const userId = account._id.toString();
+
+    const mfaChallenge = await patientAuth.gate({
+      userId,
+      email: cleanEmail,
+      fullName: profile.fullName || account.fullName,
+      method: provider === 'google' ? 'Google' : 'Apple',
+    });
+    if (mfaChallenge) return res.json(mfaChallenge);
+
     const token = jwt.sign({ userId, email: cleanEmail, role: 'patient' }, JWT_SECRET, { expiresIn: '30d' });
+    void auditAccount(req, userId, 'security', 'sign_in', 'You', provider === 'google' ? 'Google' : 'Apple');
 
     // Reuse the existing sign-in notification email — same as password/OTP login
     const userAgent = req.headers['user-agent'] || 'WelliRecord Mobile App (iOS)';
@@ -1409,7 +1505,8 @@ app.post('/api/v1/auth/social/verify', async (req: Request, res: Response) => {
       },
     });
   } catch (err) {
-    return res.status(500).json({ success: false, message: 'Social authentication error', error: err });
+    console.error('[500]', req.method, req.path, err);
+    return res.status(500).json({ success: false, message: 'Social authentication error' });
   }
 });
 
@@ -1521,7 +1618,8 @@ const updateProfileHandler = async (req: Request, res: Response) => {
 
     return res.json({ success: true, message: 'Profile updated successfully', profile });
   } catch (err) {
-    return res.status(500).json({ success: false, message: 'Failed to update profile', error: err });
+    console.error('[500]', req.method, req.path, err);
+    return res.status(500).json({ success: false, message: 'Failed to update profile' });
   }
 };
 app.post(['/api/v1/profile/update', '/profile/update'], updateProfileHandler);
@@ -1588,7 +1686,8 @@ app.get(['/api/v1/profile/me', '/api/v1/profile'], async (req: Request, res: Res
       profile: profile || null,
     });
   } catch (err) {
-    return res.status(500).json({ success: false, message: 'Failed to fetch profile', error: err });
+    console.error('[500]', req.method, req.path, err);
+    return res.status(500).json({ success: false, message: 'Failed to fetch profile' });
   }
 });
 
@@ -1662,7 +1761,8 @@ app.get(['/api/v1/family/list', '/api/v1/family'], async (req: Request, res: Res
       })),
     });
   } catch (err) {
-    return res.status(500).json({ success: false, message: 'Failed to fetch family members', error: err });
+    console.error('[500]', req.method, req.path, err);
+    return res.status(500).json({ success: false, message: 'Failed to fetch family members' });
   }
 });
 
@@ -1769,7 +1869,8 @@ app.post(['/api/v1/family/add', '/api/v1/family'], async (req: Request, res: Res
       },
     });
   } catch (err) {
-    return res.status(500).json({ success: false, message: 'Failed to add family member', error: err });
+    console.error('[500]', req.method, req.path, err);
+    return res.status(500).json({ success: false, message: 'Failed to add family member' });
   }
 });
 
@@ -1848,7 +1949,8 @@ app.patch('/api/v1/family/:id', async (req: Request, res: Response) => {
       member,
     });
   } catch (err) {
-    return res.status(500).json({ success: false, message: 'Failed to update family member', error: err });
+    console.error('[500]', req.method, req.path, err);
+    return res.status(500).json({ success: false, message: 'Failed to update family member' });
   }
 });
 
@@ -1876,12 +1978,13 @@ app.delete('/api/v1/family/:id', async (req: Request, res: Response) => {
     console.log(`[FAMILY DELETE] Removed dependent ${memberId}`);
     return res.json({ success: true, message: 'Family member deleted successfully' });
   } catch (err) {
-    return res.status(500).json({ success: false, message: 'Failed to delete family member', error: err });
+    console.error('[500]', req.method, req.path, err);
+    return res.status(500).json({ success: false, message: 'Failed to delete family member' });
   }
 });
 
 // 3b. Sign In with Email / Phone and Password
-app.post('/api/v1/auth/login', async (req: Request, res: Response) => {
+app.post('/api/v1/auth/login', loginIpLimiter, loginIdentifierLimiter, async (req: Request, res: Response) => {
   const { identifier, password } = req.body;
 
   if (!identifier || !password) {
@@ -1926,7 +2029,12 @@ app.post('/api/v1/auth/login', async (req: Request, res: Response) => {
     const email = user.email;
     const phoneNumber = user.phoneNumber;
 
+    // Second step, if the person turned it on. No token is issued until it passes.
+    const mfaChallenge = await patientAuth.gate({ userId, email, phoneNumber, fullName, method: 'Password' });
+    if (mfaChallenge) return res.json(mfaChallenge);
+
     const token = jwt.sign({ userId, email, role: 'patient' }, JWT_SECRET, { expiresIn: '30d' });
+    void auditAccount(req, userId, 'security', 'sign_in', 'You', 'Password');
 
     if (email) {
       const userAgent = req.headers['user-agent'] || 'Mozilla/5.0 (Macintosh; Intel Mac OS X) Chrome/Safari';
@@ -1956,7 +2064,8 @@ app.post('/api/v1/auth/login', async (req: Request, res: Response) => {
       },
     });
   } catch (err) {
-    return res.status(500).json({ success: false, message: 'Sign in error', error: err });
+    console.error('[500]', req.method, req.path, err);
+    return res.status(500).json({ success: false, message: 'Sign in error' });
   }
 });
 
@@ -2025,7 +2134,8 @@ app.post('/api/v1/auth/register', async (req: Request, res: Response) => {
       },
     });
   } catch (err) {
-    return res.status(500).json({ success: false, message: 'Registration error', error: err });
+    console.error('[500]', req.method, req.path, err);
+    return res.status(500).json({ success: false, message: 'Registration error' });
   }
 });
 
@@ -2099,6 +2209,7 @@ app.post('/api/v1/auth/password/reset', passwordResetLimiter, async (req: Reques
     }
     // Sign out every device that held the old password.
     await revokeSessionsFor(ids);
+    for (const id of ids) void auditAccount(req, id, 'security', 'password_reset', 'You', 'All other devices signed out');
     return res.json({ success: true, message: 'Password updated. Sign in with your new password.' });
   } catch (err) {
     console.error('[Password reset ERROR]', err);
@@ -2511,6 +2622,7 @@ app.use(
       if (!r.success || !r.delivered) throw new Error('email not delivered');
     },
     allowLive: process.env.ALLOW_LIVE_PROVIDER_SHARE === 'true',
+    audit: (req, ownerId, kind, action, actor, detail) => void auditAccount(req, ownerId, kind, action, actor, detail),
     channels: () => ({ email: Boolean(process.env.RESEND_API_KEY || process.env.SENDGRID_API_KEY), sms: smsConfigured() }),
     sendSms: sendWelliSms,
     normalisePhone: normalizeNigerianPhone,
@@ -2710,7 +2822,8 @@ app.get('/api/v1/records', async (req: Request, res: Response) => {
     return res.json([]);
   } catch (err) {
     console.error('[GET /records] ERROR:', err);
-    return res.status(500).json({ success: false, error: err });
+    console.error('[500]', req.method, req.path, err);
+    return res.status(500).json({ success: false, message: 'Something went wrong. Please try again.' });
   }
 });
 
@@ -2763,7 +2876,8 @@ app.get('/api/v1/records/labs', async (req: Request, res: Response) => {
     return res.json({ success: true, items });
   } catch (err) {
     console.error('[GET /records/labs] ERROR:', err);
-    return res.status(500).json({ success: false, error: err });
+    console.error('[500]', req.method, req.path, err);
+    return res.status(500).json({ success: false, message: 'Something went wrong. Please try again.' });
   }
 });
 
@@ -2798,7 +2912,8 @@ app.get('/api/v1/records/vitals', async (req: Request, res: Response) => {
     return res.json({ success: true, items });
   } catch (err) {
     console.error('[GET /records/vitals] ERROR:', err);
-    return res.status(500).json({ success: false, error: err });
+    console.error('[500]', req.method, req.path, err);
+    return res.status(500).json({ success: false, message: 'Something went wrong. Please try again.' });
   }
 });
 
@@ -2839,7 +2954,8 @@ app.get('/api/v1/records/medications', async (req: Request, res: Response) => {
     return res.json({ success: true, items });
   } catch (err) {
     console.error('[GET /records/medications] ERROR:', err);
-    return res.status(500).json({ success: false, error: err });
+    console.error('[500]', req.method, req.path, err);
+    return res.status(500).json({ success: false, message: 'Something went wrong. Please try again.' });
   }
 });
 
@@ -2959,7 +3075,8 @@ app.get('/api/v1/pharmacy/prescriptions', async (req: Request, res: Response) =>
     return res.json([]);
   } catch (err) {
     console.error('[GET /pharmacy/prescriptions] ERROR:', err);
-    return res.status(500).json({ success: false, error: err });
+    console.error('[500]', req.method, req.path, err);
+    return res.status(500).json({ success: false, message: 'Something went wrong. Please try again.' });
   }
 });
 
@@ -2976,6 +3093,7 @@ app.post('/api/v1/auth/sessions/revoke-others', async (req: Request, res: Respon
   try {
     const nowSec = Math.floor(Date.now() / 1000);
     await revokeSessionsFor([authUserId], nowSec);
+    void auditAccount(req, authUserId, 'security', 'sessions_revoked', 'You');
     const current: any = jwt.verify(req.headers.authorization!.substring(7), JWT_SECRET as string);
     const token = jwt.sign(
       { userId: authUserId, email: current.email, phoneNumber: current.phoneNumber, role: current.role || 'patient' },
@@ -2986,6 +3104,40 @@ app.post('/api/v1/auth/sessions/revoke-others', async (req: Request, res: Respon
   } catch (err) {
     console.error('[POST /auth/sessions/revoke-others] ERROR:', err);
     return res.status(500).json({ success: false, message: 'Could not sign out other devices' });
+  }
+});
+
+// GET /api/v1/account/audit — the signed-in person's own security and access log.
+// kind=security|access narrows it; before=<ISO date> pages back; newest first.
+app.get('/api/v1/account/audit', async (req: Request, res: Response) => {
+  const authUserId = getAuthUserId(req);
+  if (!authUserId) return res.status(401).json({ success: false, message: 'Authentication required' });
+  if (mongoose.connection.readyState !== 1) return res.status(503).json({ success: false, message: 'Database unavailable' });
+  try {
+    const query: any = { accountId: authUserId };
+    if (req.query.kind === 'security' || req.query.kind === 'access') query.kind = req.query.kind;
+    const before = req.query.before ? new Date(String(req.query.before)) : null;
+    if (before && !Number.isNaN(before.getTime())) query.createdAt = { $lt: before };
+    const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? '50'), 10) || 50, 1), 100);
+    const rows: any[] = await AccountAuditLog.find(query).sort({ createdAt: -1 }).limit(limit).lean();
+    return res.json({
+      success: true,
+      entries: rows.map((r) => ({
+        id: String(r._id),
+        kind: r.kind,
+        action: r.action,
+        title: ACTION_LABELS[r.action] || r.action.replace(/_/g, ' '),
+        actor: r.actorLabel,
+        detail: r.detail || '',
+        ip: r.ip || '',
+        device: r.device || '',
+        at: r.createdAt,
+      })),
+      nextBefore: rows.length === limit ? rows[rows.length - 1].createdAt : null,
+    });
+  } catch (err) {
+    console.error('[GET /account/audit] ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Could not load your log' });
   }
 });
 
@@ -3109,7 +3261,8 @@ app.post('/api/v1/pharmacy/orders', async (req: Request, res: Response) => {
       order,
     });
   } catch (err) {
-    return res.status(500).json({ success: false, message: 'Failed to create medication order', error: err });
+    console.error('[500]', req.method, req.path, err);
+    return res.status(500).json({ success: false, message: 'Failed to create medication order' });
   }
 });
 
@@ -3213,7 +3366,8 @@ app.get('/api/v1/pharmacy/orders/pending', staff.requireStaff('pharmacist'), asy
     }).sort({ createdAt: -1 });
     return res.json({ success: true, orders });
   } catch (err) {
-    return res.status(500).json({ success: false, message: 'Failed to fetch pending orders', error: err });
+    console.error('[500]', req.method, req.path, err);
+    return res.status(500).json({ success: false, message: 'Failed to fetch pending orders' });
   }
 });
 
@@ -3268,7 +3422,8 @@ app.post('/api/v1/pharmacy/orders/:id/approve', staff.requireStaff('pharmacist')
 
     return res.json({ success: true, message: 'Order approved', order });
   } catch (err) {
-    return res.status(500).json({ success: false, message: 'Failed to approve order', error: err });
+    console.error('[500]', req.method, req.path, err);
+    return res.status(500).json({ success: false, message: 'Failed to approve order' });
   }
 });
 
@@ -3311,7 +3466,8 @@ app.post('/api/v1/pharmacy/orders/:id/reject', staff.requireStaff('pharmacist'),
 
     return res.json({ success: true, message: 'Order rejected', order });
   } catch (err) {
-    return res.status(500).json({ success: false, message: 'Failed to reject order', error: err });
+    console.error('[500]', req.method, req.path, err);
+    return res.status(500).json({ success: false, message: 'Failed to reject order' });
   }
 });
 
@@ -3458,7 +3614,8 @@ app.post('/api/v1/records/ocr-extract', ocrLimiter, async (req: Request, res: Re
     return res.json({ success: true, rawText, ...structured });
   } catch (err) {
     console.error('[OCR Error]', err);
-    return res.status(500).json({ success: false, message: 'Document scanning failed. Please try again.', error: err });
+    console.error('[500]', req.method, req.path, err);
+    return res.status(500).json({ success: false, message: 'Document scanning failed. Please try again.' });
   }
 });
 
@@ -3471,7 +3628,8 @@ app.get(['/api/v1/care/facilities', '/api/v1/facilities'], async (_req: Request,
     }
     return res.json({ success: true, facilities: [] });
   } catch (err) {
-    return res.status(500).json({ success: false, error: err });
+    console.error('[500]', _req.method, _req.path, err);
+    return res.status(500).json({ success: false, message: 'Something went wrong. Please try again.' });
   }
 });
 
@@ -4475,6 +4633,7 @@ app.post('/api/v1/shares/grants', async (req: Request, res: Response) => {
         status: 'active',
       });
       grantId = grant._id.toString();
+      void auditAccount(req, authUserId, 'access', 'record_shared_consent', String(recipientName || 'A provider'), `${recipientType}${recordIds?.length ? `, ${recordIds.length} record(s)` : ''}`);
 
       await AccessAuditLog.create({
         grantId: grant._id,
@@ -4506,7 +4665,8 @@ app.post('/api/v1/shares/grants', async (req: Request, res: Response) => {
       ...(shareToken ? { shareToken, shareUrl: `${baseUrl}/api/v1/shares/bridge/${shareToken}` } : {}),
     });
   } catch (err) {
-    res.status(500).json({ success: false, error: err });
+    console.error('[500]', req.method, req.path, err);
+    res.status(500).json({ success: false, message: 'Something went wrong. Please try again.' });
   }
 });
 
@@ -4607,6 +4767,7 @@ app.get('/api/v1/shares/bridge/:token', async (req: Request, res: Response) => {
     // 1. Record Access Audit Log for this Emergency Scan (NDPR compliance)
     if (mongoose.connection.readyState === 1) {
       try {
+        void auditAccount(req, String(grant.grantorUserId), 'access', 'emergency_scan', 'Emergency QR scan', 'Emergency summary was opened');
         await AccessAuditLog.create({
           grantId: grant._id,
           accessedByName: 'First Responder / WelliBridge QR',
@@ -4681,34 +4842,16 @@ app.get('/api/v1/shares/bridge/:token', async (req: Request, res: Response) => {
 
 // 2FA Preference Toggle Endpoint
 app.post('/api/v1/auth/2fa/toggle', async (req: Request, res: Response) => {
-  const { twoFactorEnabled, email, phone } = req.body;
-  const token = req.headers.authorization?.replace('Bearer ', '');
+  const { twoFactorEnabled } = req.body;
+  // Signed-in callers only, and only their own account. This route used to accept an email or phone
+  // from the body with no token, which let anyone switch the flag for any account.
+  const userId = getAuthUserId(req);
+  if (!userId) return res.status(401).json({ success: false, message: 'Authentication required' });
 
   try {
-    let decoded: any = null;
-    if (token) {
-      try {
-        decoded = jwt.verify(token, JWT_SECRET);
-      } catch {}
-    }
-
-    const userId = decoded?.userId || decoded?.id;
-    const targetEmail = decoded?.email || email;
-    const targetPhone = decoded?.phoneNumber || phone;
-
-    if (mongoose.connection.readyState === 1) {
-      if (userId) {
-        await User.findByIdAndUpdate(userId, { twoFactorEnabled: Boolean(twoFactorEnabled) });
-        await Account.findByIdAndUpdate(userId, { twoFactorEnabled: Boolean(twoFactorEnabled) });
-      } else if (targetEmail) {
-        await User.findOneAndUpdate({ email: targetEmail }, { twoFactorEnabled: Boolean(twoFactorEnabled) });
-        await Account.findOneAndUpdate({ email: targetEmail }, { twoFactorEnabled: Boolean(twoFactorEnabled) });
-      } else if (targetPhone) {
-        const normalized = normalizeNigerianPhone(targetPhone);
-        await User.findOneAndUpdate({ phoneNumber: normalized }, { twoFactorEnabled: Boolean(twoFactorEnabled) });
-        await Account.findOneAndUpdate({ phone: normalized }, { twoFactorEnabled: Boolean(twoFactorEnabled) });
-      }
-    }
+    if (mongoose.connection.readyState === 1 && mongoose.isValidObjectId(userId)) {
+      await User.findByIdAndUpdate(userId, { twoFactorEnabled: Boolean(twoFactorEnabled) });
+      await Account.findByIdAndUpdate(userId, { twoFactorEnabled: Boolean(twoFactorEnabled) });    }
 
     return res.json({
       success: true,
@@ -4916,6 +5059,7 @@ app.post('/api/v1/shares/bridge/revoke/:token', async (req: Request, res: Respon
 
       grant.status = 'revoked';
       await grant.save();
+      void auditAccount(req, authUserId, 'access', 'share_revoked', 'You', String(grant.recipientName || 'Share link'));
 
       await AccessAuditLog.create({
         grantId: grant._id,

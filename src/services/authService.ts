@@ -13,6 +13,9 @@ export interface AuthSession {
   requiresOtp?: boolean;
   challengeToken?: string;
   channel?: 'sms' | 'email' | 'phone' | string;
+  /** The account has an authenticator code turned on. No token yet: call verifyMfa. */
+  mfaRequired?: boolean;
+  mfaToken?: string;
   user: {
     id: string;
     fullName?: string;
@@ -79,6 +82,8 @@ function unwrapAuthSession(
     challengeToken:
       payload?.challengeToken || rawResponse?.challengeToken,
     channel: payload?.channel || rawResponse?.channel,
+    mfaRequired: Boolean(payload?.mfaRequired || rawResponse?.mfaRequired),
+    mfaToken: payload?.mfaToken || rawResponse?.mfaToken,
     user: {
       id: userObj?.id || userObj?._id || fallbackUser?.id || 'me',
       fullName:
@@ -360,16 +365,32 @@ export const authService = {
     return session;
   },
 
+  /**
+   * Finishes a sign-in that came back with mfaRequired. Send either the 6-digit code or a
+   * recovery code. Returns the real session (with token) but does not save it.
+   */
+  async verifyMfa(
+    pending: AuthSession,
+    proof: { code: string } | { recoveryCode: string },
+  ): Promise<AuthSession> {
+    const raw = await apiClient.post<any>('/auth/mfa/verify', { mfaToken: pending.mfaToken, ...proof });
+    const session = unwrapAuthSession(raw, pending.user);
+    if (!session.token) throw new Error('The code was accepted, but no session was returned.');
+    return { ...session, mfaRequired: false, mfaToken: undefined };
+  },
+
   async verifySocialAuth(details: {
     provider: 'google' | 'apple';
     email: string;
     fullName?: string;
+    /** Clerk session token. The server checks it with Clerk; the email above is only a fallback label. */
+    clerkToken: string;
   }): Promise<AuthSession & { isNewAccount?: boolean }> {
 
     const raw = await apiClient.post<any>('/auth/social/verify', {
       provider: details.provider,
-      email: details.email.trim().toLowerCase(),
       fullName: details.fullName,
+      clerkToken: details.clerkToken,
     });
 
     const session = unwrapAuthSession(raw, {
@@ -377,11 +398,12 @@ export const authService = {
       fullName: details.fullName,
     });
 
-    if (!session.token) {
+    if (!session.token && !session.mfaRequired) {
       throw new Error('Social authentication did not return a valid session.');
     }
 
-    await this.saveSession(session);
+    // With a second step on, the caller asks for the code and saves the session after verifyMfa.
+    if (session.token) await this.saveSession(session);
     return { ...session, isNewAccount: raw?.isNewAccount };
   },
 

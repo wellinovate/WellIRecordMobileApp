@@ -439,32 +439,27 @@ export function PrivacySecurityModal({
                 />
               </View>
 
-              <View className="flex-row items-center py-4">
-                <View className="flex-1 pr-4">
-                  <Text className="text-[13px] font-semibold text-[#173B68]">
-                    Two-factor authentication
-                  </Text>
-
-                  <Text className="mt-1 text-[11.5px] leading-[17px] text-slate-500">
-                    Require an OTP during supported sign-in flows.
-                  </Text>
-                </View>
-
-                <Switch
-                  value={state.twoFactorEnabled}
-                  onValueChange={() =>
-                    actions.toggleTwoFactor()
-                  }
-                  trackColor={{
-                    false: "#D9E0E9",
-                    true: "#315B90",
-                  }}
-                  thumbColor="#FFFFFF"
-                />
-              </View>
+              <InfoRow
+                title="Authenticator app"
+                subtitle="Ask for a 6-digit code from an authenticator app after your password or login code."
+                onPress={actions.openTwoStep}
+              />
+              <InfoRow
+                title="Security and access log"
+                subtitle="See sign-ins, and every time someone other than you opened your record."
+                onPress={actions.openAccountLog}
+              />
             </SectionCard>
 
             <SectionCard title="This device">
+              {state.deviceCompromised ? (
+                <View className="border-b border-slate-100 py-4">
+                  <Text className="text-[13px] font-bold text-red-700">This phone looks rooted or jailbroken</Text>
+                  <Text className="mt-1 text-[11.5px] leading-[17px] text-slate-600">
+                    Other apps on it may be able to read your health records. Use WelliRecord on a phone you trust, and turn on the authenticator step.
+                  </Text>
+                </View>
+              ) : null}
               <View className="py-4">
                 <Text className="text-[13px] font-bold text-[#173B68]">
                   This {deviceName}

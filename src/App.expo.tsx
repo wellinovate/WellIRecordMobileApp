@@ -68,6 +68,9 @@ import { ActivityLogModal } from "./modals/ActivityLogModal";
 import { LanguageModal } from "./modals/LanguageModal";
 
 import { FaceIdLockScreen } from "./modals/FaceIdLockScreen";
+import { MfaChallengeModal } from "./modals/MfaChallengeModal";
+import { TwoStepModal } from "./modals/TwoStepModal";
+import { AccountLogModal } from "./modals/AccountLogModal";
 import { useInactivityLogout } from "./hooks/useInactivityLogout";
 import { markActivity } from "./utils/inactivityCore";
 
@@ -418,6 +421,8 @@ function MainWelliApp() {
 
           {Boolean(state.showFamilyAccess) && <FamilyAccessModal app={app} />}
           <ProviderShareModal app={app} />
+          <TwoStepModal app={app} />
+          <AccountLogModal app={app} />
 
           {Boolean(state.showChildProfile) && <ChildProfileModal app={app} />}
 
@@ -432,6 +437,7 @@ function MainWelliApp() {
           {Boolean(state.showLanguage) && <LanguageModal app={app} />}
 
           {Boolean(state.showLockScreen) && <FaceIdLockScreen app={app} />}
+          <MfaChallengeModal app={app} />
 
           {Boolean(state.showBookAppointment) && (
             <BookAppointmentModal app={app} />

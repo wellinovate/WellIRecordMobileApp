@@ -94,12 +94,14 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
         const email = user?.primaryEmailAddress?.emailAddress || signUp?.emailAddress;
         const fullName = user?.fullName || (user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : undefined);
         const avatar = user?.imageUrl;
+        const clerkToken = (await (clerk.session ?? currentSession)?.getToken().catch(() => null)) ?? undefined;
 
         actions.signInWithClerk({
           provider,
           fullName: fullName || undefined,
           email: email || undefined,
           avatar,
+          clerkToken,
         });
       } else if (signUp?.status === 'missing_requirements') {
         actions.signInWithClerk({
@@ -1093,6 +1095,7 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
               dividerText="or sign up with"
               onSuccess={(details) => {
                 actions.signInWithClerk({
+                  clerkToken: details.clerkToken,
                   provider: details.provider,
                   fullName: details.fullName || clerkUser?.fullName || undefined,
                   email: details.email || clerkUser?.primaryEmailAddress?.emailAddress || undefined,

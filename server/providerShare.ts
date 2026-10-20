@@ -122,6 +122,8 @@ export interface ShareDeps {
   channels?: () => { email: boolean; sms: boolean };
   /** Old app builds create links the server can read. Off unless explicitly allowed. */
   allowLive?: boolean;
+  /** Writes an entry to the owner's account log. Failures must not break the request. */
+  audit?: (req: Request, ownerId: string, kind: 'security' | 'access', action: string, actor: string, detail?: string) => void;
 }
 
 export function createProviderShareRouter(deps: ShareDeps) {
@@ -242,6 +244,7 @@ export function createProviderShareRouter(deps: ShareDeps) {
         passcodeHash: passcode ? hashCodeFor(deps.secret, String(_id), passcode) : undefined,
         views: [],
       });
+      deps.audit?.(req, authUserId, 'access', 'share_created', 'You', `${p.recipientName}: ${p.sections.join(', ')}`);
       return res.status(201).json({
         success: true,
         share: publicShare(share),
@@ -281,6 +284,7 @@ export function createProviderShareRouter(deps: ShareDeps) {
         if (exists) return res.json({ success: true, share: publicShare(exists) });
         return res.status(404).json({ success: false, message: 'Link not found' });
       }
+      deps.audit?.(req, authUserId, 'access', 'share_revoked', 'You', s.recipientName);
       return res.json({ success: true, share: publicShare(s) });
     } catch (err) {
       console.error('[POST /provider-shares/:id/revoke] ERROR:', err);
@@ -396,6 +400,7 @@ export function createProviderShareRouter(deps: ShareDeps) {
         if (claimed.lifetimeFailures >= LIFETIME_FAILS_LOCK) set.lockedAt = new Date();
         if (Object.keys(set).length) await ProviderShare.updateOne({ _id: s._id }, { $set: set });
         if (set.lockedAt) {
+          deps.audit?.(req, String(s.ownerId), 'access', 'share_locked', s.recipientName, 'Too many wrong codes');
           deps.notify(String(s.ownerId), 'Shared link locked', `The link you shared with ${s.recipientName} was locked after too many wrong codes.`, true).catch(() => {});
         }
         return res.status(401).json({
@@ -417,6 +422,7 @@ export function createProviderShareRouter(deps: ShareDeps) {
       const ttl = Math.min(SESSION_MINUTES * 60, remaining);
       const session = jwt.sign({ sid: String(s._id), kind: 'provider-share' }, sessionKey(deps.secret), { expiresIn: ttl });
       const time = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Lagos' });
+      deps.audit?.(req, String(s.ownerId), 'access', 'share_opened', s.recipientName, `Sections: ${(s.sections || []).join(', ')}`);
       deps
         .notify(String(s.ownerId), 'Your shared link was opened', `${s.recipientName} opened the records you shared, at ${time}. You can withdraw the link any time in Share with a provider.`, true)
         .catch(() => {});
