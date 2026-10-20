@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { View, Text, TouchableOpacity, Modal, FlatList, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, FlatList, StyleSheet } from 'react-native';
+import { Modal } from './ActivityModal';
 import Svg, { Path } from 'react-native-svg';
 
 interface FormSelectProps {

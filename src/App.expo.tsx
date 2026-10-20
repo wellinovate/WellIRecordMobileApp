@@ -68,6 +68,8 @@ import { ActivityLogModal } from "./modals/ActivityLogModal";
 import { LanguageModal } from "./modals/LanguageModal";
 
 import { FaceIdLockScreen } from "./modals/FaceIdLockScreen";
+import { useInactivityLogout } from "./hooks/useInactivityLogout";
+import { markActivity } from "./utils/inactivityCore";
 
 import { BookAppointmentModal } from "./modals/BookAppointmentModal";
 
@@ -119,6 +121,9 @@ function MainWelliApp() {
   const app = useWelliApp();
 
   const { state } = app;
+
+  // Sign out after 20 minutes without a touch. Held off during a video visit.
+  useInactivityLogout(Boolean(state.isAuthenticated), Boolean(state.inCall), () => { app.actions.autoLogOut(); });
 
   const theme = themeFor(state.darkMode);
 
@@ -371,7 +376,7 @@ function MainWelliApp() {
       <PhoneShell>
         <SafeAreaView
           style={[styles.safeArea, { backgroundColor: theme.bg }]}
-
+          onStartShouldSetResponderCapture={() => { markActivity(); return false; }}
           edges={["top", "left", "right"]}
         >
           <View style={styles.screenContainer}>{renderScreen()}</View>

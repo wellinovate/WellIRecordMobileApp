@@ -4,8 +4,8 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  Modal,
 } from 'react-native';
+import { Modal } from '../components/ActivityModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import { ModalHeader } from '../components/ModalHeader';

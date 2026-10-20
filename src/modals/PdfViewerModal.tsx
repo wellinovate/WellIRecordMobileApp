@@ -1,6 +1,7 @@
 import { CONFIG } from '../services/config';
 import React from 'react';
-import { View, Text, TouchableOpacity, Modal, StyleSheet, SafeAreaView, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, Platform, ActivityIndicator } from 'react-native';
+import { Modal } from '../components/ActivityModal';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { WebView } from 'react-native-webview';

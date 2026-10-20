@@ -5,8 +5,8 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  Modal,
 } from 'react-native';
+import { Modal } from '../components/ActivityModal';
 import Svg, { Path } from 'react-native-svg';
 import { useTheme } from '../theme/ThemeContext';
 import { hapticFeedback } from '../utils/haptics';

@@ -1,7 +1,7 @@
 import {
-  Modal,
   StyleSheet,
 } from 'react-native';
+import { Modal } from '../components/ActivityModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WelcomeHomeScreen } from '../screens/WelcomeHomeScreen';
 import type { WelliApp } from '../state/useWelliApp';
