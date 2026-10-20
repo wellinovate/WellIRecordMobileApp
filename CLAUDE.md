@@ -58,7 +58,7 @@ opens.
 or offline-fake mode. `offlineSyncService` queues mutations while offline.
 
 **Auth.** Clerk (`@clerk/expo`) with tokens in `expo-secure-store` (`src/utils/tokenCache.ts`).
-Auth screens live in `src/features/auth/`.
+Auth screens live in `src/features/auth/`. See "Patient sign-in security" below for the second step and the Clerk token check.
 
 **Inactivity sign-out.** After 20 minutes with no touch the app signs out (`actions.autoLogOut`, same clean-up as `logOut`, with a message). `src/utils/inactivityCore.ts` holds the clock (`INACTIVITY_MS`, `markActivity`); `src/hooks/useInactivityLogout.ts` checks it every 15 seconds and when the app returns to the foreground, so time in the background counts. Touches are reported by the root view and by `src/components/ActivityModal.tsx`. A React Native `Modal` draws in its own window, so **always import `Modal` from `components/ActivityModal`, not from `react-native`**, or touches inside it will not count as activity and the person can be signed out mid-task. It is held off during a video visit (`state.inCall`). Typing on the keyboard alone does not count; a touch does.
 
@@ -177,6 +177,18 @@ Booking at a Google listing (`externalBookingFacility`) saves an `AppointmentReq
 ## Appointment notifications
 
 `POST /appointments/requests` now notifies after saving (`server/appointmentNotify.ts`): the patient gets an in-app notification, an email (if the account has one and an email provider is set) and an SMS (Nigerian mobile and `TERMII_API_KEY`). The facility gets an email and an SMS only if it is a WelliRecord organisation (`OrganizationProfile` found by `facilityId`) with `email`, `officeEmail`, `contactEmail`, `adminEmail` or `phone` on file; the mobile `Facility` directory and Google listings have no contact, so nobody is messaged and the app says so. Messages carry patient name, date, time, visit type and a 6 character reference, never the reason. A channel counts as delivered only when the sender reports it (`sendWelliEmail` returns `delivered`); what was delivered is stored on the request as `notified` and summarised in the `notice` field the app shows. When a facility confirms or cancels (found by the one-minute sweep, because the web console changes the status), the patient gets push, email and SMS. Not built: retry of a failed email or SMS, facility notification for non-WelliRecord facilities.
+
+## Patient sign-in security
+
+- Second step (`server/patientAuth.ts`, model `PatientMfa`): authenticator-app TOTP plus 8 single-use recovery codes, reusing `server/totp.ts`. A sign-in route that has passed its first factor (password, SMS or email code, Clerk) calls `patientAuth.gate()`. If the account has the step on, no token is issued: the route returns `{ mfaRequired, mfaToken }` and the app finishes with `POST /auth/mfa/verify`. The gate is on `/auth/login`, `/auth/otp/verify` and `/auth/social/verify`. A new sign-in route must call it too. Settings routes: `GET /auth/mfa/status`, `POST /auth/mfa/setup|enable|disable|recovery-codes`. Five wrong codes lock it for 15 minutes; a used step cannot be replayed. Secrets are sealed with `MFA_SECRET_KEY` (falls back to `JWT_SECRET`). Set `MFA_SECRET_KEY` before anyone turns it on and do not change it later: that locks every user out of their second step.
+- In the app: `MfaChallengeModal` (code prompt, driven by `state.mfaPrompt` and `resolveMfa` in `useWelliApp`), `TwoStepModal` (set up, recovery codes, turn off), both opened from Profile > Privacy and security.
+- Social sign-in: the app sends the Clerk session token; `server/clerkVerify.ts` checks its signature against Clerk's keys and takes the verified email from the Clerk API. Needs `CLERK_SECRET_KEY`, else the route returns 503. The email in the request body is never trusted.
+- Account log (`server/accountAudit.ts`, model `AccountAuditLog`): `auditAccount(req, accountId, 'security'|'access', action, actorLabel, detail)`. Written for sign-ins, second-step changes, password reset, sessions revoked, provider links (created, opened, locked, withdrawn), consent shares and emergency scans. The owner's own reads are not logged. `GET /account/audit?kind=&before=&limit=`; the app shows it as `AccountLogModal`. IPs are masked to the last octet. Kept two years. Add an `ACTION_LABELS` entry when you add an action.
+- Login is rate limited per address and per address plus identifier. 500 responses never return the exception; log it and send a plain message.
+- Secrets: `server/secretsCheck.ts` reports weak settings at boot (names only). `ENFORCE_SECRET_CHECKS=true` makes errors fatal. Policy and rotation steps: `docs/security/secrets-policy.md`. CI runs gitleaks on new commits. Never paste a secret into chat.
+- Device: `src/utils/deviceIntegrity.ts` warns on a rooted or jailbroken phone (a warning, not a lock). Android auto-backup is off.
+- Certificate pinning is opt-in: `plugins/withApiPinning.js` does nothing unless `API_PINS` (two or more SPKI hashes from `scripts/print-spki-pins.sh`) is set in the build environment. Test a preview build first.
+- Review and test brief: `docs/security/security-review.md`, `docs/security/pentest-brief.md`. Integration test: `server/tests/integration/patientMfa.test.ts` (CI only).
 
 ## Rules for changes
 

@@ -17,6 +17,8 @@ interface SocialAuthButtonsProps {
     email?: string;
     fullName?: string;
     avatar?: string;
+    /** Clerk session token. The server checks it before it signs the person in. */
+    clerkToken?: string;
   }) => void;
   onError?: (errMessage: string) => void;
   labelPrefix?: 'Continue with' | 'Sign in with' | 'Sign up with';
@@ -56,6 +58,7 @@ export function SocialAuthButtons({
         const email = user?.primaryEmailAddress?.emailAddress || signUp?.emailAddress;
         const fullName = user?.fullName || (user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : undefined);
         const avatar = user?.imageUrl;
+        const clerkToken = (await (clerk.session ?? currentSession)?.getToken().catch(() => null)) ?? undefined;
 
         onSuccess?.({
           provider,
@@ -63,6 +66,7 @@ export function SocialAuthButtons({
           email: email ?? undefined,
           fullName,
           avatar,
+          clerkToken,
         });
       } else if (signUp?.status === 'missing_requirements') {
         // Missing optional fields, handled gracefully

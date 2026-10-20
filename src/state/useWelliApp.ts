@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { checkDeviceIntegrity, DEVICE_WARNING } from '../utils/deviceIntegrity';
 import { Alert, AppState as RNAppState, Linking, Share } from 'react-native';
 import {
   CONSENT_SCOPES,
@@ -68,6 +69,11 @@ export interface AppState {
   consentPurpose: string;
   showFamilyAccess: boolean;
   showProviderShare: boolean;
+  /** Second sign-in step: set while the app waits for an authenticator code. */
+  mfaPrompt: { busy: boolean; error: string | null } | null;
+  showTwoStep: boolean;
+  deviceCompromised: boolean;
+  showAccountLog: boolean;
   providerShareDraft: { subjectId?: string; sections?: ('allergies' | 'conditions' | 'medications' | 'records' | 'vaccinations' | 'growth')[]; recordIds?: string[]; label?: string } | null;
   /** Set when the family list could not be loaded. Null when it loaded or has not been tried. */
   familyLoadError: string | null;
@@ -284,6 +290,10 @@ const initialState: AppState = {
   consentPurpose: '',
   showFamilyAccess: false,
   showProviderShare: false,
+  mfaPrompt: null,
+  showTwoStep: false,
+  deviceCompromised: false,
+  showAccountLog: false,
   providerShareDraft: null,
   familyLoadError: null,
   showChildProfile: false,
@@ -363,10 +373,28 @@ export function useWelliApp() {
   const [state, setState] = useState<AppState>(initialState);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const uploadedToastPending = useRef(false);
+  // The sign-in that is waiting for an authenticator code.
+  const mfaWaiter = useRef<{
+    pending: AuthSession;
+    resolve: (s: AuthSession) => void;
+    reject: (e: Error) => void;
+  } | null>(null);
 
   const patch = (updater: Updater) => {
     setState((prev) => ({ ...prev, ...(typeof updater === 'function' ? updater(prev) : updater) }));
   };
+
+  // Warn once per launch if the OS says the phone is rooted or jailbroken. A warning, not a lock.
+  useEffect(() => {
+    checkDeviceIntegrity()
+      .then((r) => {
+        if (!r.compromised) return;
+        setState((prev) => ({ ...prev, deviceCompromised: true }));
+        showToast(DEVICE_WARNING);
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Send child entries saved while offline when the user signs in and whenever the app returns to the foreground.
   useEffect(() => {
@@ -856,6 +884,19 @@ export function useWelliApp() {
     });
   };
 
+  /**
+   * If the account has the second step on, the sign-in came back without a token. Show the code
+   * prompt and wait. Resolves with the real session, or rejects if the person cancels.
+   */
+  const resolveMfa = (session: AuthSession): Promise<AuthSession> => {
+    if (!session?.mfaRequired || !session.mfaToken) return Promise.resolve(session);
+    mfaWaiter.current?.reject(new Error('Sign-in was replaced by a new attempt.'));
+    return new Promise<AuthSession>((resolve, reject) => {
+      mfaWaiter.current = { pending: session, resolve, reject };
+      patch({ mfaPrompt: { busy: false, error: null } });
+    });
+  };
+
   const commitAuthenticatedSession = async (
     session: AuthSession,
     profile?: AuthProfileSeed,
@@ -1038,6 +1079,37 @@ export function useWelliApp() {
     openProviderShare: (draft?: AppState['providerShareDraft']) =>
       patch({ showProviderShare: true, providerShareDraft: draft ?? null, showSmartConsent: false }),
     closeProviderShare: () => patch({ showProviderShare: false, providerShareDraft: null }),
+    openTwoStep: () => patch({ showTwoStep: true }),
+    closeTwoStep: () => patch({ showTwoStep: false }),
+    openAccountLog: () => patch({ showAccountLog: true }),
+    closeAccountLog: () => patch({ showAccountLog: false }),
+    submitMfaCode: async (proof: { code: string } | { recoveryCode: string }) => {
+      const waiter = mfaWaiter.current;
+      if (!waiter) return;
+      patch({ mfaPrompt: { busy: true, error: null } });
+      try {
+        const done = await authService.verifyMfa(waiter.pending, proof);
+        mfaWaiter.current = null;
+        patch({ mfaPrompt: null });
+        waiter.resolve(done);
+      } catch (err: any) {
+        hapticFeedback.error();
+        if (err?.statusCode === 401) {
+          // The five minutes ran out. The person has to start sign-in again.
+          mfaWaiter.current = null;
+          patch({ mfaPrompt: null });
+          waiter.reject(new Error('That sign-in took too long. Please start again.'));
+          return;
+        }
+        patch({ mfaPrompt: { busy: false, error: err?.message || 'That code did not match.' } });
+      }
+    },
+    cancelMfa: () => {
+      const waiter = mfaWaiter.current;
+      mfaWaiter.current = null;
+      patch({ mfaPrompt: null });
+      waiter?.reject(new Error('Sign-in cancelled.'));
+    },
     // From a record: share just that record as an encrypted link or QR, for a provider that is not on WelliRecord.
     shareRecordEncrypted: (recordId: string) => {
       const r = (state.recordsList ?? []).find((x) => x.id === recordId);
@@ -1830,14 +1902,16 @@ export function useWelliApp() {
     ) => {
       hapticFeedback.success();
 
-      const verified = await authService.verifyAuthOtp(
-        identifier,
-        code,
-        undefined,
-        {
-          persist: false,
-          challengeToken: pendingSession?.challengeToken,
-        },
+      const verified = await resolveMfa(
+        await authService.verifyAuthOtp(
+          identifier,
+          code,
+          undefined,
+          {
+            persist: false,
+            challengeToken: pendingSession?.challengeToken,
+          },
+        ),
       );
 
       if (verified.token) {
@@ -1901,7 +1975,7 @@ export function useWelliApp() {
         insuranceId?: string;
       }
     ) => {
-      const session = await authService.verifyAuthOtp(
+      const session = await resolveMfa(await authService.verifyAuthOtp(
         identifier,
         code,
         userData
@@ -1917,7 +1991,7 @@ export function useWelliApp() {
             }
           : undefined,
         { persist: false },
-      );
+      ));
 
       return commitAuthenticatedSession(
         session,
@@ -1931,6 +2005,8 @@ export function useWelliApp() {
       fullName?: string;
       email?: string;
       avatar?: string;
+      /** Clerk session token, checked by the server. */
+      clerkToken?: string;
     }) => {
       if (!details?.email) {
         showToast(
@@ -1942,11 +2018,18 @@ export function useWelliApp() {
       hapticFeedback.success();
 
       try {
-        const session = await authService.verifySocialAuth({
+        if (!details.clerkToken) {
+          showToast('Could not verify your sign-in. Please try again.');
+          return;
+        }
+        const first = await authService.verifySocialAuth({
           provider: details.provider,
           email: details.email,
           fullName: details.fullName,
+          clerkToken: details.clerkToken,
         });
+        const session = await resolveMfa(first);
+        if (session !== first) await authService.saveSession(session);
 
         await commitAuthenticatedSession(
           session,

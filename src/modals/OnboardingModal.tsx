@@ -29,8 +29,10 @@ export function OnboardingModal({ app }: { app: WelliApp }) {
     email?: string;
     fullName?: string;
     avatar?: string;
+    clerkToken?: string;
   }) => {
     actions.signInWithClerk({
+      clerkToken: details.clerkToken,
       provider: details.provider,
       fullName: details.fullName || clerkUser?.fullName || undefined,
       email: details.email || clerkUser?.primaryEmailAddress?.emailAddress,

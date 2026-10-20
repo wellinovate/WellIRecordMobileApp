@@ -1092,6 +1092,63 @@ export const ChildGuardian: Model<IChildGuardian> =
   mongoose.models.ChildGuardian || mongoose.model<IChildGuardian>('ChildGuardian', ChildGuardianSchema);
 export const ChildAuditLog: Model<IChildAuditLog> =
   mongoose.models.ChildAuditLog || mongoose.model<IChildAuditLog>('ChildAuditLog', ChildAuditLogSchema);
+
+// ----- Patient second sign-in step (TOTP) -----
+export interface IPatientMfa extends Document {
+  accountId: string;
+  enabled: boolean;
+  secretEnc?: string;
+  recovery: string[];
+  lastStep: number;
+  failCount: number;
+  lockedUntil?: Date;
+  enabledAt?: Date;
+}
+const PatientMfaSchema = new Schema<IPatientMfa>(
+  {
+    accountId: { type: String, required: true, unique: true },
+    enabled: { type: Boolean, default: false },
+    secretEnc: { type: String },
+    recovery: { type: [String], default: [] },
+    lastStep: { type: Number, default: -1 },
+    failCount: { type: Number, default: 0 },
+    lockedUntil: { type: Date },
+    enabledAt: { type: Date },
+  },
+  { timestamps: true }
+);
+export const PatientMfa: Model<IPatientMfa> =
+  mongoose.models.PatientMfa || mongoose.model<IPatientMfa>('PatientMfa', PatientMfaSchema);
+
+// ----- Access and security log for an adult's own account -----
+export interface IAccountAuditLog extends Document {
+  accountId: string;
+  kind: 'security' | 'access';
+  action: string;
+  actorLabel: string;
+  detail?: string;
+  ip?: string;
+  device?: string;
+  createdAt: Date;
+}
+const AccountAuditLogSchema = new Schema<IAccountAuditLog>(
+  {
+    accountId: { type: String, required: true },
+    kind: { type: String, enum: ['security', 'access'], required: true },
+    action: { type: String, required: true },
+    actorLabel: { type: String, required: true },
+    detail: { type: String },
+    ip: { type: String },
+    device: { type: String },
+  },
+  { timestamps: { createdAt: true, updatedAt: false } }
+);
+AccountAuditLogSchema.index({ accountId: 1, createdAt: -1 });
+// Two years, then the database removes the row.
+AccountAuditLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 60 * 60 * 24 * 730 });
+export const AccountAuditLog: Model<IAccountAuditLog> =
+  mongoose.models.AccountAuditLog || mongoose.model<IAccountAuditLog>('AccountAuditLog', AccountAuditLogSchema);
+
 export const ChildMilestone: Model<IChildMilestone> =
   mongoose.models.ChildMilestone || mongoose.model<IChildMilestone>('ChildMilestone', ChildMilestoneSchema);
 export const ChildScreening: Model<IChildScreening> =
