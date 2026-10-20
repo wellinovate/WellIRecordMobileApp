@@ -188,7 +188,7 @@ export function ProfileScreen({
             </Text>
 
             <Text style={styles.identityId}>
-              Record ID · {recordId}
+              WelliID · {recordId}
             </Text>
 
             <Text style={styles.identityHint}>

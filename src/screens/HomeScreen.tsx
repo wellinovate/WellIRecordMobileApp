@@ -172,11 +172,11 @@ export function HomeScreen({ app }: { app: WelliApp }) {
             </Text>
 
             <Text style={styles.recordId}>
-              Record ID · {recordId}
+              WelliID · {recordId}
             </Text>
 
             <Text style={styles.recordDescription}>
-              One patient ID links your record across facilities.
+              Your WelliID links your record across facilities. Give it to a provider so they can find you.
             </Text>
 
             <TouchableOpacity
