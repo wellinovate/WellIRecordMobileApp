@@ -1719,7 +1719,14 @@ export function useWelliApp() {
       hapticFeedback.selection();
       patch((s) => ({ showNotifications: !s.showNotifications }));
     },
-    closeNotifications: () => patch({ showNotifications: false }),
+    // Closing the panel counts as having seen what was in it, so the home prompt goes away.
+    closeNotifications: () => {
+      notificationService.markAllAsRead();
+      patch((s) => ({
+        showNotifications: false,
+        notifications: s.notifications.map((n) => (n.read ? n : { ...n, read: true })),
+      }));
+    },
     dismissNotification: (id: string) => {
       hapticFeedback.selection();
       patch((s) => ({ notifications: s.notifications.filter((n) => n.id !== id) }));
