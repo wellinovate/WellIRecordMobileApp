@@ -1065,6 +1065,7 @@ export interface IProviderService extends Document {
   active: boolean;
   /** Staff accounts allowed to manage this provider's fees, hours and HMO decisions. Admin always can. */
   staffIds: string[];
+  paystackSubaccount?: string;
   updatedBy?: string;
 }
 const ProviderServiceSchema = new Schema<IProviderService>(
@@ -1085,6 +1086,8 @@ const ProviderServiceSchema = new Schema<IProviderService>(
     weekly: { type: [{ _id: false, day: Number, start: String, end: String }], default: [] },
     active: { type: Boolean, default: true },
     staffIds: { type: [String], default: [] },
+    /** Paystack subaccount (ACCT_...) that receives online payments for this provider. */
+    paystackSubaccount: { type: String, default: '' },
     updatedBy: { type: String },
   },
   { timestamps: true }
@@ -1141,6 +1144,7 @@ export interface IPharmacyService extends Document {
   acceptsHmo: string[];
   /** Staff accounts that may see this pharmacy's orders. Admin sees all. */
   staffIds: string[];
+  paystackSubaccount?: string;
   active: boolean;
   updatedBy?: string;
 }
@@ -1161,6 +1165,7 @@ const PharmacyServiceSchema = new Schema<IPharmacyService>(
     payAtPickup: { type: Boolean, default: true },
     acceptsHmo: { type: [String], default: [] },
     staffIds: { type: [String], default: [], index: true },
+    paystackSubaccount: { type: String, default: '' },
     active: { type: Boolean, default: true },
     updatedBy: { type: String },
   },

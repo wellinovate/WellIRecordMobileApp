@@ -8,6 +8,7 @@
 //
 // The fee always comes from the provider's record on the server, never from the app.
 
+import { Split, cleanSubaccount, onlineAllowed, splitFor } from './paystackSplit';
 import mongoose from 'mongoose';
 import express, { Request, RequestHandler, Response, Router } from 'express';
 import { AppointmentRequest, BookingSlot, ProviderService, StaffRole } from './models';
@@ -43,7 +44,7 @@ export const BOOKING_TERMS = [
 
 export interface PaystackClient {
   configured: boolean;
-  initialize(p: { email: string; amountMinor: number; reference: string; metadata?: Record<string, unknown> }): Promise<{ authorizationUrl: string }>;
+  initialize(p: { email: string; amountMinor: number; reference: string; metadata?: Record<string, unknown>; split?: Split | null }): Promise<{ authorizationUrl: string }>;
   verify(reference: string): Promise<{ success: boolean; amountMinor: number; currency: string }>;
 }
 
@@ -63,10 +64,10 @@ export function createPaystack(secret: string | undefined, fetchImpl: typeof fet
   };
   return {
     configured: Boolean(secret),
-    async initialize({ email, amountMinor, reference, metadata }) {
+    async initialize({ email, amountMinor, reference, metadata, split }) {
       const d = await call('/transaction/initialize', {
         method: 'POST',
-        body: JSON.stringify({ email, amount: amountMinor, reference, currency: 'NGN', metadata }),
+        body: JSON.stringify({ email, amount: amountMinor, reference, currency: 'NGN', metadata, ...(split || {}) }),
       });
       return { authorizationUrl: String(d.authorization_url) };
     },
@@ -351,7 +352,7 @@ export function createBooking(deps: BookingDeps) {
         return res.status(403).json({ success: false, message: 'You cannot book for this family member' });
       }
       const hmoIn = b.hmo && typeof b.hmo === 'object' ? b.hmo : {};
-      const decision = decideBooking({ method, svc, gatewayConfigured: deps.paystack.configured, hmoProvider: String(hmoIn.provider || '') });
+      const decision = decideBooking({ method, svc, gatewayConfigured: deps.paystack.configured && onlineAllowed(svc.paystackSubaccount), hmoProvider: String(hmoIn.provider || '') });
       if (decision.ok === false) {
         const no = decision as { message: string; code: string };
         return res.status(409).json({ success: false, message: no.message, code: no.code });
@@ -415,6 +416,7 @@ export function createBooking(deps: BookingDeps) {
             amountMinor: fee,
             reference,
             metadata: { appointmentId: String(doc._id), bookingRef: doc.bookingRef },
+            split: splitFor({ subaccount: svc.paystackSubaccount, amountMinor: fee }),
           });
           authorizationUrl = init.authorizationUrl;
           doc.paymentRef = reference;
@@ -567,7 +569,7 @@ export function createBooking(deps: BookingDeps) {
       const q: any = ids ? { facilityId: { $in: ids } } : {};
       const rows: any[] = await ProviderService.find(q).sort({ facilityName: 1 }).limit(300).lean();
       // Only an admin sees which accounts are assigned.
-      res.json({ success: true, canManageStaff: !ids, providers: ids ? rows.map(({ staffIds, ...r }) => r) : rows });
+      res.json({ success: true, canManageStaff: !ids, providers: ids ? rows.map(({ staffIds, paystackSubaccount, ...r }) => r) : rows });
     } catch (err) {
       fail500(res, 'GET /staff/providers', err, 'Could not load providers');
     }
@@ -619,6 +621,11 @@ export function createBooking(deps: BookingDeps) {
       set.facilityAddress = clip(b.facilityAddress, 200);
       set.specialty = clip(b.specialty, 80);
       if (Array.isArray(b.staffIds)) set.staffIds = [...new Set(b.staffIds.map((x: unknown) => clip(x, 40)).filter(Boolean))].slice(0, 30);
+      if (b.paystackSubaccount !== undefined) {
+        const code = cleanSubaccount(b.paystackSubaccount);
+        if (code === null) return res.status(400).json({ success: false, message: 'The Paystack subaccount code looks like ACCT_ followed by letters and numbers' });
+        set.paystackSubaccount = code;
+      }
     }
     try {
       const svc = await ProviderService.findOneAndUpdate({ facilityId }, { $set: set }, { upsert: isAdmin, new: true, setDefaultsOnInsert: true });
