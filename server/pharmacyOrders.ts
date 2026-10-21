@@ -60,7 +60,7 @@ export interface PharmacyDeps {
   audit: (req: Request | null, accountId: string, action: string, actor: string, detail?: string) => Promise<void>;
   /** Key for sealing prescription photos and handover codes. */
   sealKey: string;
-  listFacilities: () => Promise<{ id: string; name: string; address: string }[]>;
+  listFacilities: () => Promise<{ id: string; name: string; address: string; registered?: boolean; type?: string; lat?: number | null; lng?: number | null }[]>;
   /** Registered WelliRecord pharmacies: used to show a verified mark. */
   registeredIds?: () => Promise<Set<string>>;
   now?: () => number;
