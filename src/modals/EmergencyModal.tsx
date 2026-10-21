@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { allergiesAnswered } from "../utils/allergyStatus";
 import {
   ActivityIndicator,
   Linking,
@@ -126,11 +127,7 @@ function AllergyWarning({
   onPress: () => void;
   allergyText: string;
 }) {
-  const notRecorded =
-    !allergyText ||
-    /^(none on file|not recorded|unknown|none reported)$/i.test(
-      allergyText.trim(),
-    );
+  const notRecorded = !allergiesAnswered(allergyText);
 
   return (
     <TouchableOpacity
@@ -457,13 +454,9 @@ export function EmergencyModal({
   const allergyText =
     emergencyMember.allergies || "";
 
-  const recordedAllergyStatus =
-    allergyText &&
-    !/^(none on file|not recorded|unknown|none reported)$/i.test(
-      allergyText.trim(),
-    )
-      ? allergyText
-      : "Not recorded";
+  const recordedAllergyStatus = allergiesAnswered(allergyText)
+    ? allergyText
+    : "Not recorded";
 
   const close = () => {
     setStep("setup");
