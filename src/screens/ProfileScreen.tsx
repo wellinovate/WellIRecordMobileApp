@@ -262,6 +262,15 @@ export function ProfileScreen({
           <Divider />
 
           <SettingsRow
+            icon="verify"
+            title="Link hospital records"
+            subtitle="A hospital sent you a link to bring your records into WelliRecord"
+            onPress={actions.openRecordLink}
+          />
+
+          <Divider />
+
+          <SettingsRow
             icon="membership"
             title="WelliPay"
             subtitle="Bills, wallet and payments"

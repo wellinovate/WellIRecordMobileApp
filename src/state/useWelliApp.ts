@@ -73,6 +73,7 @@ export interface AppState {
   /** Second sign-in step: set while the app waits for an authenticator code. */
   mfaPrompt: { busy: boolean; error: string | null } | null;
   showTwoStep: boolean;
+  showRecordLink: boolean;
   deviceCompromised: boolean;
   showAccountLog: boolean;
   showConsultBooking: boolean;
@@ -301,6 +302,7 @@ const initialState: AppState = {
   showProviderShare: false,
   mfaPrompt: null,
   showTwoStep: false,
+  showRecordLink: false,
   deviceCompromised: false,
   showAccountLog: false,
   showConsultBooking: false,
@@ -1095,6 +1097,8 @@ export function useWelliApp() {
     closeProviderShare: () => patch({ showProviderShare: false, providerShareDraft: null }),
     openTwoStep: () => patch({ showTwoStep: true }),
     closeTwoStep: () => patch({ showTwoStep: false }),
+    openRecordLink: () => patch({ showRecordLink: true }),
+    closeRecordLink: () => patch({ showRecordLink: false }),
     openConsultBooking: (facilityId?: string) =>
       patch({
         showConsultBooking: true,
