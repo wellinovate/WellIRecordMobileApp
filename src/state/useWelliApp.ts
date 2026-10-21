@@ -28,6 +28,7 @@ import { buildShareMessage } from '../utils/providerRemark';
 import { storage } from '../utils/storage';
 import { reportError } from '../utils/errorReporting';
 import { authenticateWithBiometrics, getBiometricStatus } from '../utils/biometrics';
+import { markActivity } from '../utils/inactivityCore';
 import { authService, type AuthSession } from '../services/authService';
 import { apiClient, setAuthToken } from '../services/apiClient';
 import { recordsService } from '../services/recordsService';
@@ -1845,6 +1846,7 @@ export function useWelliApp() {
     },
     unlockWithFaceId: () => {
       hapticFeedback.success();
+      markActivity();
       patch({ showLockScreen: false });
     },
 
@@ -2274,26 +2276,12 @@ export function useWelliApp() {
       });
       showToast('Logged out of vault');
     },
-    // Called by the inactivity timer. Same clean-up as logOut, with a message saying why.
-    autoLogOut: async () => {
-      try { await authService.logout(); } catch { /* sign out locally even if the server call fails */ }
-      setAuthToken(null);
-      await clearChildOfflineData();
-      patch({
-        familyLoadError: null,
-        isAuthenticated: false,
-        user: null,
-        loggedOut: false,
-        showWelcomeHome: false,
-        familyMembers: [DEFAULT_PRIMARY_USER],
-        recordsList: [],
-        prescriptions: [],
-        vitalsLogs: [],
-        vitalsSeries: [],
-        tab: 'home',
-        tabHistory: [],
-      });
-      showToast('You were signed out after 20 minutes of inactivity. Sign in again to continue.');
+    // Called by the inactivity timer. It never signs the person out: the session lasts until they sign out
+    // or the server token expires. With the biometric lock on, the lock screen covers the app; with it off,
+    // nothing happens.
+    idleLock: () => {
+      if (!state.faceIdEnabled) return;
+      patch({ showLockScreen: true });
     },
     logBackIn: () => {
       hapticFeedback.selection();

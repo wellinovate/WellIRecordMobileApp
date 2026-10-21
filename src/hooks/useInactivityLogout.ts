@@ -4,7 +4,7 @@ import { activity, markActivity } from '../utils/inactivityCore';
 
 const CHECK_EVERY_MS = 15_000;
 
-// Signs the person out after 20 minutes without a touch. The timer is checked against the clock, not
+// Calls `onTimeout` after 10 minutes without a touch (the app locks; it does not sign out). The timer is checked against the clock, not
 // counted down, so time spent with the app in the background counts and a paused phone cannot extend it.
 // `paused` holds it off during a video visit, where the person may not touch the screen for a while.
 export function useInactivityLogout(enabled: boolean, paused: boolean, onTimeout: () => void) {
@@ -19,12 +19,13 @@ export function useInactivityLogout(enabled: boolean, paused: boolean, onTimeout
     markActivity(); // signing in starts the clock
     let fired = false;
     const check = () => {
-      if (fired || pausedRef.current || !activity.expired()) return;
-      fired = true; // one sign-out per session
+      if (!activity.expired()) { fired = false; return; } // activity after an unlock re-arms it
+      if (fired || pausedRef.current) return;
+      fired = true; // once per quiet spell
       timeoutRef.current();
     };
     const timer = setInterval(check, CHECK_EVERY_MS);
-    // Coming back to the app after a long time away signs out at once, before anything is shown.
+    // Coming back to the app after a long time away locks at once, before anything is shown.
     const app = AppState.addEventListener('change', (next) => { if (next === 'active') check(); });
     // The Android back button is a use of the app too.
     const back = BackHandler.addEventListener('hardwareBackPress', () => { markActivity(); return false; });
