@@ -388,6 +388,7 @@ const CONSULT_HTML = String.raw`
     </div>
     <div class="card">
       <div class="top"><h2>Your clinics</h2><button class="nt hide" id="b-new">Add a clinic</button></div>
+      <div id="waiting" class="hide"></div>
       <div id="plist"></div>
     </div>
     <div class="card hide" id="form">
@@ -552,12 +553,23 @@ $('b-copy').onclick=function(){
 };
 $('b-new').onclick=function(){openForm(null)};
 
-var FAC=[];
+var FAC=[],PROVS=[];
+function renderWaiting(){
+  var w=$('waiting');w.textContent='';
+  var have={};PROVS.forEach(function(p){have[p.facilityId]=true});
+  var todo=FAC.map(function(f,i){return {f:f,i:i}}).filter(function(x){return x.f.registered&&x.f.type!=='pharmacy'&&!have[x.f.id]});
+  if(!CANADMIN||!todo.length){w.classList.add('hide');return}
+  w.classList.remove('hide');
+  add(w,'h3','Registered on the website, not set up here yet','sec');
+  add(w,'div','These providers signed up on the website. Patients can find them but cannot book a time or pay until you set them up.','muted');
+  todo.forEach(function(x){var r=add(w,'div',null,'item');add(r,'strong',x.f.name);add(r,'div',x.f.address||'','muted');var b=add(r,'button','Set up','alt sm');b.onclick=function(){openForm(null);$('fp').value=String(x.i);$('fp').onchange()}});
+}
 async function loadAdminLists(){
   var f=await api('/staff/facility-options');FAC=f.success?f.facilities:[];
   var s=$('fp');s.textContent='';var o=add(s,'option','Type a new clinic below');o.value='';
   FAC.forEach(function(x,i){var e=add(s,'option',x.name+(x.address?' - '+x.address:''));e.value=String(i)});
   var u=await api('/staff/users');STAFFLIST=(u.success&&u.staff||[]).filter(function(x){return (x.role==='clinician'||x.role==='records_officer')&&x.status!=='disabled'});
+  renderWaiting();
 }
 $('fp').onchange=function(){var f=FAC[Number($('fp').value)];if(!f)return;$('fn').value=f.name;$('fa').value=f.address||'';CUR.pickedId=f.id;refresh()};
 
@@ -596,8 +608,8 @@ async function loadProviders(){
   var d=await api('/staff/providers');l.textContent='';
   if(!d.success){add(l,'div',d.message||'Could not load clinics.','msg bad');return}
   var first=!CANADMIN&&d.canManageStaff;
-  CANADMIN=!!d.canManageStaff;
-  if(CANADMIN){$('b-new').classList.remove('hide');if(first||!STAFFLIST.length)loadAdminLists()}
+  CANADMIN=!!d.canManageStaff;PROVS=d.providers||[];
+  if(CANADMIN){$('b-new').classList.remove('hide');if(first||!STAFFLIST.length)loadAdminLists();else renderWaiting()}
   if(!d.providers.length){add(l,'div',CANADMIN?'No clinic is set up yet. Choose "Add a clinic".':'No clinic is assigned to you yet. Ask an admin to assign you.','muted');return}
   d.providers.forEach(function(p){
     var it=add(l,'div',null,'item');
@@ -681,6 +693,7 @@ const PHARMACY_HTML = String.raw`
     <div class="card gap hide" id="setup">
       <div class="top"><h2>Your pharmacies</h2><button class="nt hide" id="b-new">Add a pharmacy</button></div>
       <p class="muted">Set your delivery prices and how patients can pay. You can change only the pharmacies assigned to you.</p>
+      <div id="swaiting" class="hide"></div>
       <div id="slist"></div>
     </div>
     <div class="card gap hide" id="sform">
@@ -745,7 +758,17 @@ function note(t,good){var n=$('note');n.textContent=t;n.className='msg '+(good?'
 function naira(minor){return minor==null?'':String(minor/100)}
 function money(minor){return '₦'+(Number(minor||0)/100).toLocaleString()}
 function toMinor(v){v=String(v||'').replace(/[^0-9.]/g,'');if(!v)return undefined;return Math.round(parseFloat(v)*100)}
-var ME=null,FAC=[],STAFF=[],OPEN=null;
+var ME=null,FAC=[],STAFF=[],OPEN=null,SERVS=[];
+function renderWaiting(){
+  var w=$('swaiting');w.textContent='';
+  var have={};SERVS.forEach(function(p){have[p.facilityId]=true});
+  var todo=FAC.map(function(f,i){return {f:f,i:i}}).filter(function(x){return x.f.registered&&x.f.type==='pharmacy'&&!have[x.f.id]});
+  if(!CANADMIN||!todo.length){w.classList.add('hide');return}
+  w.classList.remove('hide');
+  add(w,'h3','Registered on the website, not set up here yet','sec');
+  add(w,'div','These pharmacies signed up on the website. Patients can find them but cannot order until you set them up.','muted');
+  todo.forEach(function(x){var r=add(w,'div',null,'item');add(r,'strong',x.f.name);add(r,'div',x.f.address||'','muted');var b=add(r,'button','Set up','alt sm');b.onclick=function(){openForm(null);$('fp').value=String(x.i);$('fp').onchange()}});
+}
 window.onSignedIn=function(staff){
   ME=staff;$('app').classList.remove('hide');$('who').classList.remove('hide');$('who').textContent=staff.name+' ('+staff.role.replace('_',' ')+')';
   CANADMIN=staff.role==='admin';
@@ -934,11 +957,12 @@ async function loadFacilities(){
   var d=await api('/staff/pharmacy/facility-options');FAC=d.success?d.facilities:[];
   var s=$('fp');s.textContent='';var o=add(s,'option','Type a new pharmacy below');o.value='';
   FAC.forEach(function(f,i){var e=add(s,'option',f.name+(f.address?' - '+f.address:''));e.value=String(i)});
+  renderWaiting();
 }
 async function loadStaff(){
   var d=await api('/staff/users');STAFF=(d.success&&d.staff)||[];
 }
-$('fp').onchange=function(){var f=FAC[Number($('fp').value)];if(!f)return;$('fn').value=f.name;$('fa').value=f.address||'';CUR.pickedId=f.id;refresh()};
+$('fp').onchange=function(){var f=FAC[Number($('fp').value)];if(!f)return;$('fn').value=f.name;$('fa').value=f.address||'';CUR.pickedId=f.id;if(f.lat!=null&&f.lng!=null){$('flat').value=f.lat;$('flng').value=f.lng;posSay()}refresh()};
 function newId(){var a=new Uint8Array(8);crypto.getRandomValues(a);return 'svc-'+Array.prototype.map.call(a,function(x){return ('0'+x.toString(16)).slice(-2)}).join('')}
 function openForm(p){
   CUR={id:p?p.facilityId:newId(),pickedId:null};
@@ -970,6 +994,7 @@ async function loadSettings(){
   var l=$('slist');l.textContent='';
   var d=await api('/staff/pharmacy/services');
   if(!d.success)return;
+  SERVS=d.services||[];renderWaiting();
   $('setup').classList.remove('hide');
   if(!d.services.length)add(l,'div',CANADMIN?'No pharmacy is set up yet. Choose "Add a pharmacy".':'No pharmacy is assigned to you yet. Ask an admin to assign you.','muted');
   d.services.forEach(function(p){

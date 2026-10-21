@@ -4628,7 +4628,7 @@ const booking = createBooking({
     const registered = await welliProviders();
     return [
       ...mobile.map((f) => ({ id: String(f._id), name: String(f.name), address: [f.address, f.city].filter(Boolean).join(', ') })),
-      ...registered.map((p) => ({ id: p.id, name: p.name, address: p.address })),
+      ...registered.map((p) => ({ id: p.id, name: p.name, address: p.address, registered: true, type: p.type, lat: p.lat, lng: p.lng })),
     ];
   },
   paystack: createPaystack(process.env.PAYSTACK_SECRET_KEY),
@@ -4670,7 +4670,7 @@ pharmacyOrders = createPharmacyOrders({
     const registered = await welliProviders();
     return [
       ...mobile.map((f) => ({ id: String(f._id), name: String(f.name), address: [f.address, f.city].filter(Boolean).join(', ') })),
-      ...registered.map((p) => ({ id: p.id, name: p.name, address: p.address })),
+      ...registered.map((p) => ({ id: p.id, name: p.name, address: p.address, registered: true, type: p.type, lat: p.lat, lng: p.lng })),
     ];
   },
   registeredIds: async () => new Set((await welliProviders()).map((p) => p.id)),

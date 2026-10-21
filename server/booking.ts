@@ -86,7 +86,7 @@ export interface BookingDeps {
   normalize: (doc: any) => Record<string, unknown>;
   push: (accountId: string, appointmentId: string, title: string, body: string) => Promise<void>;
   /** Facilities a provider profile can be set up for (the app's facility list and registered organisations). */
-  listFacilities: () => Promise<{ id: string; name: string; address: string }[]>;
+  listFacilities: () => Promise<{ id: string; name: string; address: string; registered?: boolean; type?: string; lat?: number | null; lng?: number | null }[]>;
   paystack: PaystackClient;
   /** Payment references that are not consultation bookings (pharmacy orders). Return true if handled. */
   otherReference?: (reference: string) => Promise<boolean>;
