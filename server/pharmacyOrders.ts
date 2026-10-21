@@ -6,6 +6,7 @@
 // on it. Nothing leaves the pharmacy until the payment rule for the chosen method is met.
 // Prescription photos are sealed in our own database and never sent to a third party.
 
+import { cleanSubaccount, onlineAllowed, splitFor } from './paystackSplit';
 import crypto from 'crypto';
 import mongoose from 'mongoose';
 import { Request, RequestHandler, Response, Router } from 'express';
@@ -400,7 +401,7 @@ export function createPharmacyOrders(deps: PharmacyDeps) {
       const p = await price(o, req.body || {});
       if (p.ok === false) return res.status(p.status).json({ success: false, message: p.message, code: p.code });
       const methods = (['online', 'on_delivery', 'at_pickup'] as PayMethod[]).filter(
-        (m) => decidePayment({ method: m, fulfilment: p.fulfilment, svc: terms(p.svc), gatewayConfigured: deps.paystack.configured }).ok
+        (m) => decidePayment({ method: m, fulfilment: p.fulfilment, svc: terms(p.svc), gatewayConfigured: deps.paystack.configured && onlineAllowed(p.svc?.paystackSubaccount) }).ok
       );
       res.json({
         success: true,
@@ -430,7 +431,7 @@ export function createPharmacyOrders(deps: PharmacyDeps) {
 
       const method = b.paymentMethod as PayMethod;
       const hmoIn = b.hmo && typeof b.hmo === 'object' ? b.hmo : {};
-      const decision = decidePayment({ method, fulfilment, svc: terms(svc), gatewayConfigured: deps.paystack.configured, hmoProvider: clip(hmoIn.provider, 80) });
+      const decision = decidePayment({ method, fulfilment, svc: terms(svc), gatewayConfigured: deps.paystack.configured && onlineAllowed(svc?.paystackSubaccount), hmoProvider: clip(hmoIn.provider, 80) });
       if (decision.ok === false) {
         const no = decision as { message: string; code: string };
         return res.status(409).json({ success: false, message: no.message, code: no.code });
@@ -488,7 +489,14 @@ export function createPharmacyOrders(deps: PharmacyDeps) {
 
   async function startPayment(o: any, email: string): Promise<string> {
     const reference = `wo-${o._id}-${crypto.randomBytes(3).toString('hex')}`;
-    const init = await deps.paystack.initialize({ email, amountMinor: o.dueMinor, reference, metadata: { orderId: String(o._id), orderRef: orderRef(o._id) } });
+    const svc: any = await PharmacyService.findOne({ facilityId: o.pharmacyId }).select('paystackSubaccount').lean();
+    const init = await deps.paystack.initialize({
+      email,
+      amountMinor: o.dueMinor,
+      reference,
+      metadata: { orderId: String(o._id), orderRef: orderRef(o._id) },
+      split: splitFor({ subaccount: svc?.paystackSubaccount, amountMinor: o.dueMinor }),
+    });
     o.paymentRef = reference;
     o.paymentStartedAt = new Date(now());
     await o.save();
@@ -728,7 +736,7 @@ export function createPharmacyOrders(deps: PharmacyDeps) {
       if (req.body?.decision === 'approve') {
         const covered = Number(req.body?.coveredMinor);
         if (!Number.isInteger(covered) || covered <= 0) return res.status(400).json({ success: false, message: 'Enter the amount the HMO covers, in kobo' });
-        const next = afterHmoApproval({ totalMinor: o.totalMinor, coveredMinor: covered, fulfilment: o.fulfilment, svc: terms(svc || {}), gatewayConfigured: deps.paystack.configured });
+        const next = afterHmoApproval({ totalMinor: o.totalMinor, coveredMinor: covered, fulfilment: o.fulfilment, svc: terms(svc || {}), gatewayConfigured: deps.paystack.configured && onlineAllowed(svc?.paystackSubaccount) });
         o.hmo = { ...(o.hmo?.toObject?.() || o.hmo || {}), status: 'approved', coveredMinor: Math.min(covered, o.totalMinor), decidedBy: staffName(req) };
         o.dueMinor = next.dueMinor;
         o.status = next.status;
@@ -935,6 +943,11 @@ export function createPharmacyOrders(deps: PharmacyDeps) {
       updatedBy: staffName(req),
     };
     if (isAdmin) Object.assign(set, { name, address: clip(b.address, 200), lat, lng, staffIds });
+    if (isAdmin && b.paystackSubaccount !== undefined) {
+      const code = cleanSubaccount(b.paystackSubaccount);
+      if (code === null) return res.status(400).json({ success: false, message: 'The Paystack subaccount code looks like ACCT_ followed by letters and numbers' });
+      set.paystackSubaccount = code;
+    }
     try {
       const svc = await PharmacyService.findOneAndUpdate({ facilityId }, { $set: set }, { upsert: isAdmin, new: true, setDefaultsOnInsert: true });
       res.json({ success: true, service: svc });

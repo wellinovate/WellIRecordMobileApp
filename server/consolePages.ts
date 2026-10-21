@@ -431,6 +431,12 @@ const CONSULT_HTML = String.raw`
       <label for="fh">Health plans (HMOs) you accept</label><input id="fh" placeholder="Hygeia, AXA Mansard" autocomplete="off">
       <p class="muted">Type the plan names the way patients see them, separated by commas. Leave empty if you accept none. Your team confirms each plan booking below.</p>
 
+      <div id="subwrap" class="hide">
+        <h3 class="sec">Where online payments go</h3>
+        <label for="fsub">Paystack subaccount code</label><input id="fsub" placeholder="ACCT_xxxxxxxxxx" autocomplete="off">
+        <p class="muted">Create the subaccount in the Paystack dashboard (Settings, Subaccounts) with this clinic's bank account, then paste its code here. Leave empty to settle to Wellinovate's own account.</p>
+      </div>
+
       <div id="staffwrap" class="hide">
         <h3 class="sec">Who can manage this clinic</h3>
         <p class="muted">These people can change prices and hours and answer plan bookings for this clinic only.</p>
@@ -568,7 +574,8 @@ function openForm(p){
   var locked=!CANADMIN;
   ['fn','fa','fs'].forEach(function(id){$(id).disabled=locked});
   $('lockedNote').classList.toggle('hide',!locked);
-  $('staffwrap').classList.toggle('hide',!CANADMIN);
+  $('staffwrap').classList.toggle('hide',!CANADMIN);$('subwrap').classList.toggle('hide',!CANADMIN);
+  $('fsub').value=p?(p.paystackSubaccount||''):'';
   $('fn').value=p?p.facilityName:'';$('fa').value=p?(p.facilityAddress||''):'';$('fs').value=p?(p.specialty||''):'';
   $('oi').checked=p?!!p.offersInPerson:true;$('ov').checked=p?!!p.offersVirtual:false;
   $('fpi').value=p?naira(p.feeInPersonMinor):'';$('fpv').value=p?naira(p.feeVirtualMinor):'';
@@ -621,7 +628,7 @@ $('b-save').onclick=async function(){
     acceptsHmo:hmoList(),payAtVisit:$('pv').checked,onlinePayment:$('po').checked,
     slotMinutes:Number($('fm').value),weekly:h.weekly,active:$('fz').checked
   };
-  if(CANADMIN){var ids=[];Array.prototype.forEach.call($('staffbox').querySelectorAll('input'),function(c){if(c.checked)ids.push(c.value)});body.staffIds=ids}
+  if(CANADMIN){var ids=[];Array.prototype.forEach.call($('staffbox').querySelectorAll('input'),function(c){if(c.checked)ids.push(c.value)});body.staffIds=ids;body.paystackSubaccount=$('fsub').value}
   var id=CUR.pickedId||CUR.id;
   var d=await api('/staff/providers/'+encodeURIComponent(id)+'/service',{method:'PUT',body:body});
   if(!d.success){say('e-save',d.message||'Could not save');return}
@@ -722,6 +729,12 @@ const PHARMACY_HTML = String.raw`
       <label class="inl"><input type="checkbox" class="chk" id="pp" checked> Cash when collected at the pharmacy</label>
       <label for="fh">Health plans (HMOs) you accept</label><input id="fh" placeholder="Hygeia, AXA Mansard" autocomplete="off">
       <p class="muted">Type the plan names separated by commas. Leave empty if you accept none.</p>
+
+      <div id="subwrap" class="hide">
+        <h3 class="sec">Where online payments go</h3>
+        <label for="fsub">Paystack subaccount code</label><input id="fsub" placeholder="ACCT_xxxxxxxxxx" autocomplete="off">
+        <p class="muted">Create the subaccount in the Paystack dashboard (Settings, Subaccounts) with this pharmacy's bank account, then paste its code here. Leave empty to settle to Wellinovate's own account.</p>
+      </div>
 
       <div id="staffwrap" class="hide">
         <h3 class="sec">Who can manage this pharmacy</h3>
@@ -945,7 +958,8 @@ function openForm(p){
   $('adminpick').classList.toggle('hide',!(CANADMIN&&!p));
   var locked=!CANADMIN;
   ['fn','fa','flat','flng'].forEach(function(id){$(id).disabled=locked});
-  $('b-loc').classList.toggle('hide',locked);$('lockedNote').classList.toggle('hide',!locked);$('staffwrap').classList.toggle('hide',!CANADMIN);
+  $('b-loc').classList.toggle('hide',locked);$('lockedNote').classList.toggle('hide',!locked);$('staffwrap').classList.toggle('hide',!CANADMIN);$('subwrap').classList.toggle('hide',!CANADMIN);
+  $('fsub').value=p?(p.paystackSubaccount||''):'';
   $('fn').value=p?p.name:'';$('fa').value=p?(p.address||''):'';$('fph').value=p?(p.phone||''):'';
   $('flat').value=p&&p.lat!=null?p.lat:'';$('flng').value=p&&p.lng!=null?p.lng:'';
   $('de').checked=p?!!p.deliveryEnabled:true;$('pe').checked=p?p.pickupEnabled!==false:true;
@@ -990,7 +1004,7 @@ $('b-save').onclick=async function(){
     onlinePayment:$('po').checked,payOnDelivery:$('pd').checked,payAtPickup:$('pp').checked,
     acceptsHmo:hmoList(),active:$('fz').checked
   };
-  if(CANADMIN)body.staffIds=ids;
+  if(CANADMIN){body.staffIds=ids;body.paystackSubaccount=$('fsub').value}
   var d=await api('/staff/pharmacy/services/'+encodeURIComponent(CUR.pickedId||CUR.id),{method:'PUT',body:body});
   if(!d.success){say('e-save',d.message||'Could not save');return}
   note('Saved.',true);$('sform').classList.add('hide');loadSettings();
