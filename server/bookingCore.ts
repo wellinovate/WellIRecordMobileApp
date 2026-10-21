@@ -167,3 +167,43 @@ export function paystackSignatureOk(secret: string, rawBody: string | Buffer, he
 
 export const formatNaira = (minor: number) =>
   `₦${(minor / 100).toLocaleString('en-NG', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+
+const clipText = (v: unknown, n: number) => String(v ?? '').trim().slice(0, n);
+const feeMinor = (v: unknown): number | undefined | 'bad' => {
+  if (v === undefined || v === null || v === '') return undefined;
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 0 && n <= 100_000_000 ? n : 'bad';
+};
+
+/**
+ * The fields a provider controls about how it takes bookings: visit types, fees, hours, slot length, HMOs,
+ * payment switches and the on/off switch. Shared by the staff page and the website bridge.
+ */
+export function parseServiceFields(b: any): { error: string } | { set: Record<string, unknown> } {
+  const w = cleanWeekly(b?.weekly ?? []);
+  if ('error' in w) return { error: w.error };
+  const fIn = feeMinor(b?.feeInPersonMinor);
+  const fVr = feeMinor(b?.feeVirtualMinor);
+  if (fIn === 'bad' || fVr === 'bad') return { error: 'Fees must be whole amounts in kobo' };
+  const offersInPerson = b?.offersInPerson !== false;
+  const offersVirtual = b?.offersVirtual === true;
+  if (offersInPerson && fIn === undefined) return { error: 'Set the in-person fee, or turn in-person visits off' };
+  if (offersVirtual && fVr === undefined) return { error: 'Set the virtual fee, or turn virtual visits off' };
+  const slotMinutes = Number(b?.slotMinutes ?? 30);
+  if (!Number.isInteger(slotMinutes) || slotMinutes < 10 || slotMinutes > 240) return { error: 'Slot length must be 10 to 240 minutes' };
+  const acceptsHmo = Array.isArray(b?.acceptsHmo) ? [...new Set(b.acceptsHmo.map((x: unknown) => clipText(x, 80)).filter(Boolean))].slice(0, 40) : [];
+  return {
+    set: {
+      offersInPerson,
+      offersVirtual,
+      feeInPersonMinor: fIn,
+      feeVirtualMinor: fVr,
+      acceptsHmo,
+      payAtVisit: b?.payAtVisit === true,
+      onlinePayment: b?.onlinePayment !== false,
+      slotMinutes,
+      weekly: w.weekly,
+      active: b?.active !== false,
+    },
+  };
+}

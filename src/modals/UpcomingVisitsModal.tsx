@@ -6,6 +6,7 @@ import { useTheme } from '../theme/ThemeContext';
 import type { WelliApp } from '../state/useWelliApp';
 import type { AppointmentItem } from '../services/careService';
 import { formatMinor } from '../services/wellipayService';
+import { WebVisitsSection } from './WebVisitsSection';
 
 const STATUS_LABEL: Record<string, string> = {
   requested: 'Awaiting confirmation',
@@ -146,6 +147,7 @@ export function UpcomingVisitsModal({ app }: { app: WelliApp }) {
       <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]}>
         <ModalHeader title="Upcoming visits" onClose={actions.closeUpcomingVisits} />
         <ScrollView contentContainerStyle={styles.content}>
+          <WebVisitsSection app={app} />
           <Text style={[styles.heading, { color: theme.muted }]}>UPCOMING</Text>
           {upcoming.length === 0 ? (
             <Text style={[styles.sub, { color: theme.muted }]}>No upcoming visits. Book one from the Care tab.</Text>

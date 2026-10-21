@@ -263,6 +263,15 @@ export function ProfileScreen({
 
           <SettingsRow
             icon="verify"
+            title="Website account"
+            subtitle="Link your WelliRecord website account to see website video visits here"
+            onPress={actions.openWebLink}
+          />
+
+          <Divider />
+
+          <SettingsRow
+            icon="verify"
             title="Link hospital records"
             subtitle="A hospital sent you a link to bring your records into WelliRecord"
             onPress={actions.openRecordLink}
