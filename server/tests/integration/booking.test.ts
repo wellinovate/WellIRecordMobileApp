@@ -30,10 +30,10 @@ describe('consultation booking against a real database', { skip: !hasDb && 'set 
     verify: async () => verifyResult,
   };
 
-  async function call(method: string, path: string, body?: any, user?: mongoose.Types.ObjectId) {
+  async function call(method: string, path: string, body?: any, user?: mongoose.Types.ObjectId, asStaff?: string) {
     const r = await fetch(`${base}${path}`, {
       method,
-      headers: { 'Content-Type': 'application/json', ...(user ? { 'x-test-user': String(user) } : {}) },
+      headers: { 'Content-Type': 'application/json', ...(user ? { 'x-test-user': String(user) } : {}), ...(asStaff ? { 'x-test-staff': asStaff } : {}) },
       body: body && method !== 'GET' ? JSON.stringify(body) : undefined,
     });
     let json: any = {};
@@ -83,7 +83,14 @@ describe('consultation booking against a real database', { skip: !hasDb && 'set 
     booking = createBooking({
       getAuthUserId: (req) => (req.headers['x-test-user'] as string) || null,
       limiter: (_q, _s, n) => n(),
-      requireStaff: () => (req, _res, next) => { (req as any).staff = { name: 'Test Staff', role: 'admin', legacy: false }; next(); },
+      requireStaff: (...roles: string[]) => (req, res, next) => {
+        // No header means an admin; "x-test-staff: <id>:<role>" signs in as that person.
+        const h = String(req.headers['x-test-staff'] || '');
+        const [id, role] = h ? h.split(':') : ['admin-1', 'admin'];
+        if (role !== 'admin' && !roles.includes(role)) return res.status(403).json({ success: false });
+        (req as any).staff = { id, name: h ? `Staff ${id}` : 'Test Staff', role, legacy: false };
+        next();
+      },
       callerCanBook: async () => true,
       accountEmail: async () => 'patient@example.com',
       normalize: (d: any) => ({ id: String(d._id), status: d.status, paymentStatus: d.paymentStatus, bookingRef: d.bookingRef, feeMinor: d.feeMinor }),
@@ -281,4 +288,38 @@ describe('consultation booking against a real database', { skip: !hasDb && 'set 
     const r = await confirm({ holdId: h.holdId, paymentMethod: 'in_person' });
     assert.equal(r.appointment.feeMinor, 1_000_000);
   });
+
+  it('lets a clinician change only their own clinic, and only the safe fields', async () => {
+    const fid = 'fac-scope';
+    const full = (over: any = {}) => ({
+      facilityName: 'Scope Clinic', facilityAddress: 'Wuse', specialty: 'GP', offersInPerson: true, offersVirtual: false,
+      feeInPersonMinor: 500_000, acceptsHmo: [], payAtVisit: true, onlinePayment: true, slotMinutes: 30,
+      weekly: [{ day: 1, start: '09:00', end: '12:00' }], ...over,
+    });
+    const put = (id: string, body: any, who?: string) => call('PUT', `/staff/providers/${id}/service`, body, undefined, who);
+    // Not assigned yet: refused, and a clinician cannot create a clinic.
+    assert.equal((await put(fid, full(), 'c1:clinician')).status, 403);
+    assert.equal((await put(fid, full(), undefined)).status, 200); // admin creates it
+    assert.equal((await put(fid, full({ staffIds: ['c1'] }), undefined)).status, 200); // admin assigns c1
+    // Assigned clinician: fees and hours change; name, address and staff do not.
+    const r = await put(fid, full({ facilityName: 'Hijacked', facilityAddress: 'Elsewhere', staffIds: ['c1', 'c2'], feeInPersonMinor: 700_000 }), 'c1:clinician');
+    assert.equal(r.status, 200);
+    assert.equal(r.service.feeInPersonMinor, 700_000);
+    assert.equal(r.service.facilityName, 'Scope Clinic');
+    assert.equal(r.service.facilityAddress, 'Wuse');
+    assert.deepEqual(r.service.staffIds, ['c1']);
+    // Another clinician cannot touch it or see it.
+    assert.equal((await put(fid, full(), 'c2:clinician')).status, 403);
+    assert.equal((await call('GET', `/staff/providers/${fid}/service`, undefined, undefined, 'c2:clinician')).status, 403);
+    const mine = await call('GET', '/staff/providers', undefined, undefined, 'c1:clinician');
+    assert.deepEqual(mine.providers.map((p: any) => p.facilityId), [fid]);
+    assert.equal(mine.providers[0].staffIds, undefined);
+    assert.equal(mine.canManageStaff, false);
+    const none = await call('GET', '/staff/providers', undefined, undefined, 'c2:clinician');
+    assert.equal(none.providers.length, 0);
+    // The facility list and role checks stay admin-only.
+    assert.equal((await call('GET', '/staff/facility-options', undefined, undefined, 'c1:clinician')).status, 403);
+    assert.equal((await put(fid, full(), 'p1:pharmacist')).status, 403);
+  });
+
 });

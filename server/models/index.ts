@@ -1063,6 +1063,8 @@ export interface IProviderService extends Document {
   /** day 0 = Sunday. start and end are Lagos local time, HH:MM. */
   weekly: { day: number; start: string; end: string }[];
   active: boolean;
+  /** Staff accounts allowed to manage this provider's fees, hours and HMO decisions. Admin always can. */
+  staffIds: string[];
   updatedBy?: string;
 }
 const ProviderServiceSchema = new Schema<IProviderService>(
@@ -1082,6 +1084,7 @@ const ProviderServiceSchema = new Schema<IProviderService>(
     slotMinutes: { type: Number, default: 30 },
     weekly: { type: [{ _id: false, day: Number, start: String, end: String }], default: [] },
     active: { type: Boolean, default: true },
+    staffIds: { type: [String], default: [] },
     updatedBy: { type: String },
   },
   { timestamps: true }

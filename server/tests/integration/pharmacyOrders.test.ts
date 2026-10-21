@@ -148,7 +148,8 @@ describe('pharmacy orders against a real database', { skip: !hasDb && 'set MONGO
   it('refuses delivery without fee bands or coordinates', async () => {
     assert.equal((await asAdmin('PUT', '/staff/pharmacy/services/ph-x', { name: 'X', feeBands: [], ...HERE })).status, 400);
     assert.equal((await asAdmin('PUT', '/staff/pharmacy/services/ph-x', { name: 'X', feeBands: [{ maxKm: 5, feeMinor: 100 }] })).status, 400);
-    assert.equal((await asA('PUT', '/staff/pharmacy/services/ph-1', { name: 'X' })).status, 403);
+    assert.equal((await asB('PUT', '/staff/pharmacy/services/ph-1', { feeBands: [{ maxKm: 5, feeMinor: 100 }] })).status, 403);
+    assert.equal((await asA('PUT', '/staff/pharmacy/services/ph-1', { feeBands: [] })).status, 400);
   });
 
   it('accepts a real image, refuses a disguised file, and keeps files private to the owner', async () => {
@@ -373,4 +374,21 @@ describe('pharmacy orders against a real database', { skip: !hasDb && 'set MONGO
     assert.equal(co.status, 409);
     assert.equal((await patient('GET', `/pharmacy-orders/${id}`)).order.status, 'expired');
   });
+
+  it('lets an assigned pharmacist change prices and payment options but not identity, position or staff', async () => {
+    const put = (id: string, body: any, who: any) => call('PUT', `/staff/pharmacy/services/${id}`, body, { staff: who });
+    const edit = { feeBands: [{ maxKm: 4, feeMinor: 120_000 }], deliveryEta: 'Same day', payOnDelivery: false, phone: '08000000000' };
+    const ok = await put('ph-1', { name: 'Renamed', address: 'Elsewhere', lat: 1, lng: 1, staffIds: [String(pharmacistB)], deliveryEnabled: true, pickupEnabled: true, ...edit }, pharmacistA);
+    assert.equal(ok.status, 200);
+    assert.equal(ok.service.feeBands[0].feeMinor, 120_000);
+    assert.equal(ok.service.deliveryEta, 'Same day');
+    assert.equal(ok.service.name, 'City Pharmacy');
+    assert.equal(ok.service.address, 'Central Area, Abuja');
+    assert.notEqual(ok.service.lat, 1);
+    assert.deepEqual(ok.service.staffIds, [String(pharmacistA)]);
+    // Not assigned, or a pharmacy that does not exist yet: refused.
+    assert.equal((await put('ph-1', edit, pharmacistB)).status, 403);
+    assert.equal((await put('ph-new', { name: 'New', ...edit }, pharmacistA)).status, 403);
+  });
+
 });

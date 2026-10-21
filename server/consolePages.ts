@@ -29,7 +29,25 @@ button.ok{background:#059669}button.no{background:#fff;color:#B91C1C;border:1px 
 .nt{margin-top:0}.sp{margin-left:8px}details{margin-top:10px}#rcodes{white-space:pre-line}#list{margin-top:14px}.gap{margin-top:18px}.hide{display:none}.top{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .muted{color:#64748B;font-size:12.5px}
 input.chk{width:auto;margin-right:6px}
-@media(max-width:560px){.row{grid-template-columns:1fr}}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.step{background:#F1F5F9;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.45}
+.step strong{display:block;margin-bottom:2px}
+h3.sec{font-size:14px;margin:22px 0 4px;padding-top:14px;border-top:1px solid #EEF2F6}
+label.inl{display:flex;align-items:center;gap:6px;font-weight:600;margin:10px 0 4px}
+label.inl input.chk{margin:0}
+.opt{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:4px 12px 12px}
+.days{display:grid}
+.day{display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:center;padding:8px 0;border-top:1px solid #EEF2F6}
+.day label.inl{margin:0}
+.win{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13.5px;margin:2px 0}
+.win input{width:auto}
+.closed{color:#94A3B8;font-size:13px}
+button.sm{padding:5px 10px;margin:0 0 0 6px;font-size:12px}
+.ready{list-style:none;padding:0;margin:8px 0}
+.ready li{font-size:13.5px;padding:3px 0}
+.ready li.okk{color:#065F46}.ready li.bad{color:#991B1B}
+.preview{background:#F8FAFC;border:1px dashed #CBD5E1;border-radius:10px;padding:12px;font-size:13.5px;line-height:1.6}
+@media(max-width:560px){.row,.steps{grid-template-columns:1fr}.day{grid-template-columns:1fr}}
 `;
 
 // Sign-in flow shared by both pages. Calls window.onSignedIn(staff) once a full session exists.
@@ -354,119 +372,260 @@ async function decide(id,what){
 
 const CONSULT_HTML = String.raw`
 <div class="wrap">
-  <div class="top"><div><h1>Consultation booking</h1><div class="sub">Fees, weekly hours and HMO confirmations for patient bookings.</div></div><div id="who" class="muted hide"></div></div>
+  <div class="top"><div><h1>Consultation booking</h1><div class="sub">Set your prices and opening hours so patients can book you in the app.</div></div><div id="who" class="muted hide"></div></div>
   ${'__AUTH__'}
   <div id="app" class="hide">
     <div id="note" class="msg hide"></div>
-    <button class="alt" id="b-out">Sign out</button>
-    <div class="card gap">
-      <div class="top"><h2>Awaiting HMO confirmation</h2><button class="alt nt" id="b-href">Refresh</button></div>
-      <div id="hmo"></div>
+    <div class="card">
+      <h2>How this works</h2>
+      <div class="steps">
+        <div class="step"><strong>1. Choose your clinic</strong>Pick it from the list below, or add it if you are the admin.</div>
+        <div class="step"><strong>2. Fill in prices and hours</strong>Tick the days you are open and set the times. Fees are in naira.</div>
+        <div class="step"><strong>3. Check and save</strong>The checklist shows what patients will see and what is still missing.</div>
+      </div>
+      <p class="muted gap">You can change only the clinics assigned to you. Every save is recorded under your name.</p>
     </div>
     <div class="card">
-      <h2>Providers</h2>
+      <div class="top"><h2>Your clinics</h2><button class="nt hide" id="b-new">Add a clinic</button></div>
       <div id="plist"></div>
     </div>
-    <div class="card" id="form">
-      <h2 id="ft">Provider settings</h2>
-      <p class="muted">Only an admin can save. Fees are in naira. Patients see only the fee for the visit type they choose.</p>
-      <label for="fp">Pick a facility</label><select id="fp"></select>
-      <div class="row">
-        <div><label for="fn">Name</label><input id="fn"></div>
-        <div><label for="fa">Address</label><input id="fa"></div>
-        <div><label for="fs">Specialty</label><input id="fs" placeholder="Primary care"></div>
-        <div><label for="fi">Facility ID (set by the picker)</label><input id="fi"></div>
+    <div class="card hide" id="form">
+      <div class="top"><h2 id="ft">Clinic settings</h2><button class="alt nt" id="b-close">Close</button></div>
+
+      <div id="adminpick" class="hide">
+        <label for="fp">Start from a listed facility (optional)</label><select id="fp"></select>
       </div>
+      <h3 class="sec">About the clinic</h3>
       <div class="row">
-        <div><label><input type="checkbox" class="chk" id="oi" checked> Offers in-person visits</label><label for="fpi">In-person fee (naira)</label><input id="fpi" inputmode="decimal"></div>
-        <div><label><input type="checkbox" class="chk" id="ov"> Offers virtual visits</label><label for="fpv">Virtual fee (naira)</label><input id="fpv" inputmode="decimal"></div>
+        <div><label for="fn">Clinic name</label><input id="fn" autocomplete="off"></div>
+        <div><label for="fa">Address</label><input id="fa" autocomplete="off"></div>
       </div>
-      <label for="fh">HMOs accepted (separated by commas, spelled as patients' plans are)</label><input id="fh" placeholder="Hygeia, AXA Mansard">
+      <label for="fs">What kind of care (for example, Primary care)</label><input id="fs" autocomplete="off">
+      <p class="muted hide" id="lockedNote">Name and address are set by an admin. Ask them if these are wrong.</p>
+
+      <h3 class="sec">Visits and prices</h3>
       <div class="row">
-        <div><label><input type="checkbox" class="chk" id="pv"> Allow pay at the visit</label></div>
-        <div><label><input type="checkbox" class="chk" id="po" checked> Allow online payment</label></div>
+        <div class="opt">
+          <label class="inl"><input type="checkbox" class="chk" id="oi" checked> In-person visits</label>
+          <label for="fpi">Price (naira)</label><input id="fpi" inputmode="decimal" placeholder="5000">
+        </div>
+        <div class="opt">
+          <label class="inl"><input type="checkbox" class="chk" id="ov"> Video visits</label>
+          <label for="fpv">Price (naira)</label><input id="fpv" inputmode="decimal" placeholder="3000">
+        </div>
       </div>
-      <label for="fm">Slot length (minutes)</label><input id="fm" value="30" inputmode="numeric">
-      <label for="fw">Weekly hours, one window per line, Lagos time. Example: Mon 09:00-13:00</label>
-      <textarea id="fw" rows="6" placeholder="Mon 09:00-13:00&#10;Mon 14:00-17:00&#10;Wed 09:00-13:00"></textarea>
-      <label><input type="checkbox" class="chk" id="fz" checked> Taking bookings</label>
-      <button id="b-save">Save provider</button><div class="err" id="e-save"></div>
+      <label for="fm">Length of each visit</label>
+      <select id="fm">
+        <option value="15">15 minutes</option><option value="20">20 minutes</option><option value="30" selected>30 minutes</option>
+        <option value="45">45 minutes</option><option value="60">1 hour</option>
+      </select>
+
+      <h3 class="sec">Opening hours</h3>
+      <p class="muted">Tick the days you see patients. Times are Nigerian time. Use "Add a break" if you close for lunch.</p>
+      <div class="days" id="days"></div>
+      <button class="alt" id="b-copy">Copy Monday to Tuesday-Friday</button>
+
+      <h3 class="sec">How patients can pay</h3>
+      <label class="inl"><input type="checkbox" class="chk" id="po" checked> Online, by card or transfer</label>
+      <label class="inl"><input type="checkbox" class="chk" id="pv"> At the clinic, when they arrive</label>
+      <label for="fh">Health plans (HMOs) you accept</label><input id="fh" placeholder="Hygeia, AXA Mansard" autocomplete="off">
+      <p class="muted">Type the plan names the way patients see them, separated by commas. Leave empty if you accept none. Your team confirms each plan booking below.</p>
+
+      <div id="staffwrap" class="hide">
+        <h3 class="sec">Who can manage this clinic</h3>
+        <p class="muted">These people can change prices and hours and answer plan bookings for this clinic only.</p>
+        <div id="staffbox"></div>
+      </div>
+
+      <h3 class="sec">Checklist</h3>
+      <ul class="ready" id="ready"></ul>
+      <div class="preview" id="preview"></div>
+
+      <label class="inl gap"><input type="checkbox" class="chk" id="fz" checked> Patients can book this clinic</label>
+      <button id="b-save">Save</button><div class="err" id="e-save"></div>
     </div>
+    <div class="card gap">
+      <div class="top"><h2>Plan bookings waiting for you</h2><button class="alt nt" id="b-href">Refresh</button></div>
+      <p class="muted">Patients who chose a health plan. Approve once the plan confirms cover. Decline to free the time.</p>
+      <div id="hmo"></div>
+    </div>
+    <button class="alt" id="b-out">Sign out</button>
   </div>
 </div>`;
 
 const CONSULT_JS = String.raw`
-var DAYS=['sun','mon','tue','wed','thu','fri','sat'];
+var DAYNAMES=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+var ORDER=[1,2,3,4,5,6,0];
+var DAYROWS={};
+var CUR=null,ME=null,CANADMIN=false,STAFFLIST=[];
 function add(parent,tag,text,cls){var e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;parent.appendChild(e);return e}
-function note(t,good){var n=$('note');n.textContent=t;n.className='msg '+(good?'good':'bad');setTimeout(function(){n.className='msg hide'},6000)}
+function note(t,good){var n=$('note');n.textContent=t;n.className='msg '+(good?'good':'bad');n.scrollIntoView();setTimeout(function(){n.className='msg hide'},6000)}
 function naira(minor){return minor==null?'':String(minor/100)}
+function money(minor){return '₦'+(Number(minor||0)/100).toLocaleString()}
 function toMinor(v){v=String(v||'').replace(/[^0-9.]/g,'');if(!v)return undefined;return Math.round(parseFloat(v)*100)}
-function parseHours(text){
-  var out=[];var lines=String(text||'').split('\n');
-  for(var i=0;i<lines.length;i++){
-    var l=lines[i].trim().toLowerCase();if(!l)continue;
-    var m=/^([a-z]{3})[a-z]*\s+(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})$/.exec(l);
-    var d=m?DAYS.indexOf(m[1]):-1;
-    if(!m||d<0)return {error:'Line '+(i+1)+' should look like: Mon 09:00-13:00'};
-    out.push({day:d,start:m[2],end:m[3]});
+function newId(){var a=new Uint8Array(8);crypto.getRandomValues(a);return 'svc-'+Array.prototype.map.call(a,function(x){return ('0'+x.toString(16)).slice(-2)}).join('')}
+function timeInput(v){var i=document.createElement('input');i.type='time';i.value=v||'';i.step='300';return i}
+
+function buildDays(){
+  var box=$('days');box.textContent='';DAYROWS={};
+  ORDER.forEach(function(d){
+    var row=add(box,'div',null,'day');
+    var lab=add(row,'label',null,'inl');var cb=add(lab,'input');cb.type='checkbox';cb.className='chk';lab.appendChild(document.createTextNode(DAYNAMES[d]));
+    var cell=add(row,'div');
+    var closed=add(cell,'span','Closed','closed');
+    var w1=add(cell,'div',null,'win hide');w1.appendChild(document.createTextNode('From '));var a1=timeInput('09:00');w1.appendChild(a1);w1.appendChild(document.createTextNode(' to '));var b1=timeInput('17:00');w1.appendChild(b1);
+    var more=add(w1,'button','Add a break','alt sm');
+    var w2=add(cell,'div',null,'win hide');w2.appendChild(document.createTextNode('Back from '));var a2=timeInput('14:00');w2.appendChild(a2);w2.appendChild(document.createTextNode(' to '));var b2=timeInput('17:00');w2.appendChild(b2);
+    var less=add(w2,'button','Remove break','alt sm');
+    var r={cb:cb,closed:closed,w1:w1,w2:w2,a1:a1,b1:b1,a2:a2,b2:b2,two:false};
+    function show(){closed.classList.toggle('hide',cb.checked);w1.classList.toggle('hide',!cb.checked);w2.classList.toggle('hide',!(cb.checked&&r.two));more.classList.toggle('hide',r.two);refresh()}
+    r.show=show;
+    cb.onchange=show;more.onclick=function(){r.two=true;if(b1.value==='17:00')b1.value='13:00';show()};
+    less.onclick=function(){r.two=false;show()};
+    [a1,b1,a2,b2].forEach(function(i){i.onchange=refresh});
+    DAYROWS[d]=r;
+  });
+}
+function setDay(d,windows){
+  var r=DAYROWS[d];r.cb.checked=windows.length>0;r.two=windows.length>1;
+  if(windows[0]){r.a1.value=windows[0].start;r.b1.value=windows[0].end}
+  if(windows[1]){r.a2.value=windows[1].start;r.b2.value=windows[1].end}
+  r.show();
+}
+function readHours(){
+  var out=[];
+  for(var k=0;k<ORDER.length;k++){
+    var d=ORDER[k],r=DAYROWS[d];if(!r.cb.checked)continue;
+    var wins=[[r.a1.value,r.b1.value]];if(r.two)wins.push([r.a2.value,r.b2.value]);
+    for(var j=0;j<wins.length;j++){
+      var s=wins[j][0],e=wins[j][1];
+      if(!s||!e)return {error:DAYNAMES[d]+': set both a start and an end time.'};
+      if(e<=s)return {error:DAYNAMES[d]+': the end time must be after the start time.'};
+      out.push({day:d,start:s,end:e});
+    }
+    if(r.two&&wins[1][0]<wins[0][1])return {error:DAYNAMES[d]+': the break must come before the second period starts.'};
   }
   return {weekly:out};
 }
-function hoursText(w){return (w||[]).map(function(x){var n=DAYS[x.day];return n.charAt(0).toUpperCase()+n.slice(1)+' '+x.start+'-'+x.end}).join('\n')}
-var FAC=[];
-window.onSignedIn=function(staff){
-  $('app').classList.remove('hide');$('who').classList.remove('hide');$('who').textContent=staff.name+' ('+staff.role.replace('_',' ')+')';
-  loadFacilities();loadProviders();loadHmo();
-};
-$('b-out').onclick=signOut;$('b-href').onclick=function(){loadHmo()};
-async function loadFacilities(){
-  var d=await api('/staff/facility-options');FAC=d.success?d.facilities:[];
-  var s=$('fp');s.textContent='';var o=add(s,'option','Choose...');o.value='';
-  FAC.forEach(function(f,i){var e=add(s,'option',f.name+(f.address?' - '+f.address:''));e.value=String(i)});
+function hmoList(){return $('fh').value.split(',').map(function(x){return x.trim()}).filter(Boolean)}
+function summaryHours(w){
+  if(!w.length)return 'No opening hours yet';
+  var by={};w.forEach(function(x){(by[x.day]=by[x.day]||[]).push(x.start+'-'+x.end)});
+  return ORDER.filter(function(d){return by[d]}).map(function(d){return DAYNAMES[d].slice(0,3)+' '+by[d].join(', ')}).join(' · ');
 }
-$('fp').onchange=function(){
-  var f=FAC[Number($('fp').value)];if(!f)return;
-  $('fi').value=f.id;$('fn').value=f.name;$('fa').value=f.address||'';
+function refresh(){
+  var issues=[],good=[];
+  var h=readHours();
+  var name=$('fn').value.trim();
+  (name?good:issues).push(name?'Clinic name is set':'Add the clinic name');
+  var oi=$('oi').checked,ov=$('ov').checked;
+  if(!oi&&!ov)issues.push('Turn on at least one kind of visit');
+  if(oi){(toMinor($('fpi').value)?good:issues).push(toMinor($('fpi').value)?'In-person price is set':'Enter the in-person price')}
+  if(ov){(toMinor($('fpv').value)?good:issues).push(toMinor($('fpv').value)?'Video price is set':'Enter the video price')}
+  if(h.error)issues.push(h.error);else if(!h.weekly.length)issues.push('Tick at least one day you are open');else good.push('Opening hours are set');
+  if(!$('po').checked&&!$('pv').checked&&!hmoList().length)issues.push('Choose at least one way for patients to pay');else good.push('Payment is set');
+  var ul=$('ready');ul.textContent='';
+  issues.forEach(function(t){add(ul,'li','Needs attention: '+t,'bad')});
+  good.forEach(function(t){add(ul,'li','Done: '+t,'okk')});
+  var pv=$('preview');pv.textContent='';
+  add(pv,'div',name||'Your clinic');
+  var fees=[];if(oi&&toMinor($('fpi').value))fees.push('In person '+money(toMinor($('fpi').value)));if(ov&&toMinor($('fpv').value))fees.push('Video '+money(toMinor($('fpv').value)));
+  add(pv,'div',fees.join(' · ')||'No prices yet','muted');
+  add(pv,'div',h.weekly?summaryHours(h.weekly)+' · '+$('fm').value+' minute visits':'Check the opening hours','muted');
+  var pay=[];if($('po').checked)pay.push('online');if($('pv').checked)pay.push('at the clinic');if(hmoList().length)pay.push('health plan: '+hmoList().join(', '));
+  add(pv,'div','Pay '+(pay.join(' · ')||'-'),'muted');
+  return {ok:!issues.length,issues:issues};
+}
+['fn','fpi','fpv','fh'].forEach(function(id){$(id).oninput=refresh});
+['oi','ov','po','pv','fm','fz'].forEach(function(id){$(id).onchange=refresh});
+
+window.onSignedIn=function(staff){
+  ME=staff;$('app').classList.remove('hide');$('who').classList.remove('hide');$('who').textContent=staff.name+' ('+staff.role.replace('_',' ')+')';
+  buildDays();loadProviders();loadHmo();
 };
-function fill(p){
-  $('fi').value=p.facilityId;$('fn').value=p.facilityName;$('fa').value=p.facilityAddress||'';$('fs').value=p.specialty||'';
-  $('oi').checked=!!p.offersInPerson;$('ov').checked=!!p.offersVirtual;
-  $('fpi').value=naira(p.feeInPersonMinor);$('fpv').value=naira(p.feeVirtualMinor);
-  $('fh').value=(p.acceptsHmo||[]).join(', ');$('pv').checked=!!p.payAtVisit;$('po').checked=p.onlinePayment!==false;
-  $('fm').value=String(p.slotMinutes||30);$('fw').value=hoursText(p.weekly);$('fz').checked=p.active!==false;
-  $('form').scrollIntoView();
+$('b-out').onclick=signOut;$('b-href').onclick=function(){loadHmo()};$('b-close').onclick=function(){$('form').classList.add('hide')};
+$('b-copy').onclick=function(){
+  var m=DAYROWS[1];
+  [2,3,4,5].forEach(function(d){var r=DAYROWS[d];r.cb.checked=m.cb.checked;r.two=m.two;r.a1.value=m.a1.value;r.b1.value=m.b1.value;r.a2.value=m.a2.value;r.b2.value=m.b2.value;r.show()});
+  refresh();
+};
+$('b-new').onclick=function(){openForm(null)};
+
+var FAC=[];
+async function loadAdminLists(){
+  var f=await api('/staff/facility-options');FAC=f.success?f.facilities:[];
+  var s=$('fp');s.textContent='';var o=add(s,'option','Type a new clinic below');o.value='';
+  FAC.forEach(function(x,i){var e=add(s,'option',x.name+(x.address?' - '+x.address:''));e.value=String(i)});
+  var u=await api('/staff/users');STAFFLIST=(u.success&&u.staff||[]).filter(function(x){return (x.role==='clinician'||x.role==='records_officer')&&x.status!=='disabled'});
+}
+$('fp').onchange=function(){var f=FAC[Number($('fp').value)];if(!f)return;$('fn').value=f.name;$('fa').value=f.address||'';CUR.pickedId=f.id;refresh()};
+
+function openForm(p){
+  CUR={id:p?p.facilityId:newId(),isNew:!p,pickedId:null};
+  $('form').classList.remove('hide');
+  $('ft').textContent=p?p.facilityName:'Add a clinic';
+  $('adminpick').classList.toggle('hide',!(CANADMIN&&!p));
+  var locked=!CANADMIN;
+  ['fn','fa','fs'].forEach(function(id){$(id).disabled=locked});
+  $('lockedNote').classList.toggle('hide',!locked);
+  $('staffwrap').classList.toggle('hide',!CANADMIN);
+  $('fn').value=p?p.facilityName:'';$('fa').value=p?(p.facilityAddress||''):'';$('fs').value=p?(p.specialty||''):'';
+  $('oi').checked=p?!!p.offersInPerson:true;$('ov').checked=p?!!p.offersVirtual:false;
+  $('fpi').value=p?naira(p.feeInPersonMinor):'';$('fpv').value=p?naira(p.feeVirtualMinor):'';
+  $('fm').value=String(p?(p.slotMinutes||30):30);
+  if(![].some.call($('fm').options,function(o){return o.value===$('fm').value})){var o=add($('fm'),'option',$('fm').value+' minutes');o.value=$('fm').value}
+  $('fh').value=p?(p.acceptsHmo||[]).join(', '):'';
+  $('pv').checked=p?!!p.payAtVisit:false;$('po').checked=p?p.onlinePayment!==false:true;
+  $('fz').checked=p?p.active!==false:true;
+  buildDays();
+  var by={};((p&&p.weekly)||[]).forEach(function(x){(by[x.day]=by[x.day]||[]).push(x)});
+  ORDER.forEach(function(d){var w=(by[d]||[]).sort(function(a,b){return a.start<b.start?-1:1}).slice(0,2);setDay(d,w)});
+  if(!p)setDay(1,[]);
+  var box=$('staffbox');box.textContent='';
+  if(CANADMIN){
+    var ids=(p&&p.staffIds)||[];
+    STAFFLIST.forEach(function(u){var l=add(box,'label',null,'inl');var c=add(l,'input');c.type='checkbox';c.className='chk';c.value=String(u.id);c.checked=ids.indexOf(String(u.id))>=0;l.appendChild(document.createTextNode(u.name+' ('+u.email+')'))});
+    if(!STAFFLIST.length)add(box,'div','No clinician accounts yet. Add one in the clinic console first.','muted');
+  }
+  $('e-save').textContent='';
+  refresh();$('form').scrollIntoView();
 }
 async function loadProviders(){
   var l=$('plist');l.textContent='Loading...';
   var d=await api('/staff/providers');l.textContent='';
-  if(!d.success){add(l,'div',d.message||'Could not load providers.','msg bad');return}
-  if(!d.providers.length){add(l,'div','No provider is set up yet. Use the form below.','muted');return}
+  if(!d.success){add(l,'div',d.message||'Could not load clinics.','msg bad');return}
+  var first=!CANADMIN&&d.canManageStaff;
+  CANADMIN=!!d.canManageStaff;
+  if(CANADMIN){$('b-new').classList.remove('hide');if(first||!STAFFLIST.length)loadAdminLists()}
+  if(!d.providers.length){add(l,'div',CANADMIN?'No clinic is set up yet. Choose "Add a clinic".':'No clinic is assigned to you yet. Ask an admin to assign you.','muted');return}
   d.providers.forEach(function(p){
     var it=add(l,'div',null,'item');
     add(it,'strong',p.facilityName);
-    add(it,'span',p.active===false?'paused':'live','tag '+(p.active===false?'p':'v'));
+    add(it,'span',p.active===false?'paused':'open to bookings','tag '+(p.active===false?'p':'v'));
     var bits=[];
-    if(p.offersInPerson)bits.push('In person '+naira(p.feeInPersonMinor));
-    if(p.offersVirtual)bits.push('Virtual '+naira(p.feeVirtualMinor));
-    add(it,'div',bits.join(' · ')+' · '+(p.weekly||[]).length+' time windows','muted');
-    var b=add(it,'button','Edit','alt');b.onclick=function(){fill(p)};
+    if(p.offersInPerson)bits.push('In person '+money(p.feeInPersonMinor));
+    if(p.offersVirtual)bits.push('Video '+money(p.feeVirtualMinor));
+    add(it,'div',(bits.join(' · ')||'No prices')+' · '+summaryHours(p.weekly||[]),'muted');
+    var b=add(it,'button','Edit','alt');b.onclick=function(){openForm(p)};
   });
 }
 $('b-save').onclick=async function(){
   say('e-save','');
-  var h=parseHours($('fw').value);if(h.error){say('e-save',h.error);return}
-  var id=$('fi').value.trim();if(!id){say('e-save','Pick a facility first.');return}
+  var h=readHours();if(h.error){say('e-save',h.error);return}
+  var st=refresh();
+  if($('fz').checked&&!st.ok){say('e-save','Fix the items marked "Needs attention", or untick "Patients can book this clinic" to save a draft.');return}
   var body={
     facilityName:$('fn').value,facilityAddress:$('fa').value,specialty:$('fs').value,
     offersInPerson:$('oi').checked,offersVirtual:$('ov').checked,
-    feeInPersonMinor:toMinor($('fpi').value),feeVirtualMinor:toMinor($('fpv').value),
-    acceptsHmo:$('fh').value.split(',').map(function(x){return x.trim()}).filter(Boolean),
-    payAtVisit:$('pv').checked,onlinePayment:$('po').checked,
+    feeInPersonMinor:$('oi').checked?toMinor($('fpi').value):undefined,feeVirtualMinor:$('ov').checked?toMinor($('fpv').value):undefined,
+    acceptsHmo:hmoList(),payAtVisit:$('pv').checked,onlinePayment:$('po').checked,
     slotMinutes:Number($('fm').value),weekly:h.weekly,active:$('fz').checked
   };
+  if(CANADMIN){var ids=[];Array.prototype.forEach.call($('staffbox').querySelectorAll('input'),function(c){if(c.checked)ids.push(c.value)});body.staffIds=ids}
+  var id=CUR.pickedId||CUR.id;
   var d=await api('/staff/providers/'+encodeURIComponent(id)+'/service',{method:'PUT',body:body});
   if(!d.success){say('e-save',d.message||'Could not save');return}
-  note('Saved.',true);loadProviders();
+  note('Saved.',true);$('form').classList.add('hide');loadProviders();
 };
 async function loadHmo(){
   var l=$('hmo');l.textContent='Loading...';
@@ -476,15 +635,15 @@ async function loadHmo(){
   d.bookings.forEach(function(b){
     var it=add(l,'div',null,'item');
     add(it,'strong',b.facilityName+' · ref '+b.bookingRef);
-    add(it,'div',new Date(b.startsAt).toLocaleString()+' · '+(b.visitType==='video'?'Virtual':'In person')+' · fee '+naira(b.feeMinor),'muted');
-    if(b.hmo)add(it,'div','Plan: '+(b.hmo.policyLabel||'-')+' · pre-authorisation '+(b.hmo.preAuthId||'none')+(b.hmo.clientStatus?' ('+b.hmo.clientStatus+' on the patient phone, not verified)':''),'muted');
+    add(it,'div',new Date(b.startsAt).toLocaleString()+' · '+(b.visitType==='video'?'Video':'In person')+' · fee '+money(b.feeMinor),'muted');
+    if(b.hmo)add(it,'div','Plan: '+(b.hmo.policyLabel||'-')+' · pre-authorisation '+(b.hmo.preAuthId||'none')+(b.hmo.clientStatus?' ('+b.hmo.clientStatus+' on the patient phone, not checked by us)':''),'muted');
     var a=add(it,'button','Approve cover','ok');a.onclick=function(){decide(b.id,'approve')};
     var n=add(it,'button','Decline','no');n.className='no sp';n.onclick=function(){decide(b.id,'decline')};
   });
 }
 async function decide(id,what){
   var body={decision:what};
-  if(what==='approve'){var c=prompt('Approval code from the HMO (optional):');if(c===null)return;body.approvalCode=c}
+  if(what==='approve'){var c=prompt('Approval code from the health plan (optional):');if(c===null)return;body.approvalCode=c}
   else if(!confirm('Decline? The patient is told and the time is released.'))return;
   var d=await api('/staff/bookings/'+encodeURIComponent(id)+'/hmo',{method:'POST',body:body});
   if(d.success){note(what==='approve'?'Cover approved. The booking is confirmed.':'Declined. The time was released.',true);loadHmo()}else note(d.message||'Failed.',false);
@@ -519,34 +678,62 @@ const PHARMACY_HTML = String.raw`
     </div>
     <div class="card gap hide" id="detail"></div>
     <div class="card gap hide" id="setup">
-      <h2>Pharmacy settings</h2>
-      <p class="muted">Only an admin can save. Each pharmacy sets its own delivery fee by distance. Fees are in naira.</p>
+      <div class="top"><h2>Your pharmacies</h2><button class="nt hide" id="b-new">Add a pharmacy</button></div>
+      <p class="muted">Set your delivery prices and how patients can pay. You can change only the pharmacies assigned to you.</p>
       <div id="slist"></div>
-      <label for="fp">Pick a facility</label><select id="fp"></select>
-      <div class="row">
-        <div><label for="fn">Name</label><input id="fn"></div>
-        <div><label for="fa">Address</label><input id="fa"></div>
-        <div><label for="fph">Phone</label><input id="fph"></div>
-        <div><label for="fi">Facility ID (set by the picker)</label><input id="fi"></div>
-        <div><label for="flat">Latitude</label><input id="flat" inputmode="decimal" placeholder="9.0765"></div>
-        <div><label for="flng">Longitude</label><input id="flng" inputmode="decimal" placeholder="7.3986"></div>
+    </div>
+    <div class="card gap hide" id="sform">
+      <div class="top"><h2 id="ft">Pharmacy settings</h2><button class="alt nt" id="b-close">Close</button></div>
+      <div id="adminpick" class="hide">
+        <label for="fp">Start from a listed facility (optional)</label><select id="fp"></select>
       </div>
+      <h3 class="sec">About the pharmacy</h3>
       <div class="row">
-        <div><label><input type="checkbox" class="chk" id="de" checked> Delivers</label></div>
-        <div><label><input type="checkbox" class="chk" id="pe" checked> Offers pickup</label></div>
+        <div><label for="fn">Pharmacy name</label><input id="fn" autocomplete="off"></div>
+        <div><label for="fph">Phone number patients can call</label><input id="fph" inputmode="tel" autocomplete="off"></div>
       </div>
-      <label for="fb">Delivery fee bands, one per line: up to km, fee in naira. Example: 5km 1500</label>
-      <textarea id="fb" rows="4" placeholder="3km 1000&#10;8km 2000&#10;15km 3500"></textarea>
-      <label for="eta">Delivery time shown to patients</label><input id="eta" value="Within 2 to 4 hours">
-      <div class="row">
-        <div><label><input type="checkbox" class="chk" id="po" checked> Online payment</label></div>
-        <div><label><input type="checkbox" class="chk" id="pd"> Pay on delivery</label></div>
-        <div><label><input type="checkbox" class="chk" id="pp" checked> Pay at pickup</label></div>
+      <label for="fa">Address</label><input id="fa" autocomplete="off">
+      <div id="locwrap">
+        <label>Map position (used to work out delivery distance)</label>
+        <button class="alt" id="b-loc">Use my current location</button>
+        <div class="muted" id="locsay">No position saved.</div>
+        <details><summary class="muted">Enter the position by hand</summary>
+          <div class="row"><div><label for="flat">Latitude</label><input id="flat" inputmode="decimal" placeholder="9.0765"></div>
+          <div><label for="flng">Longitude</label><input id="flng" inputmode="decimal" placeholder="7.3986"></div></div>
+        </details>
       </div>
-      <label for="fh">HMOs accepted (separated by commas)</label><input id="fh" placeholder="Hygeia, AXA Mansard">
-      <label>Staff who can see these orders</label><div id="staffbox"></div>
-      <label><input type="checkbox" class="chk" id="fz" checked> Taking orders</label>
-      <button id="b-save">Save pharmacy</button><div class="err" id="e-save"></div>
+      <p class="muted hide" id="lockedNote">Name, address and map position are set by an admin. Ask them if these are wrong.</p>
+
+      <h3 class="sec">Delivery and pickup</h3>
+      <label class="inl"><input type="checkbox" class="chk" id="pe" checked> Patients can collect from the pharmacy</label>
+      <label class="inl"><input type="checkbox" class="chk" id="de" checked> We deliver</label>
+      <div id="delivery">
+        <label>Delivery price by distance</label>
+        <p class="muted">Each row is a distance from the pharmacy and the price up to that distance. Orders farther than the last row cannot be delivered.</p>
+        <div id="bands"></div>
+        <button class="alt" id="b-band">Add a row</button>
+        <label for="eta">Delivery time shown to patients</label>
+        <select id="eta"><option>Within 1 to 2 hours</option><option selected>Within 2 to 4 hours</option><option>Same day</option><option>Next day</option></select>
+      </div>
+
+      <h3 class="sec">How patients can pay</h3>
+      <label class="inl"><input type="checkbox" class="chk" id="po" checked> Online, by card or transfer</label>
+      <label class="inl"><input type="checkbox" class="chk" id="pd"> Cash when the order is delivered</label>
+      <label class="inl"><input type="checkbox" class="chk" id="pp" checked> Cash when collected at the pharmacy</label>
+      <label for="fh">Health plans (HMOs) you accept</label><input id="fh" placeholder="Hygeia, AXA Mansard" autocomplete="off">
+      <p class="muted">Type the plan names separated by commas. Leave empty if you accept none.</p>
+
+      <div id="staffwrap" class="hide">
+        <h3 class="sec">Who can manage this pharmacy</h3>
+        <p class="muted">These pharmacists see this pharmacy's orders and can change its prices.</p>
+        <div id="staffbox"></div>
+      </div>
+
+      <h3 class="sec">Checklist</h3>
+      <ul class="ready" id="ready"></ul>
+      <div class="preview" id="preview"></div>
+      <label class="inl gap"><input type="checkbox" class="chk" id="fz" checked> Patients can order from this pharmacy</label>
+      <button id="b-save">Save</button><div class="err" id="e-save"></div>
     </div>
   </div>
 </div>`;
@@ -560,8 +747,9 @@ function toMinor(v){v=String(v||'').replace(/[^0-9.]/g,'');if(!v)return undefine
 var ME=null,FAC=[],STAFF=[],OPEN=null;
 window.onSignedIn=function(staff){
   ME=staff;$('app').classList.remove('hide');$('who').classList.remove('hide');$('who').textContent=staff.name+' ('+staff.role.replace('_',' ')+')';
-  loadSettings();loadList();
-  if(staff.role==='admin'){$('setup').classList.remove('hide');loadFacilities();loadStaff()}
+  CANADMIN=staff.role==='admin';
+  loadList();loadSettings();
+  if(CANADMIN){$('b-new').classList.remove('hide');loadFacilities();loadStaff()}
 };
 $('b-out').onclick=signOut;$('b-ref').onclick=function(){loadList()};$('st').onchange=function(){loadList()};
 async function loadList(){
@@ -676,64 +864,136 @@ function codeForm(c,o,what,label){
   var i=add(c,'input');i.placeholder='Six digit code';i.inputMode='numeric';i.maxLength=6;
   var s=add(c,'button',label,'ok');s.onclick=function(){act(o.id,what,{code:i.value},'Done.')};
 }
-// ----- settings (admin) -----
-function parseBands(text){
-  var out=[],lines=String(text||'').split('\n');
-  for(var k=0;k<lines.length;k++){
-    var l=lines[k].trim().toLowerCase();if(!l)continue;
-    var m=/^(\d+(?:\.\d+)?)\s*km\s+(\d+(?:\.\d+)?)$/.exec(l);
-    if(!m)return {error:'Line '+(k+1)+' should look like: 5km 1500'};
-    out.push({maxKm:parseFloat(m[1]),feeMinor:Math.round(parseFloat(m[2])*100)});
+// ----- settings (assigned pharmacist or admin) -----
+var CUR=null,CANADMIN=false;
+function bandRow(km,fee){
+  var box=$('bands');var row=add(box,'div',null,'win');
+  row.appendChild(document.createTextNode('Up to '));
+  var k=add(row,'input');k.inputMode='decimal';k.value=km==null?'':km;k.placeholder='5';
+  row.appendChild(document.createTextNode(' km costs ₦'));
+  var f=add(row,'input');f.inputMode='decimal';f.value=fee==null?'':fee;f.placeholder='1500';
+  var x=add(row,'button','Remove','alt sm');x.onclick=function(){box.removeChild(row);refresh()};
+  k.oninput=refresh;f.oninput=refresh;
+}
+function readBands(){
+  var out=[],rows=$('bands').children;
+  for(var i=0;i<rows.length;i++){
+    var ins=rows[i].querySelectorAll('input');
+    var km=parseFloat(String(ins[0].value).replace(/[^0-9.]/g,'')),fee=toMinor(ins[1].value);
+    if(!(km>0)||fee===undefined)return {error:'Row '+(i+1)+': enter a distance in km and a price in naira.'};
+    out.push({maxKm:km,feeMinor:fee});
   }
   return {bands:out};
 }
-function bandsText(b){return (b||[]).map(function(x){return x.maxKm+'km '+(x.feeMinor/100)}).join('\n')}
+function readPos(){
+  var a=String($('flat').value).trim(),b=String($('flng').value).trim();
+  if(!a&&!b)return {};
+  var la=Number(a),lo=Number(b);
+  if(!(Math.abs(la)<=90)||!(Math.abs(lo)<=180)||!a||!b)return {error:'The map position is not valid. Use the button, or enter both numbers.'};
+  return {lat:la,lng:lo};
+}
+function hmoList(){return $('fh').value.split(',').map(function(x){return x.trim()}).filter(Boolean)}
+function refresh(){
+  var issues=[],good=[];
+  var name=$('fn').value.trim();(name?good:issues).push(name?'Pharmacy name is set':'Add the pharmacy name');
+  var de=$('de').checked,pe=$('pe').checked;
+  $('delivery').classList.toggle('hide',!de);
+  if(!de&&!pe)issues.push('Turn on delivery, pickup, or both');
+  var pos=readPos();
+  if(de){
+    var bd=readBands();
+    if(bd.error)issues.push(bd.error);else if(!bd.bands.length)issues.push('Add at least one delivery price row');else good.push('Delivery prices are set');
+    if(pos.error||pos.lat===undefined)issues.push('Save the pharmacy map position so delivery distance can be worked out');else good.push('Map position is set');
+  }
+  var pay=[];if($('po').checked)pay.push('online');if(de&&$('pd').checked)pay.push('cash on delivery');if(pe&&$('pp').checked)pay.push('cash at pickup');if(hmoList().length)pay.push('health plan: '+hmoList().join(', '));
+  if(!pay.length)issues.push('Choose at least one way for patients to pay');else good.push('Payment is set');
+  var ul=$('ready');ul.textContent='';
+  issues.forEach(function(t){add(ul,'li','Needs attention: '+t,'bad')});
+  good.forEach(function(t){add(ul,'li','Done: '+t,'okk')});
+  var pv=$('preview');pv.textContent='';
+  add(pv,'div',name||'Your pharmacy');
+  var how=[];if(pe)how.push('pickup');if(de)how.push('delivery ('+$('eta').value.toLowerCase()+')');
+  add(pv,'div',how.join(' and ')||'No way to receive orders yet','muted');
+  if(de){var b2=readBands();if(b2.bands)add(pv,'div',b2.bands.map(function(x){return 'up to '+x.maxKm+' km: '+money(x.feeMinor)}).join(' · ')||'No delivery prices yet','muted')}
+  add(pv,'div','Pay '+(pay.join(' · ')||'-'),'muted');
+  return {ok:!issues.length};
+}
+['fn','fph','fh','flat','flng'].forEach(function(id){$(id).oninput=function(){posSay();refresh()}});
+['de','pe','po','pd','pp','eta','fz'].forEach(function(id){$(id).onchange=refresh});
+function posSay(){var p=readPos();$('locsay').textContent=p.lat===undefined?'No position saved.':'Position set ('+p.lat.toFixed(4)+', '+p.lng.toFixed(4)+').'}
+$('b-band').onclick=function(){bandRow('','');refresh()};
+$('b-close').onclick=function(){$('sform').classList.add('hide')};
+$('b-new').onclick=function(){openForm(null)};
+$('b-loc').onclick=function(){
+  if(!navigator.geolocation){note('This browser cannot share a location. Enter the numbers by hand.',false);return}
+  say('locsay','Finding your position...');
+  navigator.geolocation.getCurrentPosition(function(pos){$('flat').value=pos.coords.latitude.toFixed(6);$('flng').value=pos.coords.longitude.toFixed(6);posSay();refresh()},function(){say('locsay','Could not get your position. Allow location for this page, or enter it by hand.')},{enableHighAccuracy:true,timeout:15000});
+};
 async function loadFacilities(){
   var d=await api('/staff/pharmacy/facility-options');FAC=d.success?d.facilities:[];
-  var s=$('fp');s.textContent='';var o=add(s,'option','Choose...');o.value='';
+  var s=$('fp');s.textContent='';var o=add(s,'option','Type a new pharmacy below');o.value='';
   FAC.forEach(function(f,i){var e=add(s,'option',f.name+(f.address?' - '+f.address:''));e.value=String(i)});
 }
 async function loadStaff(){
-  var d=await api('/staff/users');var box=$('staffbox');box.textContent='';
-  STAFF=(d.success&&d.staff)||[];
-  STAFF.filter(function(u){return u.role==='pharmacist'&&u.status!=='disabled'}).forEach(function(u){
-    var l=add(box,'label');var c=add(l,'input');c.type='checkbox';c.className='chk';c.value=String(u.id);l.appendChild(document.createTextNode(u.name+' ('+u.email+')'));
-  });
-  if(!box.childNodes.length)add(box,'div','No pharmacist accounts yet. Add one in the clinic console.','muted');
+  var d=await api('/staff/users');STAFF=(d.success&&d.staff)||[];
 }
-$('fp').onchange=function(){var f=FAC[Number($('fp').value)];if(!f)return;$('fi').value=f.id;$('fn').value=f.name;$('fa').value=f.address||''};
-function fill(p){
-  $('fi').value=p.facilityId;$('fn').value=p.name;$('fa').value=p.address||'';$('fph').value=p.phone||'';
-  $('flat').value=p.lat==null?'':p.lat;$('flng').value=p.lng==null?'':p.lng;
-  $('de').checked=!!p.deliveryEnabled;$('pe').checked=!!p.pickupEnabled;$('fb').value=bandsText(p.feeBands);$('eta').value=p.deliveryEta||'';
-  $('po').checked=p.onlinePayment!==false;$('pd').checked=!!p.payOnDelivery;$('pp').checked=p.payAtPickup!==false;
-  $('fh').value=(p.acceptsHmo||[]).join(', ');$('fz').checked=p.active!==false;
-  var ids=p.staffIds||[];Array.prototype.forEach.call($('staffbox').querySelectorAll('input'),function(c){c.checked=ids.indexOf(c.value)>=0});
-  $('setup').scrollIntoView();
+$('fp').onchange=function(){var f=FAC[Number($('fp').value)];if(!f)return;$('fn').value=f.name;$('fa').value=f.address||'';CUR.pickedId=f.id;refresh()};
+function newId(){var a=new Uint8Array(8);crypto.getRandomValues(a);return 'svc-'+Array.prototype.map.call(a,function(x){return ('0'+x.toString(16)).slice(-2)}).join('')}
+function openForm(p){
+  CUR={id:p?p.facilityId:newId(),pickedId:null};
+  $('sform').classList.remove('hide');$('ft').textContent=p?p.name:'Add a pharmacy';
+  $('adminpick').classList.toggle('hide',!(CANADMIN&&!p));
+  var locked=!CANADMIN;
+  ['fn','fa','flat','flng'].forEach(function(id){$(id).disabled=locked});
+  $('b-loc').classList.toggle('hide',locked);$('lockedNote').classList.toggle('hide',!locked);$('staffwrap').classList.toggle('hide',!CANADMIN);
+  $('fn').value=p?p.name:'';$('fa').value=p?(p.address||''):'';$('fph').value=p?(p.phone||''):'';
+  $('flat').value=p&&p.lat!=null?p.lat:'';$('flng').value=p&&p.lng!=null?p.lng:'';
+  $('de').checked=p?!!p.deliveryEnabled:true;$('pe').checked=p?p.pickupEnabled!==false:true;
+  $('bands').textContent='';
+  ((p&&p.feeBands)||[]).forEach(function(b){bandRow(b.maxKm,b.feeMinor/100)});
+  if(!p){bandRow(3,1000);bandRow(8,2000);bandRow(15,3500)}
+  var eta=p?(p.deliveryEta||'Within 2 to 4 hours'):'Within 2 to 4 hours';
+  if(![].some.call($('eta').options,function(o){return o.value===eta})){var o=add($('eta'),'option',eta);o.value=eta}
+  $('eta').value=eta;
+  $('po').checked=p?p.onlinePayment!==false:true;$('pd').checked=p?!!p.payOnDelivery:false;$('pp').checked=p?p.payAtPickup!==false:true;
+  $('fh').value=p?(p.acceptsHmo||[]).join(', '):'';$('fz').checked=p?p.active!==false:true;
+  var box=$('staffbox');box.textContent='';
+  if(CANADMIN){
+    var ids=(p&&p.staffIds)||[];var list=STAFF.filter(function(u){return u.role==='pharmacist'&&u.status!=='disabled'});
+    list.forEach(function(u){var l=add(box,'label',null,'inl');var c=add(l,'input');c.type='checkbox';c.className='chk';c.value=String(u.id);c.checked=ids.indexOf(String(u.id))>=0;l.appendChild(document.createTextNode(u.name+' ('+u.email+')'))});
+    if(!list.length)add(box,'div','No pharmacist accounts yet. Add one in the clinic console first.','muted');
+  }
+  $('e-save').textContent='';posSay();refresh();$('sform').scrollIntoView();
 }
 async function loadSettings(){
   var l=$('slist');l.textContent='';
   var d=await api('/staff/pharmacy/services');
-  if(!d.success||!d.services.length)return;
+  if(!d.success)return;
+  $('setup').classList.remove('hide');
+  if(!d.services.length)add(l,'div',CANADMIN?'No pharmacy is set up yet. Choose "Add a pharmacy".':'No pharmacy is assigned to you yet. Ask an admin to assign you.','muted');
   d.services.forEach(function(p){
-    var it=add(l,'div',null,'item');add(it,'strong',p.name);add(it,'span',p.active===false?'paused':'live','tag '+(p.active===false?'p':'v'));
-    if(ME&&ME.role==='admin'){var b=add(it,'button','Edit','alt');b.onclick=function(){fill(p)}}
+    var it=add(l,'div',null,'item');add(it,'strong',p.name);add(it,'span',p.active===false?'paused':'open to orders','tag '+(p.active===false?'p':'v'));
+    add(it,'div',[p.deliveryEnabled?'Delivers':'No delivery',p.pickupEnabled!==false?'Pickup':'No pickup'].join(' · '),'muted');
+    var b=add(it,'button','Edit','alt');b.onclick=function(){openForm(p)};
   });
 }
 $('b-save').onclick=async function(){
   say('e-save','');
-  var bd=parseBands($('fb').value);if(bd.error){say('e-save',bd.error);return}
-  var id=$('fi').value.trim();if(!id){say('e-save','Pick a facility first.');return}
+  var bd=readBands();if(bd.error){say('e-save',bd.error);return}
+  var pos=readPos();if(pos.error){say('e-save',pos.error);return}
+  var st=refresh();
+  if($('fz').checked&&!st.ok){say('e-save','Fix the items marked "Needs attention", or untick "Patients can order from this pharmacy" to save a draft.');return}
   var ids=[];Array.prototype.forEach.call($('staffbox').querySelectorAll('input'),function(c){if(c.checked)ids.push(c.value)});
   var body={
-    name:$('fn').value,address:$('fa').value,phone:$('fph').value,lat:$('flat').value.trim(),lng:$('flng').value.trim(),
+    name:$('fn').value,address:$('fa').value,phone:$('fph').value,lat:pos.lat===undefined?'':pos.lat,lng:pos.lng===undefined?'':pos.lng,
     deliveryEnabled:$('de').checked,pickupEnabled:$('pe').checked,feeBands:bd.bands,deliveryEta:$('eta').value,
     onlinePayment:$('po').checked,payOnDelivery:$('pd').checked,payAtPickup:$('pp').checked,
-    acceptsHmo:$('fh').value.split(',').map(function(x){return x.trim()}).filter(Boolean),staffIds:ids,active:$('fz').checked
+    acceptsHmo:hmoList(),active:$('fz').checked
   };
-  var d=await api('/staff/pharmacy/services/'+encodeURIComponent(id),{method:'PUT',body:body});
+  if(CANADMIN)body.staffIds=ids;
+  var d=await api('/staff/pharmacy/services/'+encodeURIComponent(CUR.pickedId||CUR.id),{method:'PUT',body:body});
   if(!d.success){say('e-save',d.message||'Could not save');return}
-  note('Saved.',true);loadSettings();
+  note('Saved.',true);$('sform').classList.add('hide');loadSettings();
 };
 `;
 
