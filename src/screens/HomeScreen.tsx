@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import {
+  ActivityIndicator,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -12,6 +14,7 @@ import { LogoMark } from '../components/Logo';
 import { OfflineSyncBanner } from '../components/OfflineSyncBanner';
 import { EmergencyScanAlertBanner } from '../components/EmergencyScanAlertBanner';
 import type { WelliApp } from '../state/useWelliApp';
+import { allergiesAnswered, NO_KNOWN_ALLERGIES } from '../utils/allergyStatus';
 
 const COLORS = {
   navy: '#082F67',
@@ -55,6 +58,26 @@ export function HomeScreen({ app }: { app: WelliApp }) {
       .length ?? 0;
 
   const isGuardianView = state.activeFamilyId !== 'me';
+
+  // The prompt shows until the person lists an allergy or confirms they have none.
+  const allergyAnswered = allergiesAnswered((activeMember as { allergies?: string }).allergies);
+  const [savingNone, setSavingNone] = useState(false);
+  const [allergyError, setAllergyError] = useState('');
+  const openAllergyEditor = () => {
+    actions.openPersonalInfo();
+    actions.startEditPersonalInfo();
+  };
+  const confirmNoAllergies = async () => {
+    setSavingNone(true);
+    setAllergyError('');
+    try {
+      await actions.savePersonalInfo({ ...(activeMember as any), allergies: NO_KNOWN_ALLERGIES });
+    } catch (err: any) {
+      setAllergyError(err?.message || 'Could not save. Try again.');
+    } finally {
+      setSavingNone(false);
+    }
+  };
 
   const recordId =
     (activeMember as { wrId?: string }).wrId ||
@@ -127,9 +150,11 @@ export function HomeScreen({ app }: { app: WelliApp }) {
           {/* =========================
               ALLERGY WARNING
           ========================== */}
+{!allergyAnswered && (
+          <View>
           <TouchableOpacity
             activeOpacity={0.8}
-            onPress={() => actions.setTab('profile')}
+            onPress={() => openAllergyEditor()}
             style={styles.allergyCard}
           >
             <WarningIcon />
@@ -140,10 +165,34 @@ export function HomeScreen({ app }: { app: WelliApp }) {
               </Text>
 
               <Text style={styles.allergySubtitle}>
-                Review your allergy status before your next visit.
+                Add your allergies, or confirm you have none.
               </Text>
             </View>
           </TouchableOpacity>
+          <View style={styles.allergyActions}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={confirmNoAllergies}
+              disabled={savingNone}
+              style={styles.allergyActionPrimary}
+            >
+              {savingNone ? (
+                <ActivityIndicator size="small" color={COLORS.white} />
+              ) : (
+                <Text style={styles.allergyActionPrimaryText}>I have no known allergies</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => openAllergyEditor()}
+              style={styles.allergyActionSecondary}
+            >
+              <Text style={styles.allergyActionSecondaryText}>Add allergies</Text>
+            </TouchableOpacity>
+          </View>
+          {allergyError ? <Text style={styles.allergyErrorText}>{allergyError}</Text> : null}
+          </View>
+          )}
 
           {/* =========================
               PATIENT RECORD CARD
@@ -665,6 +714,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
+  allergyActions: { flexDirection: 'row', gap: 10, marginTop: -4, marginBottom: 16 },
+  allergyActionPrimary: { flex: 1, minHeight: 44, borderRadius: 12, backgroundColor: COLORS.navy, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
+  allergyActionPrimaryText: { color: COLORS.white, fontSize: 13, fontWeight: '700' },
+  allergyActionSecondary: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, backgroundColor: COLORS.white },
+  allergyActionSecondaryText: { color: COLORS.navy, fontSize: 13, fontWeight: '700' },
+  allergyErrorText: { color: '#B91C1C', fontSize: 12.5, marginTop: -8, marginBottom: 12 },
   allergyCard: {
     minHeight: 52,
     backgroundColor: COLORS.warningBg,

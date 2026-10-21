@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { allergiesAnswered } from "../utils/allergyStatus";
 import {
   ScrollView,
   StatusBar,
@@ -124,9 +125,7 @@ export function RecordsScreen({ app }: { app: WelliApp }) {
     return typeof raw === "string" ? raw.trim() : "";
   }, [medical?.allergies]);
 
-  const hasAllergies =
-    Boolean(allergyText) &&
-    !/^(none|none on file|not recorded|unknown)$/i.test(allergyText);
+  const hasAllergies = allergiesAnswered(allergyText);
 
   const displayValue = (value: unknown, fallback = "Not provided") => {
     if (Array.isArray(value)) {

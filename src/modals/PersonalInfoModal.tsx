@@ -109,7 +109,7 @@ const EDITABLE_FIELDS: FieldDef[] = [
     key: 'allergies',
     label: 'Allergies',
     type: 'text',
-    placeholder: 'e.g. Penicillin, Peanuts, None',
+    placeholder: 'e.g. Penicillin, Peanuts, or No known allergies',
   },
   {
     key: 'conditions',
