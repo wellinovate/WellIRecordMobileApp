@@ -3,7 +3,8 @@
  * Node.js / Express backend with Mongoose, Termii SMS Gateway & NDPR Compliant Endpoints.
  */
 
-import { clinicPage, consultationsPage, ordersPage, pharmacyPage } from './consolePages';
+import { clinicPage, consultationsPage, ordersPage, pharmacyPage, visitsPage } from './consolePages';
+import { createClinicVisits } from './clinicVisits';
 import { deleteClerkIdentity, eraseChildData } from './accountErasure';
 import { accountDeletionPage } from './publicPages';
 import crypto from 'crypto';
@@ -3487,6 +3488,12 @@ app.get('/admin/orders', ordersPage);
 app.get('/clinic', clinicPage);
 app.get('/admin/consultations', consultationsPage);
 app.get('/admin/pharmacy', pharmacyPage);
+app.get('/clinic/visits', visitsPage);
+// The video client for /clinic/visits is served from this server so the page's CSP can stay on 'self'.
+app.get('/vendor/livekit-client.umd.js', (_req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.type('application/javascript').sendFile(require.resolve('livekit-client'));
+});
 app.get('/account-deletion', accountDeletionPage);
 
 // 5. Pre-signed Encrypted S3 Upload URL Generator
@@ -4630,6 +4637,18 @@ const booking = createBooking({
 bookingWebhook = booking.webhook;
 app.use('/api/v1', booking.router);
 booking.startSweeps();
+
+// Visits console: confirm or cancel requests, join the video room, file the summary. See clinicVisits.ts.
+app.use(
+  '/api/v1',
+  createClinicVisits({
+    requireStaff: staff.requireStaff,
+    releaseSlot: booking.releaseSlot,
+    push: async (accountId, appointmentId, title, body) => {
+      await appointmentChannels(accountId, appointmentId).push({ title, body });
+    },
+  }).router
+);
 
 // Pharmacy ordering (quote, checkout, payment, handover code). See pharmacyOrders.ts.
 pharmacyOrders = createPharmacyOrders({

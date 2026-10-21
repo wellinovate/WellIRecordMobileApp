@@ -42,6 +42,7 @@ label.inl input.chk{margin:0}
 .win{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13.5px;margin:2px 0}
 .win input{width:auto}
 .closed{color:#94A3B8;font-size:13px}
+.vid{background:#0F172A;border-radius:10px;min-height:240px;overflow:hidden;margin-bottom:10px}.vid video{width:100%;max-height:420px;display:block}.vid.small{min-height:0;max-width:200px}.vid.small video{max-height:140px}
 button.sm{padding:5px 10px;margin:0 0 0 6px;font-size:12px}
 .ready{list-style:none;padding:0;margin:8px 0}
 .ready li{font-size:13.5px;padding:3px 0}
@@ -997,24 +998,144 @@ $('b-save').onclick=async function(){
 };
 `;
 
-function page(title: string, body: string, js: string, nonce: string) {
+
+const VISITS_HTML = String.raw`
+<div class="wrap">
+  <div class="top"><div><h1>Visits</h1><div class="sub">Today and upcoming visits for your clinic. Confirm requests, join virtual visits and file the summary.</div></div><div id="who" class="muted hide"></div></div>
+  ${'__AUTH__'}
+  <div id="app" class="hide">
+    <div id="note" class="msg hide"></div>
+    <div id="room" class="card hide">
+      <div class="top"><h2 id="rt">Video visit</h2><button class="no" id="b-leave">Leave</button></div>
+      <div id="remote" class="vid"></div>
+      <div id="local" class="vid small"></div>
+      <div><button class="alt" id="b-mic">Mute</button><button class="alt sp" id="b-cam">Camera off</button></div>
+      <div class="muted gap">The patient joins from the app. Leave the room, then file the summary below.</div>
+    </div>
+    <div class="card">
+      <div class="top"><h2>Visits</h2><button class="alt" id="b-ref">Refresh</button></div>
+      <div id="list">Loading...</div>
+    </div>
+    <div id="sumcard" class="card hide">
+      <h2 id="st">Visit summary</h2>
+      <p class="muted">This is filed in the patient's record and the visit is marked completed. Add a diagnosis, notes, or both.</p>
+      <label for="sd">Diagnosis</label><input id="sd" maxlength="300">
+      <label for="sn">Notes</label><textarea id="sn" rows="6" maxlength="4000"></textarea>
+      <button id="b-sum">File summary</button><button class="alt sp" id="b-sumx">Cancel</button>
+      <div class="err" id="e-sum"></div>
+    </div>
+    <button class="alt" id="b-out">Sign out</button>
+  </div>
+</div>`;
+
+const VISITS_JS = String.raw`
+function add(parent,tag,text,cls){var e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;parent.appendChild(e);return e}
+function note(t,good){var n=$('note');n.textContent=t;n.className='msg '+(good?'good':'bad');n.scrollIntoView();setTimeout(function(){n.className='msg hide'},6000)}
+var ROOM=null,SUMID=null;
+window.onSignedIn=function(staff){
+  $('app').classList.remove('hide');$('who').classList.remove('hide');$('who').textContent=staff.name+' ('+staff.role.replace('_',' ')+')';load();
+};
+$('b-out').onclick=function(){leave();signOut()};$('b-ref').onclick=function(){load()};
+var STATUS={requested:'waiting for you to confirm',awaiting_payment:'waiting for payment',awaiting_hmo:'waiting for HMO cover',confirmed:'confirmed'};
+function when(v){if(!v)return '';var d=new Date(v);return d.toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Africa/Lagos'})}
+async function load(){
+  var l=$('list');l.textContent='Loading...';
+  var d=await api('/staff/visits');l.textContent='';
+  if(!d.success){add(l,'div',d.message||'Could not load visits.','msg bad');return}
+  if(!d.visits.length){add(l,'div','No visits from today onward.','muted');return}
+  d.visits.forEach(function(v){
+    var it=add(l,'div',null,'item');
+    add(it,'strong',v.patientName+' · '+(v.visitType==='video'?'virtual':'in person'));
+    add(it,'span',STATUS[v.status]||v.status,'tag '+(v.status==='confirmed'?'v':'p'));
+    add(it,'div',when(v.startsAt)+(v.startsAt?'':' '+v.timeSlot)+(v.bookingRef?' · ref '+v.bookingRef:'')+' · '+v.facilityName,'muted');
+    if(v.paymentStatus)add(it,'div','Payment: '+v.paymentStatus.replace(/_/g,' '),'muted');
+    if(v.reason)add(it,'div','Reason: '+v.reason,'muted');
+    if(v.status==='requested'){var c=add(it,'button','Confirm','ok sm');c.onclick=function(){act(v.id,'confirm')}}
+    if(v.visitType==='video'&&v.status==='confirmed'){
+      var j=add(it,'button','Join video visit','sm');j.disabled=!v.canJoin;j.onclick=function(){join(v)};
+      if(!v.canJoin)add(it,'div',v.joinMessage,'muted');
+      var f=add(it,'button',v.summaryDone?'Summary filed':'File summary','alt sm');f.disabled=v.summaryDone;f.onclick=function(){openSummary(v)};
+    }
+    var x=add(it,'button','Cancel visit','no sm');x.onclick=function(){if(confirm('Cancel this visit? The patient is told.'))act(v.id,'cancel')};
+  });
+}
+async function act(id,what){
+  var d=await api('/staff/visits/'+encodeURIComponent(id)+'/'+what,{method:'POST',body:{}});
+  if(d.success){note(what==='confirm'?'Confirmed. The patient is told within a minute.':(d.refundDue?'Cancelled. This visit was paid, so it is marked for a refund.':'Cancelled.'),true);load()}else note(d.message||'Failed.',false);
+}
+async function join(v){
+  if(ROOM)return;
+  if(!window.LivekitClient){note('The video library did not load. Refresh the page.',false);return}
+  var d=await api('/staff/visits/'+encodeURIComponent(v.id)+'/video-token',{method:'POST',body:{}});
+  if(!d.success){note(d.message||'Could not start the visit.',false);return}
+  var L=window.LivekitClient;
+  var room=new L.Room({adaptiveStream:true,dynacast:true});
+  room.on(L.RoomEvent.TrackSubscribed,function(track){var el=track.attach();$('remote').appendChild(el)});
+  room.on(L.RoomEvent.TrackUnsubscribed,function(track){track.detach().forEach(function(e){e.remove()})});
+  room.on(L.RoomEvent.Disconnected,function(){cleanup()});
+  try{
+    await room.connect(d.url,d.token);
+    await room.localParticipant.enableCameraAndMicrophone();
+  }catch(e){
+    try{room.disconnect()}catch(x){}
+    note('Could not join. Allow the camera and microphone for this page, then try again.',false);return;
+  }
+  ROOM=room;$('rt').textContent='Video visit with '+v.patientName;$('room').classList.remove('hide');$('room').scrollIntoView();
+  var pub=room.localParticipant.getTrackPublication(L.Track.Source.Camera);
+  if(pub&&pub.track){var lv=pub.track.attach();lv.muted=true;$('local').appendChild(lv)}
+  $('b-mic').textContent='Mute';$('b-cam').textContent='Camera off';
+}
+function cleanup(){ROOM=null;$('remote').textContent='';$('local').textContent='';$('room').classList.add('hide')}
+function leave(){if(ROOM){try{ROOM.disconnect()}catch(e){}}cleanup()}
+$('b-leave').onclick=function(){leave();load()};
+$('b-mic').onclick=async function(){if(!ROOM)return;var on=ROOM.localParticipant.isMicrophoneEnabled;await ROOM.localParticipant.setMicrophoneEnabled(!on);$('b-mic').textContent=on?'Unmute':'Mute'};
+$('b-cam').onclick=async function(){if(!ROOM)return;var on=ROOM.localParticipant.isCameraEnabled;await ROOM.localParticipant.setCameraEnabled(!on);$('b-cam').textContent=on?'Camera on':'Camera off'};
+window.addEventListener('beforeunload',function(){if(ROOM){try{ROOM.disconnect()}catch(e){}}});
+function openSummary(v){SUMID=v.id;$('st').textContent='Summary for '+v.patientName;$('sd').value='';$('sn').value='';say('e-sum','');$('sumcard').classList.remove('hide');$('sumcard').scrollIntoView()}
+$('b-sumx').onclick=function(){$('sumcard').classList.add('hide')};
+$('b-sum').onclick=async function(){
+  say('e-sum','');
+  var d=await api('/telehealth/appointments/'+encodeURIComponent(SUMID)+'/summary',{method:'POST',body:{diagnosis:$('sd').value,notes:$('sn').value}});
+  if(!d.success){say('e-sum',d.message||'Could not file the summary');return}
+  $('sumcard').classList.add('hide');note('Summary filed. The patient is told.',true);load();
+};
+`;
+
+function page(title: string, body: string, js: string, nonce: string, video = false) {
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="robots" content="noindex">
 <title>${title}</title><style nonce="${nonce}">${STYLE}</style></head><body>${body.replace('__AUTH__', AUTH_HTML)}
-<script nonce="${nonce}">${AUTH_JS}${js}</script></body></html>`;
+${video ? '<script src="/vendor/livekit-client.umd.js"></script>' : ''}<script nonce="${nonce}">${AUTH_JS}${js}</script></body></html>`;
 }
 
-function send(res: Response, title: string, body: string, js: string) {
+function send(res: Response, title: string, body: string, js: string, video = false) {
   const nonce = crypto.randomBytes(16).toString('base64');
+  // The video page also loads the LiveKit client from this server and connects to the LiveKit project.
+  let connect = "'self'";
+  let script = `'nonce-${nonce}'`;
+  let media = '';
+  if (video) {
+    script += " 'self'";
+    media = "; media-src 'self' blob: mediastream:";
+    try {
+      const u = new URL(process.env.LIVEKIT_URL || '');
+      const host = u.host;
+      connect += ` wss://${host} https://${host}`;
+    } catch {
+      /* LIVEKIT_URL not set: the page loads, joining reports that video is not set up */
+    }
+  }
   res.setHeader(
     'Content-Security-Policy',
-    `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; img-src 'self' blob:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`
+    `default-src 'none'; script-src ${script}; style-src 'nonce-${nonce}'; connect-src ${connect}; img-src 'self' blob:${media}; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`
   );
+  res.setHeader('Permissions-Policy', video ? 'camera=(self), microphone=(self)' : 'camera=(), microphone=()');
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Referrer-Policy', 'no-referrer');
-  res.type('html').send(page(title, body, js, nonce));
+  res.type('html').send(page(title, body, js, nonce, video));
 }
 
 export const clinicPage = (_req: Request, res: Response) => send(res, 'WelliRecord clinic', CLINIC_HTML, CLINIC_JS);
 export const consultationsPage = (_req: Request, res: Response) => send(res, 'WelliRecord consultation booking', CONSULT_HTML, CONSULT_JS);
 export const ordersPage = (_req: Request, res: Response) => send(res, 'WelliRecord order review', ORDERS_HTML, ORDERS_JS);
 export const pharmacyPage = (_req: Request, res: Response) => send(res, 'WelliRecord pharmacy orders', PHARMACY_HTML, PHARMACY_JS);
+export const visitsPage = (_req: Request, res: Response) => send(res, 'WelliRecord visits', VISITS_HTML, VISITS_JS, true);

@@ -70,13 +70,21 @@ included in `tsconfig.app.json` so `className` type-checks. Theme colors come fr
 
 Patients join through LiveKit. `POST /api/v1/telehealth/appointments/:id/token` issues a
 one-hour token for room `wr-visit-<appointmentId>` when the visit is a confirmed video visit
-on the current Lagos day. The clinician side (web console) must join the same room name in the
-same LiveKit project. The app needs a native build (LiveKit/WebRTC); Expo Go does not work.
+on the current Lagos day. The clinician joins the same room from `/clinic/visits` on this server (see "Visits console"). The app needs a native build (LiveKit/WebRTC); Expo Go does not work.
 
 After a visit, the clinician side posts the summary with the admin secret:
 `POST /api/v1/telehealth/appointments/:id/summary` (header `x-admin-secret`, body `diagnosis`,
 `notes`, `authoredBy`, optional `prescription {medicationName, dosage, frequency, refillsTotal}`).
 It completes the visit, files a clinical note in the patient's vault, and notifies the patient.
+
+## Visits console
+
+`/clinic/visits` (`server/clinicVisits.ts`, page in `server/consolePages.ts`) is where clinic staff work the visits booked in the app. Staff sign in with a staff account (password and authenticator code), `clinician` or `records_officer`; an admin sees every clinic, others see only providers whose `ProviderService.staffIds` holds them.
+
+- `GET /staff/visits` lists visits from today (Lagos) on, with status, payment status, patient name and whether the room can be joined. `POST /staff/visits/:id/confirm` confirms a plain request (a clinic with no published hours). `POST /staff/visits/:id/cancel` cancels, frees a held slot, tells the patient, and marks a paid visit `refund_due`. Status changes reach the patient through the existing one-minute sweep. This console is the place that knows `awaiting_payment` and `awaiting_hmo`; the website console still does not.
+- `POST /staff/visits/:id/video-token` gives the clinician a one-hour LiveKit token for room `wr-visit-<id>` (identity `staff-<id>`), inside the same join window as the patient (10 minutes before the start until an hour after the end; plain requests on their Lagos day). The page joins with `livekit-client`, which this server serves at `/vendor/livekit-client.umd.js` so the page CSP stays on `'self'`. The page also sets `connect-src` for `LIVEKIT_URL` and allows camera and microphone for itself only.
+- After the visit the page files the summary through `POST /telehealth/appointments/:id/summary`.
+- Not built: audio-only fallback, screen sharing, recording, waiting-room chat, a clinician-side visit list in the website console. Never run against a live LiveKit project from this repo. Tests: `server/tests/clinicVisits.test.ts`.
 
 ## Sessions
 
