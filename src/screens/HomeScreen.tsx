@@ -15,6 +15,7 @@ import { OfflineSyncBanner } from '../components/OfflineSyncBanner';
 import { EmergencyScanAlertBanner } from '../components/EmergencyScanAlertBanner';
 import type { WelliApp } from '../state/useWelliApp';
 import { allergiesAnswered, NO_KNOWN_ALLERGIES } from '../utils/allergyStatus';
+import { hasEmergencyContact } from '../utils/profileComplete';
 
 const COLORS = {
   navy: '#082F67',
@@ -58,6 +59,10 @@ export function HomeScreen({ app }: { app: WelliApp }) {
       .length ?? 0;
 
   const isGuardianView = state.activeFamilyId !== 'me';
+
+  // Both prompts go away once they are done: the contact is saved, the notifications are read.
+  const needsProfile = !isGuardianView && !hasEmergencyContact(activeMember);
+  const hasUnread = unreadCount > 0;
 
   // The prompt shows until the person lists an allergy or confirms they have none.
   const allergyAnswered = allergiesAnswered((activeMember as { allergies?: string }).allergies);
@@ -279,29 +284,29 @@ export function HomeScreen({ app }: { app: WelliApp }) {
           {/* =========================
               PROFILE / NOTIFICATIONS
           ========================== */}
-          <View style={styles.settingsCard}>
-            <SettingsRow
-              icon="profile"
-              title="Complete your profile"
-              subtitle="Add an emergency contact and preferences"
-              onPress={() => actions.setTab('profile')}
-            />
+          {(needsProfile || hasUnread) && (
+            <View style={styles.settingsCard}>
+              {needsProfile && (
+                <SettingsRow
+                  icon="profile"
+                  title="Complete your profile"
+                  subtitle="Add an emergency contact"
+                  onPress={() => actions.setTab('profile')}
+                />
+              )}
 
-            <View style={styles.rowDivider} />
+              {needsProfile && hasUnread && <View style={styles.rowDivider} />}
 
-            <SettingsRow
-              icon="notification"
-              title="Notifications"
-              subtitle={
-                unreadCount > 0
-                  ? `${unreadCount} unread notification${
-                      unreadCount === 1 ? '' : 's'
-                    }`
-                  : 'No in-app notifications to show'
-              }
-              onPress={actions.toggleNotifications}
-            />
-          </View>
+              {hasUnread && (
+                <SettingsRow
+                  icon="notification"
+                  title="Notifications"
+                  subtitle={`${unreadCount} unread notification${unreadCount === 1 ? '' : 's'}`}
+                  onPress={actions.toggleNotifications}
+                />
+              )}
+            </View>
+          )}
 
         </View>
       </ScrollView>
