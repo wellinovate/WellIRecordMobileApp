@@ -28,7 +28,12 @@ test('each provider type appears in the right locator lists', () => {
   assert.equal(matchesKind(mat, 'maternity'), true);
   assert.deepEqual((['hospital', 'lab', 'pharmacy'] as const).map((k) => matchesKind(lab, k)), [false, true, false]);
   assert.equal(matchesKind(ph, 'pharmacy'), true);
-  assert.equal((['hospital', 'clinic', 'maternity', 'lab', 'pharmacy'] as const).some((k) => matchesKind(solo, k)), false);
+  assert.deepEqual((['hospital', 'clinic', 'maternity', 'lab', 'pharmacy'] as const).map((k) => matchesKind(solo, k)), [false, true, false, false, false]);
+  const soloLab = mapOrg(org({ organizationType: 'individaul_provider', profession: 'lab_scientist' }))!;
+  const soloRx = mapOrg(org({ organizationType: 'individaul_provider', profession: 'pharmacist' }))!;
+  assert.equal(matchesKind(soloLab, 'lab'), true);
+  assert.equal(matchesKind(soloLab, 'clinic'), false);
+  assert.equal(matchesKind(soloRx, 'pharmacy'), true);
 });
 
 test('registered places are nearest first, skip missing coordinates and anything over 100 km', () => {

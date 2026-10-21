@@ -6,6 +6,7 @@ export interface WelliProvider {
   id: string; // wrOrgId, or the document id when there is none
   name: string;
   type: string; // organizationType as stored
+  profession?: string; // set for independent practitioners
   address: string;
   lat: number | null;
   lng: number | null;
@@ -17,7 +18,7 @@ export interface WelliPlace extends NearbyPlace {
 }
 
 export const WELLI_RADIUS_KM = 100;
-export const ORG_FIELDS = 'wrOrgId organizationName organizationType officeAddress verificationStatus location';
+export const ORG_FIELDS = 'wrOrgId organizationName organizationType profession officeAddress verificationStatus location';
 
 export function mapOrg(org: any): WelliProvider | null {
   if (!org || org.verificationStatus !== 'approved') return null;
@@ -27,7 +28,7 @@ export function mapOrg(org: any): WelliProvider | null {
   const c = org.location?.coordinates; // GeoJSON [longitude, latitude]
   const lng = Array.isArray(c) && typeof c[0] === 'number' ? c[0] : null;
   const lat = Array.isArray(c) && typeof c[1] === 'number' ? c[1] : null;
-  return { id: String(id), name, type: String(org.organizationType || ''), address: String(org.officeAddress || '').trim(), lat, lng };
+  return { id: String(id), name, type: String(org.organizationType || ''), profession: org.profession ? String(org.profession) : undefined, address: String(org.officeAddress || '').trim(), lat, lng };
 }
 
 // Which locator lists a provider belongs in. A "healthcare_provider" does not say hospital or clinic,
@@ -35,6 +36,13 @@ export function mapOrg(org: any): WelliProvider | null {
 export function matchesKind(p: WelliProvider, kind: PlaceKind): boolean {
   if (p.type === 'pharmacy') return kind === 'pharmacy';
   if (p.type === 'diagnostic') return kind === 'lab';
+  if (p.type === 'individaul_provider') {
+    // Independent practitioners (type spelling as stored by the website) are placed by profession.
+    if (p.profession === 'pharmacist') return kind === 'pharmacy';
+    if (p.profession === 'lab_scientist') return kind === 'lab';
+    if (p.profession === 'midwife') return kind === 'maternity' || kind === 'clinic';
+    return kind === 'clinic';
+  }
   if (p.type === 'healthcare_provider') {
     if (kind === 'hospital' || kind === 'clinic') return true;
     if (kind === 'maternity') return /matern|obstet|antenatal/i.test(p.name);
