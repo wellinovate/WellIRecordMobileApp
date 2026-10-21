@@ -219,6 +219,10 @@ Care tab > Order medication (`PharmacyOrdersModal`, `src/services/pharmacyOrderS
 - Certificate pinning is opt-in: `plugins/withApiPinning.js` does nothing unless `API_PINS` (two or more SPKI hashes from `scripts/print-spki-pins.sh`) is set in the build environment. Test a preview build first.
 - Review and test brief: `docs/security/security-review.md`, `docs/security/pentest-brief.md`. Integration test: `server/tests/integration/patientMfa.test.ts` (CI only).
 
+## Hospital record linking (hand-off)
+
+Profile > Link hospital records (`RecordLinkModal`, `src/utils/recordLink.ts`). A hospital starts a link for a patient in the website console and the patient gets a text message with `https://www.wellirecord.com/join/<32 characters>`. The app takes the pasted link or the bare code, accepts only the WelliRecord website host and opens the page in the in-app browser. The steps themselves (code sent to the phone the hospital holds, consent, hospital release) run on the website through the main backend (`/api/v1/record-links/claim/...`), because those calls need a website account and the records are filed to that account. This app's account is separate. Not built: doing the steps inside the app, showing link status here, opening the link straight from the text message (needs verified app links for the website domain). Both need the two accounts to be one.
+
 ## Rules for changes
 
 - Health documents must not be sent to third-party services. Open them in-app or hand the
