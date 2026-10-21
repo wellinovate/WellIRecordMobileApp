@@ -891,48 +891,52 @@ export function createPharmacyOrders(deps: PharmacyDeps) {
     }
   });
 
-  router.put('/staff/pharmacy/services/:facilityId', deps.requireStaff('admin'), async (req, res) => {
+  router.put('/staff/pharmacy/services/:facilityId', staffOnly, async (req, res) => {
     const b = req.body || {};
     const facilityId = clip(req.params.facilityId, 80);
-    const name = clip(b.name, 120);
+    // An assigned pharmacist may change fees, payment options, delivery time, phone and the pause switch.
+    // Only an admin creates a pharmacy or changes its name, address, map position or who is assigned.
+    let scope: string[] | null;
+    try {
+      scope = await visibleIds(req);
+    } catch (err) {
+      return fail500(res, 'PUT /staff/pharmacy/services', err, 'Could not save the pharmacy');
+    }
+    const isAdmin = !scope;
+    const existing: any = await PharmacyService.findOne({ facilityId }).lean().catch(() => null);
+    if (!isAdmin && (!existing || !scope!.includes(facilityId))) return res.status(403).json({ success: false, message: 'You are not set up to manage this pharmacy.' });
+    const name = isAdmin ? clip(b.name, 120) : existing.name;
     if (!facilityId || !name) return res.status(400).json({ success: false, message: 'Pharmacy name is required' });
     const bands = cleanBands(b.feeBands ?? []);
     if ('error' in bands) return res.status(400).json({ success: false, message: bands.error });
     const deliveryEnabled = b.deliveryEnabled !== false;
     if (deliveryEnabled && bands.bands.length === 0) return res.status(400).json({ success: false, message: 'Set at least one delivery fee band, or turn delivery off' });
-    const lat = b.lat === '' || b.lat === undefined || b.lat === null ? undefined : Number(b.lat);
-    const lng = b.lng === '' || b.lng === undefined || b.lng === null ? undefined : Number(b.lng);
+    const rawLat = isAdmin ? b.lat : existing.lat;
+    const rawLng = isAdmin ? b.lng : existing.lng;
+    const lat = rawLat === '' || rawLat === undefined || rawLat === null ? undefined : Number(rawLat);
+    const lng = rawLng === '' || rawLng === undefined || rawLng === null ? undefined : Number(rawLng);
     if ((lat !== undefined && !(Math.abs(lat) <= 90)) || (lng !== undefined && !(Math.abs(lng) <= 180)) || (lat === undefined) !== (lng === undefined)) {
       return res.status(400).json({ success: false, message: 'Enter both latitude and longitude, or leave both empty' });
     }
     if (deliveryEnabled && lat === undefined) return res.status(400).json({ success: false, message: 'Delivery fees need the pharmacy\'s latitude and longitude' });
     const acceptsHmo = Array.isArray(b.acceptsHmo) ? [...new Set(b.acceptsHmo.map((x: unknown) => clip(x, 80)).filter(Boolean))].slice(0, 40) : [];
     const staffIds = Array.isArray(b.staffIds) ? [...new Set(b.staffIds.map((x: unknown) => clip(x, 40)).filter((x: string) => mongoose.isValidObjectId(x)))].slice(0, 40) : [];
+    const set: any = {
+      phone: clip(b.phone, 30),
+      deliveryEnabled,
+      pickupEnabled: b.pickupEnabled !== false,
+      feeBands: bands.bands,
+      deliveryEta: clip(b.deliveryEta, 80) || 'Within 2 to 4 hours',
+      onlinePayment: b.onlinePayment !== false,
+      payOnDelivery: b.payOnDelivery === true,
+      payAtPickup: b.payAtPickup !== false,
+      acceptsHmo,
+      active: b.active !== false,
+      updatedBy: staffName(req),
+    };
+    if (isAdmin) Object.assign(set, { name, address: clip(b.address, 200), lat, lng, staffIds });
     try {
-      const svc = await PharmacyService.findOneAndUpdate(
-        { facilityId },
-        {
-          $set: {
-            name,
-            address: clip(b.address, 200),
-            phone: clip(b.phone, 30),
-            lat,
-            lng,
-            deliveryEnabled,
-            pickupEnabled: b.pickupEnabled !== false,
-            feeBands: bands.bands,
-            deliveryEta: clip(b.deliveryEta, 80) || 'Within 2 to 4 hours',
-            onlinePayment: b.onlinePayment !== false,
-            payOnDelivery: b.payOnDelivery === true,
-            payAtPickup: b.payAtPickup !== false,
-            acceptsHmo,
-            staffIds,
-            active: b.active !== false,
-            updatedBy: staffName(req),
-          },
-        },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
-      );
+      const svc = await PharmacyService.findOneAndUpdate({ facilityId }, { $set: set }, { upsert: isAdmin, new: true, setDefaultsOnInsert: true });
       res.json({ success: true, service: svc });
     } catch (err) {
       fail500(res, 'PUT /staff/pharmacy/services', err, 'Could not save the pharmacy');

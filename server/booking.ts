@@ -534,16 +534,26 @@ export function createBooking(deps: BookingDeps) {
     return Number.isInteger(n) && n >= 0 && n <= 100_000_000 ? n : 'bad';
   };
 
+  /** Facility ids this staff member may manage. null means all (admin). */
+  async function managedIds(req: any): Promise<string[] | null> {
+    if (req.staff?.role === 'admin' || req.staff?.legacy) return null;
+    const rows: any[] = await ProviderService.find({ staffIds: String(req.staff?.id || '') }).select('facilityId').lean();
+    return rows.map((r) => r.facilityId);
+  }
+
   router.get('/staff/providers/:facilityId/service', deps.requireStaff('records_officer', 'clinician'), async (req, res) => {
     try {
-      const svc = await ProviderService.findOne({ facilityId: String(req.params.facilityId) }).lean();
+      const facilityId = String(req.params.facilityId);
+      const ids = await managedIds(req);
+      if (ids && !ids.includes(facilityId)) return res.status(403).json({ success: false, message: 'You are not set up to manage this provider.' });
+      const svc = await ProviderService.findOne({ facilityId }).lean();
       res.json({ success: true, service: svc || null });
     } catch (err) {
       fail500(res, 'GET /staff/providers/service', err, 'Could not load the provider');
     }
   });
 
-  router.get('/staff/facility-options', deps.requireStaff('records_officer', 'clinician'), async (_req, res) => {
+  router.get('/staff/facility-options', deps.requireStaff('admin'), async (_req, res) => {
     try {
       res.json({ success: true, facilities: await deps.listFacilities() });
     } catch (err) {
@@ -551,19 +561,34 @@ export function createBooking(deps: BookingDeps) {
     }
   });
 
-  router.get('/staff/providers', deps.requireStaff('records_officer', 'clinician'), async (_req, res) => {
+  router.get('/staff/providers', deps.requireStaff('records_officer', 'clinician'), async (req, res) => {
     try {
-      res.json({ success: true, providers: await ProviderService.find().sort({ facilityName: 1 }).limit(300).lean() });
+      const ids = await managedIds(req);
+      const q: any = ids ? { facilityId: { $in: ids } } : {};
+      const rows: any[] = await ProviderService.find(q).sort({ facilityName: 1 }).limit(300).lean();
+      // Only an admin sees which accounts are assigned.
+      res.json({ success: true, canManageStaff: !ids, providers: ids ? rows.map(({ staffIds, ...r }) => r) : rows });
     } catch (err) {
       fail500(res, 'GET /staff/providers', err, 'Could not load providers');
     }
   });
 
-  router.put('/staff/providers/:facilityId/service', deps.requireStaff('admin'), async (req, res) => {
+  router.put('/staff/providers/:facilityId/service', deps.requireStaff('records_officer', 'clinician'), async (req, res) => {
     const b = req.body || {};
     const facilityId = clip(req.params.facilityId, 80);
-    const name = clip(b.facilityName, 120);
-    if (!facilityId || !name) return res.status(400).json({ success: false, message: 'Provider name is required' });
+    if (!facilityId) return res.status(400).json({ success: false, message: 'Provider is required' });
+    let ids: string[] | null;
+    try {
+      ids = await managedIds(req);
+    } catch (err) {
+      return fail500(res, 'PUT /staff/providers/service', err, 'Could not save the provider');
+    }
+    const isAdmin = !ids;
+    const existing: any = await ProviderService.findOne({ facilityId }).lean().catch(() => null);
+    // Only an admin creates a provider, renames it, or changes who manages it.
+    if (!isAdmin && (!existing || !ids!.includes(facilityId))) return res.status(403).json({ success: false, message: 'You are not set up to manage this provider.' });
+    const name = isAdmin ? clip(b.facilityName, 120) : existing.facilityName;
+    if (!name) return res.status(400).json({ success: false, message: 'Provider name is required' });
     const w = cleanWeekly(b.weekly ?? []);
     if ('error' in w) return res.status(400).json({ success: false, message: w.error });
     const fIn = fee(b.feeInPersonMinor);
@@ -576,29 +601,27 @@ export function createBooking(deps: BookingDeps) {
     const slotMinutes = Number(b.slotMinutes ?? 30);
     if (!Number.isInteger(slotMinutes) || slotMinutes < 10 || slotMinutes > 240) return res.status(400).json({ success: false, message: 'Slot length must be 10 to 240 minutes' });
     const acceptsHmo = Array.isArray(b.acceptsHmo) ? [...new Set(b.acceptsHmo.map((x: unknown) => clip(x, 80)).filter(Boolean))].slice(0, 40) : [];
+    const set: any = {
+      offersInPerson,
+      offersVirtual,
+      feeInPersonMinor: fIn,
+      feeVirtualMinor: fVr,
+      acceptsHmo,
+      payAtVisit: b.payAtVisit === true,
+      onlinePayment: b.onlinePayment !== false,
+      slotMinutes,
+      weekly: w.weekly,
+      active: b.active !== false,
+      updatedBy: req.staff?.name || 'staff',
+    };
+    if (isAdmin) {
+      set.facilityName = name;
+      set.facilityAddress = clip(b.facilityAddress, 200);
+      set.specialty = clip(b.specialty, 80);
+      if (Array.isArray(b.staffIds)) set.staffIds = [...new Set(b.staffIds.map((x: unknown) => clip(x, 40)).filter(Boolean))].slice(0, 30);
+    }
     try {
-      const svc = await ProviderService.findOneAndUpdate(
-        { facilityId },
-        {
-          $set: {
-            facilityName: name,
-            facilityAddress: clip(b.facilityAddress, 200),
-            specialty: clip(b.specialty, 80),
-            offersInPerson,
-            offersVirtual,
-            feeInPersonMinor: fIn,
-            feeVirtualMinor: fVr,
-            acceptsHmo,
-            payAtVisit: b.payAtVisit === true,
-            onlinePayment: b.onlinePayment !== false,
-            slotMinutes,
-            weekly: w.weekly,
-            active: b.active !== false,
-            updatedBy: req.staff?.name || 'staff',
-          },
-        },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
-      );
+      const svc = await ProviderService.findOneAndUpdate({ facilityId }, { $set: set }, { upsert: isAdmin, new: true, setDefaultsOnInsert: true });
       res.json({ success: true, service: svc });
     } catch (err) {
       fail500(res, 'PUT /staff/providers/service', err, 'Could not save the provider');
@@ -610,7 +633,9 @@ export function createBooking(deps: BookingDeps) {
     if (!['awaiting_hmo', 'awaiting_payment', 'confirmed', 'cancelled'].includes(status)) return res.status(400).json({ success: false, message: 'Unknown status' });
     try {
       const q: any = { status, startsAt: { $exists: true } };
-      if (typeof req.query.facilityId === 'string') q.facilityId = req.query.facilityId;
+      const mine = await managedIds(req);
+      if (mine) q.facilityId = { $in: mine };
+      if (typeof req.query.facilityId === 'string' && (!mine || mine.includes(req.query.facilityId))) q.facilityId = req.query.facilityId;
       const rows: any[] = await AppointmentRequest.find(q).sort({ startsAt: 1 }).limit(200).lean();
       res.json({
         success: true,
@@ -639,6 +664,8 @@ export function createBooking(deps: BookingDeps) {
     try {
       const appt: any = await AppointmentRequest.findOne({ _id: aid, status: 'awaiting_hmo' });
       if (!appt) return res.status(409).json({ success: false, message: 'This booking is not waiting for HMO confirmation.' });
+      const mine = await managedIds(req);
+      if (mine && !mine.includes(String(appt.facilityId))) return res.status(403).json({ success: false, message: 'This booking belongs to another provider.' });
       const who = req.staff && !req.staff.legacy ? req.staff.name : clip(req.body?.decidedBy, 120) || 'staff';
       if (decision === 'approve') {
         if (!(await lockSlot(appt))) return res.status(409).json({ success: false, message: 'The time is no longer held for this booking.' });
