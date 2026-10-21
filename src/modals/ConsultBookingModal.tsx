@@ -159,7 +159,7 @@ export function ConsultBookingModal({ app }: { app: WelliApp }) {
     try {
       const d = await bookingService.dates(m, facilityId);
       setDates(d);
-      if (!d.length) setError('No times are open for this visit type right now.');
+      if (!d.length) setError(`No clinic is taking ${m === 'video' ? 'virtual' : 'in-person'} bookings right now, or every time is taken. Go back and try the other visit type, or check again later.`);
     } catch (err: any) {
       setError(err?.message || 'Could not load dates. Try again.');
     } finally {
