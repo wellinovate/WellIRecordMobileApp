@@ -25,6 +25,7 @@ import {
   isYmd,
   lagosYmd,
   nextDays,
+  parseServiceFields,
   paystackSignatureOk,
   slotLabel,
   slotsForDate,
@@ -591,31 +592,9 @@ export function createBooking(deps: BookingDeps) {
     if (!isAdmin && (!existing || !ids!.includes(facilityId))) return res.status(403).json({ success: false, message: 'You are not set up to manage this provider.' });
     const name = isAdmin ? clip(b.facilityName, 120) : existing.facilityName;
     if (!name) return res.status(400).json({ success: false, message: 'Provider name is required' });
-    const w = cleanWeekly(b.weekly ?? []);
-    if ('error' in w) return res.status(400).json({ success: false, message: w.error });
-    const fIn = fee(b.feeInPersonMinor);
-    const fVr = fee(b.feeVirtualMinor);
-    if (fIn === 'bad' || fVr === 'bad') return res.status(400).json({ success: false, message: 'Fees must be whole amounts in kobo' });
-    const offersInPerson = b.offersInPerson !== false;
-    const offersVirtual = b.offersVirtual === true;
-    if (offersInPerson && fIn === undefined) return res.status(400).json({ success: false, message: 'Set the in-person fee, or turn in-person visits off' });
-    if (offersVirtual && fVr === undefined) return res.status(400).json({ success: false, message: 'Set the virtual fee, or turn virtual visits off' });
-    const slotMinutes = Number(b.slotMinutes ?? 30);
-    if (!Number.isInteger(slotMinutes) || slotMinutes < 10 || slotMinutes > 240) return res.status(400).json({ success: false, message: 'Slot length must be 10 to 240 minutes' });
-    const acceptsHmo = Array.isArray(b.acceptsHmo) ? [...new Set(b.acceptsHmo.map((x: unknown) => clip(x, 80)).filter(Boolean))].slice(0, 40) : [];
-    const set: any = {
-      offersInPerson,
-      offersVirtual,
-      feeInPersonMinor: fIn,
-      feeVirtualMinor: fVr,
-      acceptsHmo,
-      payAtVisit: b.payAtVisit === true,
-      onlinePayment: b.onlinePayment !== false,
-      slotMinutes,
-      weekly: w.weekly,
-      active: b.active !== false,
-      updatedBy: req.staff?.name || 'staff',
-    };
+    const parsed = parseServiceFields(b);
+    if ('error' in parsed) return res.status(400).json({ success: false, message: parsed.error });
+    const set: any = { ...parsed.set, updatedBy: req.staff?.name || 'staff' };
     if (isAdmin) {
       set.facilityName = name;
       set.facilityAddress = clip(b.facilityAddress, 200);
@@ -664,31 +643,36 @@ export function createBooking(deps: BookingDeps) {
     }
   });
 
+  /** Approve or decline an HMO booking. `mine` limits it to those providers (null = any). Used by the staff page and the website bridge. */
+  async function decideHmo(a: { id: unknown; decision: unknown; approvalCode?: unknown; who: string; mine: string[] | null }): Promise<{ status: number; body: Record<string, unknown> }> {
+    const aid = oid(a.id);
+    if (!aid || (a.decision !== 'approve' && a.decision !== 'decline')) return { status: 400, body: { success: false, message: 'Choose approve or decline' } };
+    const appt: any = await AppointmentRequest.findOne({ _id: aid, status: 'awaiting_hmo' });
+    if (!appt) return { status: 409, body: { success: false, message: 'This booking is not waiting for HMO confirmation.' } };
+    if (a.mine && !a.mine.includes(String(appt.facilityId))) return { status: 403, body: { success: false, message: 'This booking belongs to another provider.' } };
+    if (a.decision === 'approve') {
+      if (!(await lockSlot(appt))) return { status: 409, body: { success: false, message: 'The time is no longer held for this booking.' } };
+      await AppointmentRequest.updateOne(
+        { _id: aid, status: 'awaiting_hmo' },
+        { $set: { status: 'confirmed', paymentStatus: 'hmo_approved', 'hmo.decidedBy': a.who, 'hmo.decidedAt': new Date(now()), 'hmo.approvalCode': clip(a.approvalCode, 60) } }
+      );
+    } else {
+      await AppointmentRequest.updateOne(
+        { _id: aid, status: 'awaiting_hmo' },
+        { $set: { status: 'cancelled', paymentStatus: 'hmo_declined', 'hmo.decidedBy': a.who, 'hmo.decidedAt': new Date(now()) } }
+      );
+      await releaseSlot(appt);
+      void deps.push(String(appt.accountId), String(aid), 'HMO cover not confirmed', `${appt.facilityName} could not confirm your HMO cover. Book again and choose another way to pay.`).catch(() => {});
+    }
+    return { status: 200, body: { success: true } };
+  }
+
   router.post('/staff/bookings/:id/hmo', deps.requireStaff('records_officer', 'clinician'), async (req, res) => {
-    const aid = oid(req.params.id);
-    const decision = req.body?.decision;
-    if (!aid || (decision !== 'approve' && decision !== 'decline')) return res.status(400).json({ success: false, message: 'Choose approve or decline' });
     try {
-      const appt: any = await AppointmentRequest.findOne({ _id: aid, status: 'awaiting_hmo' });
-      if (!appt) return res.status(409).json({ success: false, message: 'This booking is not waiting for HMO confirmation.' });
       const mine = await managedIds(req);
-      if (mine && !mine.includes(String(appt.facilityId))) return res.status(403).json({ success: false, message: 'This booking belongs to another provider.' });
       const who = req.staff && !req.staff.legacy ? req.staff.name : clip(req.body?.decidedBy, 120) || 'staff';
-      if (decision === 'approve') {
-        if (!(await lockSlot(appt))) return res.status(409).json({ success: false, message: 'The time is no longer held for this booking.' });
-        await AppointmentRequest.updateOne(
-          { _id: aid, status: 'awaiting_hmo' },
-          { $set: { status: 'confirmed', paymentStatus: 'hmo_approved', 'hmo.decidedBy': who, 'hmo.decidedAt': new Date(now()), 'hmo.approvalCode': clip(req.body?.approvalCode, 60) } }
-        );
-      } else {
-        await AppointmentRequest.updateOne(
-          { _id: aid, status: 'awaiting_hmo' },
-          { $set: { status: 'cancelled', paymentStatus: 'hmo_declined', 'hmo.decidedBy': who, 'hmo.decidedAt': new Date(now()) } }
-        );
-        await releaseSlot(appt);
-        void deps.push(String(appt.accountId), String(aid), 'HMO cover not confirmed', `${appt.facilityName} could not confirm your HMO cover. Book again and choose another way to pay.`).catch(() => {});
-      }
-      res.json({ success: true });
+      const r = await decideHmo({ id: req.params.id, decision: req.body?.decision, approvalCode: req.body?.approvalCode, who, mine });
+      res.status(r.status).json(r.body);
     } catch (err) {
       fail500(res, 'POST /staff/bookings/hmo', err, 'Could not save the decision');
     }
@@ -701,5 +685,5 @@ export function createBooking(deps: BookingDeps) {
     timer.unref();
   };
 
-  return { router, webhook, sweepPayments, startSweeps, releaseSlot, settlePaid };
+  return { router, webhook, sweepPayments, startSweeps, releaseSlot, settlePaid, decideHmo };
 }

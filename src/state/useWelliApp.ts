@@ -39,6 +39,7 @@ import { childOfflineQueue, clearChildOfflineData } from '../utils/childOfflineQ
 import { facilityService } from '../services/facilityService';
 import { pointsFromProvider, latestProviderLogs, type VitalPoint } from '../utils/vitalsSeries';
 import { careService, type AppointmentItem } from '../services/careService';
+import { webLinkService } from '../services/webLinkService';
 import { bookingService } from '../services/bookingService';
 import { sharingService } from '../services/sharingService';
 import { notificationService } from '../services/notificationService';
@@ -74,6 +75,7 @@ export interface AppState {
   mfaPrompt: { busy: boolean; error: string | null } | null;
   showTwoStep: boolean;
   showRecordLink: boolean;
+  showWebLink: boolean;
   deviceCompromised: boolean;
   showAccountLog: boolean;
   showConsultBooking: boolean;
@@ -303,6 +305,7 @@ const initialState: AppState = {
   mfaPrompt: null,
   showTwoStep: false,
   showRecordLink: false,
+  showWebLink: false,
   deviceCompromised: false,
   showAccountLog: false,
   showConsultBooking: false,
@@ -1099,6 +1102,8 @@ export function useWelliApp() {
     closeTwoStep: () => patch({ showTwoStep: false }),
     openRecordLink: () => patch({ showRecordLink: true }),
     closeRecordLink: () => patch({ showRecordLink: false }),
+    openWebLink: () => patch({ showWebLink: true }),
+    closeWebLink: () => patch({ showWebLink: false }),
     openConsultBooking: (facilityId?: string) =>
       patch({
         showConsultBooking: true,
@@ -1565,6 +1570,23 @@ export function useWelliApp() {
         const session = await careService.fetchTelehealthToken(appointment.id);
         patch({
           telehealthSession: { ...session, facilityName: appointment.facilityName },
+          inCall: true,
+          showUpcomingVisits: false,
+          joiningVisitId: null,
+        });
+      } catch (err: any) {
+        patch({ joiningVisitId: null });
+        showToast(err?.message || 'Could not start the video visit. Try again.');
+      }
+    },
+    // A video visit booked on the website, joined with the account link. Same call screen as an app visit.
+    joinWebVisit: async (visit: { id: string; facilityName: string }) => {
+      if (state.joiningVisitId) return;
+      patch({ joiningVisitId: visit.id });
+      try {
+        const session = await webLinkService.visitToken(visit.id);
+        patch({
+          telehealthSession: { url: session.url, token: session.token, room: session.room, facilityName: visit.facilityName },
           inCall: true,
           showUpcomingVisits: false,
           joiningVisitId: null,

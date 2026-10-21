@@ -5,6 +5,7 @@
 
 import { clinicPage, consultationsPage, ordersPage, pharmacyPage, visitsPage } from './consolePages';
 import { createClinicVisits } from './clinicVisits';
+import { createBridgeProviders } from './bridgeProviders';
 import { deleteClerkIdentity, eraseChildData } from './accountErasure';
 import { accountDeletionPage } from './publicPages';
 import crypto from 'crypto';
@@ -63,6 +64,7 @@ import { notifyRequested, notifyStatus, summarise, type NotifyDeps } from './app
 import { nearAbuja, nearbyCached, parseCoords, PLACE_KINDS, type PlaceKind } from './nearbyPlaces';
 import { createProviderSource, mergeWelliFirst, ORG_FIELDS, providerContext, welliPlaces } from './welliProviders';
 import { childToFhirBundle } from './fhir';
+import { createWebLink, eraseWebLinks } from './webLink';
 import { createChildReminderRouter, startChildReminderSweep, type ReminderDeps } from './childReminders';
 import { auditChild, createChildAccessRouter, effectivePerms, resolveChildAccess, type PermKey } from './childAccess';
 
@@ -2604,6 +2606,13 @@ app.use('/api/v1', createChildDevelopmentRouter(getAuthUserId));
 app.use('/api/v1', createChildReminderRouter(reminderDeps));
 app.use(
   '/api/v1',
+  createWebLink({
+    getAuthUserId,
+    limiter: rateLimit({ windowMs: 15 * 60 * 1000, max: 40, standardHeaders: true, legacyHeaders: false, message: { success: false, message: 'Too many tries. Please wait a few minutes.' } }),
+  }).router
+);
+app.use(
+  '/api/v1',
   createChildFacilityRouter({
     getAuthUserId,
     requireStaff: staff.requireStaff,
@@ -4639,14 +4648,24 @@ app.use('/api/v1', booking.router);
 booking.startSweeps();
 
 // Visits console: confirm or cancel requests, join the video room, file the summary. See clinicVisits.ts.
+const clinicVisits = createClinicVisits({
+  requireStaff: staff.requireStaff,
+  releaseSlot: booking.releaseSlot,
+  push: async (accountId, appointmentId, title, body) => {
+    await appointmentChannels(accountId, appointmentId).push({ title, body });
+  },
+});
+app.use('/api/v1', clinicVisits.router);
+// Providers who signed up on the website set up their own bookings and work their visits. See bridgeProviders.ts.
 app.use(
   '/api/v1',
-  createClinicVisits({
-    requireStaff: staff.requireStaff,
-    releaseSlot: booking.releaseSlot,
-    push: async (accountId, appointmentId, title, body) => {
-      await appointmentChannels(accountId, appointmentId).push({ title, body });
-    },
+  createBridgeProviders({
+    registeredIds: async () => new Set((await welliProviders()).map((p) => p.id)),
+    listVisits: clinicVisits.listVisits,
+    confirmVisit: clinicVisits.confirmVisit,
+    cancelVisit: clinicVisits.cancelVisit,
+    videoToken: clinicVisits.videoToken,
+    decideHmo: booking.decideHmo,
   }).router
 );
 
@@ -5642,6 +5661,7 @@ app.delete('/api/v1/auth/account', async (req: Request, res: Response) => {
         if (candidateIds.length > 0) {
           await Profile.deleteMany({ $or: [{ userId: { $in: candidateIds } }, { accountId: { $in: candidateIds } }] });
           await UserProfile.deleteMany({ $or: [{ accountId: { $in: candidateIds } }, { userId: { $in: candidateIds } }] });
+          await eraseWebLinks(candidateIds); // the link to the website account, on both sides
           await eraseChildData(candidateIds); // children's vaccines, growth, guardians, logs, clinic codes, reminders
           await FamilyMember.deleteMany({ $or: [{ accountId: { $in: candidateIds } }, { userId: { $in: candidateIds } }] });
           await HealthRecord.deleteMany({ $or: [{ userId: { $in: candidateIds } }, { familyMemberId: { $in: candidateIds } }] });

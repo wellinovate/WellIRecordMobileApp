@@ -1446,6 +1446,26 @@ export const ReminderPreference: Model<IReminderPreference> =
 export const ReminderLog: Model<IReminderLog> =
   mongoose.models.ReminderLog || mongoose.model<IReminderLog>('ReminderLog', ReminderLogSchema);
 
+// Connects a mobile account to the same person's website account (set up with a one-time code made on the website).
+export interface IWebLink extends Document {
+  accountId: string;
+  webAccountId: string;
+  webProfileId: string;
+  fullName?: string;
+  linkedAt: Date;
+}
+const WebLinkSchema = new Schema<IWebLink>(
+  {
+    accountId: { type: String, required: true, unique: true },
+    webAccountId: { type: String, required: true, unique: true },
+    webProfileId: { type: String, required: true },
+    fullName: { type: String },
+    linkedAt: { type: Date, default: Date.now },
+  },
+  { timestamps: true }
+);
+export const WebLink: Model<IWebLink> = mongoose.models.WebLink || mongoose.model<IWebLink>('WebLink', WebLinkSchema);
+
 // Staff accounts for the provider and operations side. Patients never use these.
 export type StaffRole = 'admin' | 'clinician' | 'pharmacist' | 'records_officer';
 export interface IStaffUser extends Document {

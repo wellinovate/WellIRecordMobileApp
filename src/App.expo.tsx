@@ -71,6 +71,7 @@ import { FaceIdLockScreen } from "./modals/FaceIdLockScreen";
 import { MfaChallengeModal } from "./modals/MfaChallengeModal";
 import { TwoStepModal } from "./modals/TwoStepModal";
 import { RecordLinkModal } from "./modals/RecordLinkModal";
+import { WebLinkModal } from "./modals/WebLinkModal";
 import { AccountLogModal } from "./modals/AccountLogModal";
 import { ConsultBookingModal } from "./modals/ConsultBookingModal";
 import { PharmacyOrdersModal } from "./modals/PharmacyOrdersModal";
@@ -426,6 +427,7 @@ function MainWelliApp() {
           <ProviderShareModal app={app} />
           <TwoStepModal app={app} />
           <RecordLinkModal app={app} />
+          <WebLinkModal app={app} />
           <AccountLogModal app={app} />
           <ConsultBookingModal app={app} />
           <PharmacyOrdersModal app={app} />
