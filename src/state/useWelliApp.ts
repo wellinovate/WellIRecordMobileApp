@@ -147,6 +147,7 @@ export interface AppState {
   faceIdEnabled: boolean;
   showLockScreen: boolean;
   showActivity: boolean;
+  showHealthHistory: boolean;
   showLanguage: boolean;
   language: string;
   notifPermission: 'granted' | 'skipped' | null;
@@ -373,6 +374,7 @@ const initialState: AppState = {
   faceIdEnabled: false,
   showLockScreen: false,
   showActivity: false,
+  showHealthHistory: false,
   showLanguage: false,
   language: 'English',
   notifPermission: null,
@@ -938,6 +940,7 @@ export function useWelliApp() {
       loggedOut: false,
       showWelcomeHome: false,
       showPersonalInfo: false,
+      showHealthHistory: false,
       personalInfoEditMode: false,
       personalInfoDraft: null,
       tab: 'home',
@@ -1872,6 +1875,14 @@ export function useWelliApp() {
       patch({ showLockScreen: false });
     },
 
+    openHealthHistory: () => patch({ showHealthHistory: true }),
+    closeHealthHistory: () => patch({ showHealthHistory: false }),
+    // From Health history into the edit form for allergies and conditions.
+    editHealthInfo: () => {
+      const m = state.familyMembers.find((f) => f.id === state.activeFamilyId) ?? state.familyMembers[0];
+      patch({ showHealthHistory: false, showPersonalInfo: true, personalInfoEditMode: true, personalInfoDraft: { ...m } });
+    },
+    openRecordFromHistory: (id: string) => patch({ showHealthHistory: false, recordDetailId: id }),
     openActivity: () => patch({ showActivity: true }),
     closeActivity: () => patch({ showActivity: false }),
     openLanguage: () => patch({ showLanguage: true }),

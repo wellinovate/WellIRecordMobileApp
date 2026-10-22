@@ -233,8 +233,8 @@ export function ProfileScreen({
           <SettingsRow
             icon="health"
             title="Health history"
-            subtitle="Allergies, conditions, medicines & surgeries"
-            onPress={actions.openPersonalInfo}
+            subtitle="Allergies, conditions, medicines, records & vitals"
+            onPress={actions.openHealthHistory}
           />
 
           <Divider />

@@ -64,6 +64,7 @@ import { AddFamilyMemberModal } from "./modals/AddFamilyMemberModal";
 import { ProxyLogModal } from "./modals/ProxyLogModal";
 
 import { ActivityLogModal } from "./modals/ActivityLogModal";
+import { HealthHistoryModal } from "./modals/HealthHistoryModal";
 
 import { LanguageModal } from "./modals/LanguageModal";
 
@@ -441,6 +442,7 @@ function MainWelliApp() {
           {Boolean(state.showProxyLog) && <ProxyLogModal app={app} />}
 
           {Boolean(state.showActivity) && <ActivityLogModal app={app} />}
+          {Boolean(state.showHealthHistory) && <HealthHistoryModal app={app} />}
 
           {Boolean(state.showLanguage) && <LanguageModal app={app} />}
 
