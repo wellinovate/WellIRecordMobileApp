@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -56,6 +57,24 @@ export default function ChatScreen({ app }: { app: WelliApp }) {
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const boxRef = useRef<View>(null);
+  // Android draws under the keyboard (edge to edge), so the box is lifted by however much the keyboard overlaps it.
+  const [lift, setLift] = useState(0);
+
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const show = Keyboard.addListener("keyboardDidShow", (e) => {
+      boxRef.current?.measureInWindow((_x, y, _w, h) => {
+        setLift(Math.max(0, Math.round(y + h - e.endCoordinates.screenY)));
+        requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+      });
+    });
+    const hide = Keyboard.addListener("keyboardDidHide", () => setLift(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -204,8 +223,10 @@ export default function ChatScreen({ app }: { app: WelliApp }) {
   };
 
   return (
+    <View ref={boxRef} collapsable={false} className="flex-1 bg-white">
     <KeyboardAvoidingView
       className="flex-1 bg-white"
+      style={{ paddingBottom: lift }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <ScrollView
@@ -369,5 +390,6 @@ export default function ChatScreen({ app }: { app: WelliApp }) {
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
+    </View>
   );
 }
