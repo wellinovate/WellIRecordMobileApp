@@ -1140,6 +1140,64 @@ $('b-sum').onclick=async function(){
 };
 `;
 
+
+const REG_HTML = String.raw`
+<div class="wrap" style="max-width:980px">
+  <div class="top"><div><h1>Registrations by region</h1><div class="sub">Counts come from the WelliRecord database. Nothing here is estimated.</div></div><div id="who" class="muted hide"></div></div>
+  ${'__AUTH__'}
+  <div id="app" class="hide">
+    <div id="note" class="msg hide"></div>
+    <button class="alt" id="b-ref">Refresh</button> <button class="alt" id="b-out">Sign out</button>
+    <div id="stats" class="hide">
+      <div id="cards" class="steps gap" style="grid-template-columns:repeat(5,1fr)"></div>
+      <div class="card gap"><table id="tbl" style="width:100%;border-collapse:collapse;font-size:13.5px"></table></div>
+      <div class="muted" id="foot"></div>
+    </div>
+    <div class="card gap">
+      <h2>Record an identity check</h2>
+      <div class="muted">For records officers. Enter the patient's WelliID and which document you checked. The document number is not stored.</div>
+      <div class="row"><div><label for="iv-id">WelliID</label><input id="iv-id" placeholder="WR-ABJ1-2RWR" autocomplete="off"></div>
+      <div><label for="iv-m">Document checked</label><select id="iv-m"><option value="national_id">National ID card</option><option value="nin_slip">NIN slip</option><option value="passport">International passport</option><option value="drivers_licence">Driver's licence</option><option value="voters_card">Voter's card</option><option value="in_person_check">Checked in person, other</option></select></div></div>
+      <button id="iv-go">Record check</button>
+    </div>
+  </div>
+</div>`;
+
+const REG_JS = String.raw`
+function add(parent,tag,text,cls){var e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;parent.appendChild(e);return e}
+function note(t,good){var n=$('note');n.textContent=t;n.className='msg '+(good?'good':'bad');setTimeout(function(){n.className='msg hide'},6000)}
+window.onSignedIn=function(staff){
+  $('app').classList.remove('hide');$('who').classList.remove('hide');$('who').textContent=staff.name+' ('+staff.role.replace('_',' ')+')';
+  if(staff.role==='admin'){$('stats').classList.remove('hide');load()}
+};
+$('b-out').onclick=signOut;$('b-ref').onclick=function(){if(S.staff&&S.staff.role==='admin')load()};
+function n(v){return Number(v||0).toLocaleString()}
+function card(parent,label,val,sub){var c=add(parent,'div',null,'step');add(c,'strong',n(val));add(c,'span',label);if(sub)add(c,'div',sub,'muted')}
+async function load(){
+  var d=await api('/staff/stats/registrations');
+  if(!d.success){note(d.message||'Could not load the counts.',false);return}
+  var t=d.totals,c=$('cards');c.textContent='';
+  card(c,'Registered',t.registered);
+  card(c,'Contact verified',t.contactVerified,t.contactVerifiedPct==null?'':t.contactVerifiedPct+'% of registered');
+  card(c,'Identity verified',t.identityVerified);
+  card(c,'Active in '+d.activeDays+' days',t.active30,d.activityTracked?'':'Tracking began recently');
+  card(c,'With a health record in the app',t.withRecord);
+  var tb=$('tbl');tb.textContent='';
+  var h=add(tb,'tr');['Region','Registered','Contact verified','Identity verified','Active '+d.activeDays+'d','With a record','Living here now'].forEach(function(x,i){var th=add(h,'th',x);th.style.textAlign=i?'right':'left';th.style.padding='6px 8px';th.style.borderBottom='1px solid #E2E8F0'});
+  d.rows.forEach(function(r){
+    var tr=add(tb,'tr');
+    var cells=[r.name,n(r.registered),n(r.contactVerified)+(r.contactVerifiedPct==null?'':' ('+r.contactVerifiedPct+'%)'),n(r.identityVerified),n(r.active30),n(r.withRecord),n(r.residing)];
+    cells.forEach(function(x,i){var td=add(tr,'td',x);td.style.padding='6px 8px';td.style.borderTop='1px solid #EEF2F6';if(i)td.style.textAlign='right'});
+  });
+  var f=add($('foot'),'div',null);$('foot').textContent='Registered counts people who have a WelliID, by the region they registered in. "Living here now" uses the state on their profile, which they can change. Not tracked here: '+d.notTrackedHere.join('; ')+'.';
+}
+$('iv-go').onclick=async function(){
+  var id=$('iv-id').value.trim();if(!id)return;
+  var d=await api('/staff/patients/identity-verify',{method:'POST',body:{wrId:id,method:$('iv-m').value}});
+  if(d.success){note('Identity check recorded for '+d.wrId+'.',true);$('iv-id').value='';if(S.staff.role==='admin')load()}else note(d.message||'Could not record.',false);
+};
+`;
+
 function page(title: string, body: string, js: string, nonce: string, video = false) {
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="robots" content="noindex">
 <title>${title}</title><style nonce="${nonce}">${STYLE}</style></head><body>${body.replace('__AUTH__', AUTH_HTML)}
@@ -1178,3 +1236,4 @@ export const consultationsPage = (_req: Request, res: Response) => send(res, 'We
 export const ordersPage = (_req: Request, res: Response) => send(res, 'WelliRecord order review', ORDERS_HTML, ORDERS_JS);
 export const pharmacyPage = (_req: Request, res: Response) => send(res, 'WelliRecord pharmacy orders', PHARMACY_HTML, PHARMACY_JS);
 export const visitsPage = (_req: Request, res: Response) => send(res, 'WelliRecord visits', VISITS_HTML, VISITS_JS, true);
+export const registrationsPage = (_req: Request, res: Response) => send(res, 'WelliRecord registrations', REG_HTML, REG_JS);

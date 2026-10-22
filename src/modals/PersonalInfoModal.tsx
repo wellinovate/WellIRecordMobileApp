@@ -15,6 +15,7 @@ import Svg, { Path, Circle } from 'react-native-svg';
 import { ModalHeader } from '../components/ModalHeader';
 import { FormSelect } from '../components/FormSelect';
 import { Avatar } from '../components/Avatar';
+import { ResidenceCard } from './ResidenceCard';
 import { formatDob } from '../utils/formatDate';
 import {
   pickImageFromCamera,
@@ -513,6 +514,7 @@ export function PersonalInfoModal({ app }: { app: WelliApp }) {
               ))}
             </View>
           )}
+          {!isGuardianView && !editing ? <ResidenceCard onSaved={(m) => actions.showToast(m)} /> : null}
         </ScrollView>
 
         {/* Sticky Edit Mode Action Footer */}

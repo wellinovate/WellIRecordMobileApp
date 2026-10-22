@@ -1905,9 +1905,10 @@ export function useWelliApp() {
       identifier: string,
       code: string,
       challengeToken?: string,
+      registration?: { state?: string; lga?: string },
     ) => {
       hapticFeedback.success();
-      return authService.verifyOtpOnly(identifier, code, challengeToken);
+      return authService.verifyOtpOnly(identifier, code, challengeToken, registration);
     },
 
     preparePasswordSignIn: async (

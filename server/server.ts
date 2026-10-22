@@ -3,7 +3,10 @@
  * Node.js / Express backend with Mongoose, Termii SMS Gateway & NDPR Compliant Endpoints.
  */
 
-import { clinicPage, consultationsPage, ordersPage, pharmacyPage, visitsPage } from './consolePages';
+import { clinicPage, consultationsPage, ordersPage, pharmacyPage, registrationsPage, visitsPage } from './consolePages';
+import { createRegistry } from './registry';
+import { shouldWriteActive } from './registryCore';
+import { resolveRegion } from './data/nigeriaRegions';
 import { createClinicVisits } from './clinicVisits';
 import { deleteClerkIdentity, eraseChildData } from './accountErasure';
 import { accountDeletionPage } from './publicPages';
@@ -20,6 +23,7 @@ import { verifyClerkSession } from './clerkVerify';
 import { auditAccount, ACTION_LABELS } from './accountAudit';
 import { reportSecrets } from './secretsCheck';
 import mongoose from 'mongoose';
+import { issueWelliId, IssuedId } from './welliId';
 import dotenv from 'dotenv';
 dotenv.config();
 import {
@@ -283,6 +287,16 @@ async function loadSessionRevocations() {
   }
 }
 
+// Remember when a signed-in person last used the app, at most once every few hours, for the active-patient count.
+const lastActiveWrite = new Map<string, number>();
+function touchActive(userId: string) {
+  const now = Date.now();
+  if (!shouldWriteActive(lastActiveWrite.get(userId), now) || !mongoose.isValidObjectId(userId) || mongoose.connection.readyState !== 1) return;
+  lastActiveWrite.set(userId, now);
+  if (lastActiveWrite.size > 50000) lastActiveWrite.clear();
+  void UserProfile.updateOne({ accountId: new mongoose.Types.ObjectId(userId) }, { $set: { lastActiveAt: new Date(now) } }).catch(() => {});
+}
+
 function getAuthUserId(req: Request): string | null {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -293,6 +307,7 @@ function getAuthUserId(req: Request): string | null {
         const cutoff = sessionsRevokedBefore.get(String(userId));
         if (cutoff && (typeof decoded.iat !== 'number' || decoded.iat < cutoff)) return null;
       }
+      if (userId) touchActive(String(userId));
       return userId;
     } catch {
       return null;
@@ -625,11 +640,31 @@ function verifyStoredOtp(identifier: string, code: string): boolean {
   return false;
 }
 
-// WelliRecord ID Generator (Format: WR-XXXX-XXXX)
-function generateWelliRecordId(): string {
-  const random = Math.random().toString(36).substring(2, 6).toUpperCase();
-  const timestamp = Date.now().toString().slice(-4);
-  return `WR-${timestamp}-${random}`;
+// WelliID: WR-<REGION><zone>-<suffix> (see welliId.ts). The region is where the person registered and never changes.
+async function wrIdTaken(id: string): Promise<boolean> {
+  if (mongoose.connection.readyState !== 1) return false;
+  const [a, b] = await Promise.all([UserProfile.exists({ wrId: id }), FamilyMember.exists({ wrId: id })]);
+  return Boolean(a || b);
+}
+async function newWelliId(state?: unknown): Promise<IssuedId> {
+  return issueWelliId({ state, exists: wrIdTaken });
+}
+const cleanLga = (v: unknown) => String(v ?? '').replace(/[^\p{L}\p{N} .,'()/-]/gu, '').trim().slice(0, 60);
+/** Registration and residence fields for a new profile. Residence starts as the state chosen and is editable later; the registration region is not. */
+function registrationFields(issued: IssuedId, lga?: unknown) {
+  return {
+    registrationRegion: issued.region.code,
+    registrationState: issued.hasRegion ? issued.region.name : '',
+    residenceState: issued.hasRegion ? issued.region.name : '',
+    residenceLga: cleanLga(lga),
+    registeredAt: new Date(),
+  };
+}
+/** The state a guardian registered in, so a child's ID carries the same region. */
+async function guardianStateHint(accountId: unknown): Promise<string> {
+  if (!accountId || mongoose.connection.readyState !== 1 || !mongoose.isValidObjectId(String(accountId))) return '';
+  const p: any = await UserProfile.findOne({ accountId: new mongoose.Types.ObjectId(String(accountId)) }, 'registrationState').lean();
+  return p?.registrationState || '';
 }
 
 // Normalizes a Nigerian phone number to E.164 format (+234XXXXXXXXXX)
@@ -1215,6 +1250,8 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
           isPhoneVerified: Boolean(phoneNumber),
           isEmailVerified: Boolean(cleanEmail),
           authProvider: cleanEmail ? 'email_otp' : 'phone_otp',
+          registrationState: resolveRegion(req.body.state)?.name,
+          registrationLga: cleanLga(req.body.lga),
         });
         await account.save();
         user = account;
@@ -1265,7 +1302,7 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
             hmoProvider: cleanLegacyHmo,
             hmoPolicyNumber: cleanLegacyHmo ? (legacyProfile.hmoPolicyNumber || legacyProfile.insuranceId) : null,
             allergies: legacyProfile.allergies,
-            wrId: legacyProfile.memberId || generateWelliRecordId(),
+            wrId: legacyProfile.memberId || (await newWelliId(user.registrationState)).id,
           });
           await profile.save();
         }
@@ -1273,7 +1310,8 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
 
       // If still no profile exists, create a genuine UserProfile document with wrId and passed signup data
       if (!profile) {
-        const newWrId = generateWelliRecordId();
+        const issued = await newWelliId(req.body.state || user.registrationState);
+        const newWrId = issued.id;
         const profileName = req.body.fullName || req.body.name || user.fullName || null;
         const profileEmail = cleanEmail || (req.body.email ? req.body.email.toLowerCase().trim() : (user.email || null));
         const rawPhone = user.phone || user.phoneNumber || phoneNumber;
@@ -1293,6 +1331,7 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
           hmoProvider: cleanHmo,
           hmoPolicyNumber: cleanHmo ? (req.body.hmoPolicyNumber || req.body.insuranceId || user.hmoPolicyNumber || null) : null,
           wrId: newWrId,
+          ...registrationFields(issued, req.body.lga || user.registrationLga),
           authProvider: cleanEmail ? 'email_otp' : 'phone_otp',
           isEmailVerified: Boolean(cleanEmail || user.isEmailVerified),
         });
@@ -1309,7 +1348,7 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
         if (req.body.genotype && !profile.genotype) { profile.genotype = req.body.genotype; updated = true; }
         if (cleanHmo && !profile.hmoProvider) { profile.hmoProvider = cleanHmo; updated = true; }
         if (cleanHmo && req.body.hmoPolicyNumber && !profile.hmoPolicyNumber) { profile.hmoPolicyNumber = req.body.hmoPolicyNumber; updated = true; }
-        if (!profile.wrId) { profile.wrId = generateWelliRecordId(); updated = true; }
+        if (!profile.wrId) { profile.wrId = (await newWelliId(user.registrationState)).id; updated = true; }
         if (updated) {
           await profile.save();
           console.log('[USERPROFILE UPDATED ON VERIFY]', profile._id);
@@ -1452,11 +1491,13 @@ app.post('/api/v1/auth/social/verify', async (req: Request, res: Response) => {
     });
 
     if (!profile) {
+      const issued = await newWelliId(req.body.state);
       profile = new UserProfile({
         accountId: account._id,
         fullName: account.fullName,
         email: cleanEmail,
-        wrId: generateWelliRecordId(),
+        wrId: issued.id,
+        ...registrationFields(issued, req.body.lga),
         authProvider: `${provider}_oauth`,
         isEmailVerified: true,
         bloodType: 'O+',
@@ -1464,7 +1505,7 @@ app.post('/api/v1/auth/social/verify', async (req: Request, res: Response) => {
       });
       await profile.save();
     } else if (!profile.wrId) {
-      profile.wrId = generateWelliRecordId();
+      profile.wrId = (await newWelliId(req.body.state)).id;
       await profile.save();
     }
 
@@ -1580,7 +1621,7 @@ const updateProfileHandler = async (req: Request, res: Response) => {
     if (!profile && mongoose.connection.readyState === 1) {
       profile = new UserProfile({
         accountId: mongoose.isValidObjectId(targetId) ? new mongoose.Types.ObjectId(targetId) : targetId,
-        wrId: wrId || memberId || generateWelliRecordId(),
+        wrId: wrId || memberId || (await newWelliId(req.body.state)).id,
       });
     }
 
@@ -1621,7 +1662,7 @@ const updateProfileHandler = async (req: Request, res: Response) => {
         profile.avatar = avatar;
       }
       if (!profile.wrId) {
-        profile.wrId = wrId || memberId || generateWelliRecordId();
+        profile.wrId = wrId || memberId || (await newWelliId(req.body.state)).id;
       }
 
       await profile.save();
@@ -1680,14 +1721,14 @@ app.get(['/api/v1/profile/me', '/api/v1/profile'], async (req: Request, res: Res
             hmoProvider: legacyProfile.hmoProvider || legacyProfile.insuranceProvider,
             hmoPolicyNumber: legacyProfile.hmoPolicyNumber || legacyProfile.insuranceId,
             allergies: legacyProfile.allergies,
-            wrId: legacyProfile.memberId || generateWelliRecordId(),
+            wrId: legacyProfile.memberId || (await newWelliId()).id,
           });
           await profile.save();
         }
       }
 
       if (profile && !profile.wrId) {
-        profile.wrId = generateWelliRecordId();
+        profile.wrId = (await newWelliId()).id;
         await profile.save();
       }
     }
@@ -1833,7 +1874,7 @@ app.post(['/api/v1/family/add', '/api/v1/family'], async (req: Request, res: Res
         allergies: allergies || '',
         phone: phone || '',
         linkedAccountId: linkedAccountId && mongoose.isValidObjectId(linkedAccountId) ? new mongoose.Types.ObjectId(linkedAccountId) : null,
-        wrId: generateWelliRecordId(),
+        wrId: (await newWelliId(await guardianStateHint(resolvedAccountId))).id,
       });
 
       savedMember = await newDoc.save();
@@ -2087,6 +2128,10 @@ app.post('/api/v1/auth/register', async (req: Request, res: Response) => {
   if (!name || (!email && !phone) || !password) {
     return res.status(400).json({ success: false, message: 'Name, email or phone, and password are required' });
   }
+  const regState = req.body.state ? resolveRegion(req.body.state) : null;
+  if (req.body.state && !regState) {
+    return res.status(400).json({ success: false, message: 'Choose your state from the list.' });
+  }
 
   try {
     if (mongoose.connection.readyState === 1) {
@@ -2121,6 +2166,8 @@ app.post('/api/v1/auth/register', async (req: Request, res: Response) => {
         hmoProvider: insuranceProvider || null,
         hmoPolicyNumber: insuranceId || null,
         isPhoneVerified: true,
+        registrationState: regState?.name,
+        registrationLga: cleanLga(req.body.lga),
       });
     }
 
@@ -2334,7 +2381,7 @@ app.get('/api/v1/family/:id/child-profile', async (req: Request, res: Response) 
     if (!member) return;
     await logChild(req, member, 'profile_viewed', '', 30);
     if (!member.wrId) {
-      member.wrId = generateWelliRecordId();
+      member.wrId = (await newWelliId(await guardianStateHint(member.accountId))).id;
       await member.save();
     }
     const [vaccinations, growth] = await Promise.all([
@@ -2600,6 +2647,7 @@ const reminderDeps: ReminderDeps = {
   },
   availability: () => ({ sms: smsConfigured(), whatsapp: smsConfigured() && process.env.WHATSAPP_REMINDERS_ENABLED === 'true' }),
 };
+app.use('/api/v1', createRegistry({ getAuthUserId, requireStaff: staff.requireStaff, actorName: staff.actorName }));
 app.use('/api/v1', createChildDevelopmentRouter(getAuthUserId));
 app.use('/api/v1', createChildReminderRouter(reminderDeps));
 app.use(
@@ -3489,6 +3537,7 @@ app.get('/clinic', clinicPage);
 app.get('/admin/consultations', consultationsPage);
 app.get('/admin/pharmacy', pharmacyPage);
 app.get('/clinic/visits', visitsPage);
+app.get('/admin/registrations', registrationsPage);
 // The video client for /clinic/visits is served from this server so the page's CSP can stay on 'self'.
 app.get('/vendor/livekit-client.umd.js', (_req: Request, res: Response) => {
   res.setHeader('Cache-Control', 'public, max-age=86400');
