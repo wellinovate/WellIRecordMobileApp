@@ -5,6 +5,7 @@ import mongoose from 'mongoose';
 import { UserProfile } from './models';
 import { REGIONS, resolveRegion } from './data/nigeriaRegions';
 import { isWelliId } from './welliId';
+import { cleanLgaText, lgasForRegion, mapLga, normalizeLga } from './lgaCore';
 import { ACTIVE_DAYS, buildRegionRows, isIdentityMethod, IDENTITY_METHODS, RawGroup } from './registryCore';
 
 export interface RegistryDeps {
@@ -12,8 +13,6 @@ export interface RegistryDeps {
   requireStaff: (...roles: any[]) => RequestHandler;
   actorName: (req: Request, typed?: unknown) => string;
 }
-
-const cleanLga = (v: unknown) => String(v ?? '').replace(/[^\p{L}\p{N} .,'()/-]/gu, '').trim().slice(0, 60);
 
 export function createRegistry(deps: RegistryDeps): Router {
   const router = Router();
@@ -23,17 +22,25 @@ export function createRegistry(deps: RegistryDeps): Router {
     res.json({ success: true, regions: REGIONS.map((r) => ({ code: r.code, name: r.name })) });
   });
 
+  // The LGAs we hold for a state. An empty list means the app asks for free text. Public: not personal data.
+  router.get('/lgas', (req: Request, res: Response) => {
+    const region = resolveRegion(req.query.state);
+    if (!region) return res.status(400).json({ success: false, message: 'Choose a state from the list.' });
+    return res.json({ success: true, state: region.name, lgas: lgasForRegion(region.code).map((l) => ({ code: l.code, name: l.name })) });
+  });
+
   // Change where the person lives now. The WelliID and the region they registered in stay as they are.
   router.patch('/profile/residence', async (req: Request, res: Response) => {
     const uid = deps.getAuthUserId(req);
     if (!uid || !mongoose.isValidObjectId(uid)) return res.status(401).json({ success: false, message: 'Sign in to continue.' });
     const region = resolveRegion(req.body?.state);
     if (!region) return res.status(400).json({ success: false, message: 'Choose a state from the list.' });
+    const lga = mapLga(region.code, req.body?.lga, req.body?.lgaCode);
     try {
       const p: any = await UserProfile.findOneAndUpdate(
         { accountId: new mongoose.Types.ObjectId(uid) },
-        { $set: { residenceState: region.name, residenceLga: cleanLga(req.body?.lga) } },
-        { new: true, projection: 'wrId registrationRegion registrationState residenceState residenceLga' }
+        { $set: { residenceState: region.name, residenceLga: lga.lgaText, ...lga } },
+        { new: true, projection: 'wrId registrationRegion registrationState residenceState residenceLga lgaText lgaCode lgaMappingStatus' }
       ).lean();
       if (!p) return res.status(404).json({ success: false, message: 'Profile not found.' });
       return res.json({
@@ -42,10 +49,68 @@ export function createRegistry(deps: RegistryDeps): Router {
         registrationState: p.registrationState || '',
         residenceState: p.residenceState,
         residenceLga: p.residenceLga || '',
+        lgaText: p.lgaText || '',
+        lgaCode: p.lgaCode || '',
+        lgaMappingStatus: p.lgaMappingStatus || 'unverified',
       });
     } catch (err) {
       console.error('[residence] ERROR:', err);
       return res.status(500).json({ success: false, message: 'Could not save. Try again.' });
+    }
+  });
+
+  // Admin review queue: typed LGAs that matched nothing, grouped by state and text, most common first.
+  router.get('/staff/lga/review', deps.requireStaff(), async (req: Request, res: Response) => {
+    if (req.staff?.role !== 'admin') return res.status(403).json({ success: false, message: 'Only an admin can do this.' });
+    try {
+      const rows = await UserProfile.aggregate([
+        { $match: { lgaMappingStatus: 'needs_review' } },
+        { $group: { _id: { state: '$residenceState', text: { $toLower: '$lgaText' } }, count: { $sum: 1 }, example: { $first: '$lgaText' } } },
+        { $sort: { count: -1 } },
+        { $limit: 200 },
+      ]);
+      return res.json({ success: true, items: rows.map((r: any) => ({ state: r._id.state || '', lgaText: r.example, count: r.count })) });
+    } catch (err) {
+      console.error('[lga-review] ERROR:', err);
+      return res.status(500).json({ success: false, message: 'Could not load. Try again.' });
+    }
+  });
+
+  // Admin maps one typed text to a catalogue code. Every profile in that state with that text (ignoring case) becomes verified.
+  router.post('/staff/lga/map', deps.requireStaff(), async (req: Request, res: Response) => {
+    if (req.staff?.role !== 'admin') return res.status(403).json({ success: false, message: 'Only an admin can do this.' });
+    const region = resolveRegion(req.body?.state);
+    const code = String(req.body?.lgaCode ?? '');
+    const text = cleanLgaText(req.body?.lgaText);
+    if (!region || !text || !lgasForRegion(region.code).some((l) => l.code === code)) {
+      return res.status(400).json({ success: false, message: 'Send a state, the typed text and a code from that state.' });
+    }
+    try {
+      const candidates: any[] = await UserProfile.find({ residenceState: region.name, lgaMappingStatus: 'needs_review' }, '_id lgaText').lean();
+      const ids = candidates.filter((c) => normalizeLga(c.lgaText) === normalizeLga(text)).map((c) => c._id);
+      const r = await UserProfile.updateMany({ _id: { $in: ids } }, { $set: { lgaCode: code, lgaMappingStatus: 'verified' } });
+      return res.json({ success: true, updated: r.modifiedCount ?? ids.length });
+    } catch (err) {
+      console.error('[lga-map] ERROR:', err);
+      return res.status(500).json({ success: false, message: 'Could not save. Try again.' });
+    }
+  });
+
+  // Counts by canonical LGA for one state. Reads the stored code, never the ID text.
+  router.get('/staff/stats/lgas', deps.requireStaff(), async (req: Request, res: Response) => {
+    if (req.staff?.role !== 'admin') return res.status(403).json({ success: false, message: 'Only an admin can do this.' });
+    const region = resolveRegion(req.query.state);
+    if (!region) return res.status(400).json({ success: false, message: 'Choose a state from the list.' });
+    try {
+      const rows = await UserProfile.aggregate([
+        { $match: { residenceState: region.name } },
+        { $group: { _id: { $ifNull: ['$lgaCode', ''] }, count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+      ]);
+      return res.json({ success: true, state: region.name, rows: rows.map((r: any) => ({ lgaCode: r._id, count: r.count })) });
+    } catch (err) {
+      console.error('[lga-stats] ERROR:', err);
+      return res.status(500).json({ success: false, message: 'Could not load. Try again.' });
     }
   });
 
