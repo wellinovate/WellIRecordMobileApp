@@ -960,6 +960,25 @@ export function useWelliApp() {
     return session;
   };
 
+  // Shows the new photo straight away, saves it, and puts the old one back with a message if the save fails.
+  const saveAvatar = async (memberId: string, next: string | undefined, okMsg: string) => {
+    const previous = state.familyMembers.find((f) => f.id === memberId)?.avatarUrl;
+    const apply = (url: string | undefined) =>
+      patch((s) => ({
+        familyMembers: s.familyMembers.map((f) => (f.id === memberId ? { ...f, avatarUrl: url } : f)),
+        personalInfoDraft: s.personalInfoDraft && s.personalInfoDraft.id === memberId ? { ...s.personalInfoDraft, avatarUrl: url } : s.personalInfoDraft,
+      }));
+    apply(next);
+    try {
+      if (memberId === 'me') await apiClient.patch('/profile/update', { avatarUrl: next ?? '' });
+      else await familyService.updateFamilyMember(memberId, { avatarUrl: next ?? '' });
+      showToast(okMsg);
+    } catch (e: any) {
+      apply(previous);
+      showToast(e?.message || 'Could not save the photo. Check your connection and try again.');
+    }
+  };
+
   const actions = {
     showToast: (msg: string) => showToast(msg),
     setTab: (tab: Tab) => {
@@ -1435,24 +1454,20 @@ export function useWelliApp() {
         }
       }
     },
-    setAvatar: (memberId: string, dataUrl: string, sizeBytes: number) => {
+    // A new or removed photo is saved to the server at once, not only when the form is saved.
+    setAvatar: async (memberId: string, dataUrl: string, sizeBytes: number) => {
       if (sizeBytes > 700 * 1024) {
         showToast('Photo is too large. Choose a smaller picture.');
         return;
       }
-      patch((s) => ({
-        familyMembers: s.familyMembers.map((f) => (f.id === memberId ? { ...f, avatarUrl: dataUrl } : f)),
-        personalInfoDraft: s.personalInfoDraft && s.personalInfoDraft.id === memberId ? { ...s.personalInfoDraft, avatarUrl: dataUrl } : s.personalInfoDraft,
-      }));
-      showToast('Profile photo updated');
+      if (!dataUrl.startsWith('data:image/')) {
+        showToast('Could not read that photo. Try another one.');
+        return;
+      }
+      await saveAvatar(memberId, dataUrl, 'Profile photo saved');
     },
-    removeAvatar: (memberId: string) => {
-      patch((s) => ({
-        familyMembers: s.familyMembers.map((f) => (f.id === memberId ? { ...f, avatarUrl: undefined } : f)),
-        personalInfoDraft:
-          s.personalInfoDraft && s.personalInfoDraft.id === memberId ? { ...s.personalInfoDraft, avatarUrl: undefined } : s.personalInfoDraft,
-      }));
-      showToast('Profile photo removed');
+    removeAvatar: async (memberId: string) => {
+      await saveAvatar(memberId, undefined, 'Profile photo removed');
     },
     openPrivacyPolicy: () => patch({ showPrivacyPolicy: true }),
     closePrivacyPolicy: () => patch({ showPrivacyPolicy: false }),
