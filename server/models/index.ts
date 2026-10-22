@@ -861,6 +861,10 @@ export interface IUserProfile extends Document {
   registeredAt?: Date;
   residenceState?: string;
   residenceLga?: string;
+  // Original LGA text, canonical code when confidently matched, and how sure the match is. Never part of the WelliID.
+  lgaText?: string;
+  lgaCode?: string;
+  lgaMappingStatus?: 'verified' | 'unverified' | 'needs_review';
   identityVerifiedAt?: Date;
   identityVerifiedBy?: string;
   identityVerifiedMethod?: string;
@@ -907,6 +911,9 @@ const UserProfileSchema = new Schema<IUserProfile>(
     registeredAt: { type: Date },
     residenceState: { type: String, index: true },
     residenceLga: { type: String },
+    lgaText: { type: String },
+    lgaCode: { type: String, index: true },
+    lgaMappingStatus: { type: String, enum: ['verified', 'unverified', 'needs_review'], index: true },
     identityVerifiedAt: { type: Date },
     identityVerifiedBy: { type: String },
     identityVerifiedMethod: { type: String },

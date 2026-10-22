@@ -5,6 +5,7 @@
 
 import { clinicPage, consultationsPage, ordersPage, pharmacyPage, registrationsPage, visitsPage } from './consolePages';
 import { createRegistry } from './registry';
+import { mapLga } from './lgaCore';
 import { shouldWriteActive } from './registryCore';
 import { resolveRegion } from './data/nigeriaRegions';
 import { createClinicVisits } from './clinicVisits';
@@ -651,12 +652,14 @@ async function newWelliId(state?: unknown): Promise<IssuedId> {
 }
 const cleanLga = (v: unknown) => String(v ?? '').replace(/[^\p{L}\p{N} .,'()/-]/gu, '').trim().slice(0, 60);
 /** Registration and residence fields for a new profile. Residence starts as the state chosen and is editable later; the registration region is not. */
-function registrationFields(issued: IssuedId, lga?: unknown) {
+function registrationFields(issued: IssuedId, lga?: unknown, lgaCode?: unknown) {
+  const m = mapLga(issued.region.code, lga, lgaCode);
   return {
+    ...m,
     registrationRegion: issued.region.code,
     registrationState: issued.hasRegion ? issued.region.name : '',
     residenceState: issued.hasRegion ? issued.region.name : '',
-    residenceLga: cleanLga(lga),
+    residenceLga: m.lgaText,
     registeredAt: new Date(),
   };
 }
@@ -1331,7 +1334,7 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
           hmoProvider: cleanHmo,
           hmoPolicyNumber: cleanHmo ? (req.body.hmoPolicyNumber || req.body.insuranceId || user.hmoPolicyNumber || null) : null,
           wrId: newWrId,
-          ...registrationFields(issued, req.body.lga || user.registrationLga),
+          ...registrationFields(issued, req.body.lga || user.registrationLga, req.body.lgaCode),
           authProvider: cleanEmail ? 'email_otp' : 'phone_otp',
           isEmailVerified: Boolean(cleanEmail || user.isEmailVerified),
         });
@@ -1497,7 +1500,7 @@ app.post('/api/v1/auth/social/verify', async (req: Request, res: Response) => {
         fullName: account.fullName,
         email: cleanEmail,
         wrId: issued.id,
-        ...registrationFields(issued, req.body.lga),
+        ...registrationFields(issued, req.body.lga, req.body.lgaCode),
         authProvider: `${provider}_oauth`,
         isEmailVerified: true,
         bloodType: 'O+',

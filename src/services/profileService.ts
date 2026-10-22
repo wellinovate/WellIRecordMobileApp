@@ -26,9 +26,19 @@ export const profileService = {
   },
 
   /** Where the person lives now. The WelliID and registration region are not touched. */
-  async setResidence(state: string, lga?: string): Promise<{ residenceState: string; residenceLga: string }> {
-    const res = await apiClient.patch<{ success: boolean; residenceState: string; residenceLga: string }>('/profile/residence', { state, lga });
-    return { residenceState: res.residenceState, residenceLga: res.residenceLga || '' };
+  async setResidence(state: string, lga?: string, lgaCode?: string): Promise<{ residenceState: string; residenceLga: string; lgaCode: string; lgaMappingStatus: string }> {
+    const res = await apiClient.patch<{ success: boolean; residenceState: string; residenceLga: string; lgaCode?: string; lgaMappingStatus?: string }>('/profile/residence', { state, lga, lgaCode });
+    return { residenceState: res.residenceState, residenceLga: res.residenceLga || '', lgaCode: res.lgaCode || '', lgaMappingStatus: res.lgaMappingStatus || 'unverified' };
+  },
+
+  /** LGAs we hold for a state. Empty means the person types it. */
+  async listLgas(state: string): Promise<{ code: string; name: string }[]> {
+    try {
+      const res = await apiClient.get<{ lgas: { code: string; name: string }[] }>('/lgas', { params: { state } });
+      return res.lgas || [];
+    } catch {
+      return [];
+    }
   },
 
   /**
