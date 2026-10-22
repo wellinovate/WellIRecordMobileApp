@@ -16,6 +16,8 @@ export interface IUser extends Document {
   hmoProvider: string;
   hmoPolicyNumber?: string;
   isPhoneVerified: boolean;
+  registrationState?: string;
+  registrationLga?: string;
   twoFactorEnabled: boolean;
   biometricKeyHash?: string;
   sessionsRevokedAt?: Date;
@@ -35,6 +37,8 @@ const UserSchema = new Schema<IUser>(
     hmoProvider: { type: String },
     hmoPolicyNumber: { type: String },
     isPhoneVerified: { type: Boolean, default: false },
+    registrationState: { type: String, trim: true },
+    registrationLga: { type: String, trim: true },
     twoFactorEnabled: { type: Boolean, default: true },
     biometricKeyHash: { type: String },
     sessionsRevokedAt: { type: Date },
@@ -740,6 +744,8 @@ export interface IAccount extends Document {
   hmoProvider?: string;
   hmoPolicyNumber?: string;
   isPhoneVerified?: boolean;
+  registrationState?: string;
+  registrationLga?: string;
   pushTokens?: string[];
 }
 
@@ -756,6 +762,8 @@ const AccountSchema = new Schema<IAccount>(
     hmoProvider: { type: String },
     hmoPolicyNumber: { type: String },
     isPhoneVerified: { type: Boolean, default: false },
+    registrationState: { type: String },
+    registrationLga: { type: String },
     pushTokens: { type: [String], default: [] },
   },
   { timestamps: true, strict: false }
@@ -847,6 +855,16 @@ export interface IUserProfile extends Document {
   insuranceId?: string;
   authProvider?: string;
   isEmailVerified?: boolean;
+  // Where the person registered (fixed) and where they live now (editable). The WelliID never changes.
+  registrationRegion?: string;
+  registrationState?: string;
+  registeredAt?: Date;
+  residenceState?: string;
+  residenceLga?: string;
+  identityVerifiedAt?: Date;
+  identityVerifiedBy?: string;
+  identityVerifiedMethod?: string;
+  lastActiveAt?: Date;
   pushTokens?: string[];
   createdAt: Date;
   updatedAt: Date;
@@ -884,6 +902,15 @@ const UserProfileSchema = new Schema<IUserProfile>(
     insuranceId: { type: String },
     authProvider: { type: String },
     isEmailVerified: { type: Boolean },
+    registrationRegion: { type: String, index: true },
+    registrationState: { type: String },
+    registeredAt: { type: Date },
+    residenceState: { type: String, index: true },
+    residenceLga: { type: String },
+    identityVerifiedAt: { type: Date },
+    identityVerifiedBy: { type: String },
+    identityVerifiedMethod: { type: String },
+    lastActiveAt: { type: Date, index: true },
     pushTokens: { type: [String], default: [] },
   },
   { timestamps: true, strict: false }

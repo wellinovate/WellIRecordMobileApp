@@ -26,6 +26,10 @@ import Svg, { Path } from 'react-native-svg';
 
 import { LogoMark } from '../../../components/Logo';
 
+import { FormSelect } from '../../../components/FormSelect';
+
+import { STATE_NAMES } from '../../../data/nigeriaRegions';
+
 
 
 export type CreateAccountData = {
@@ -41,6 +45,8 @@ export type CreateAccountData = {
   phone: string;
 
   country: string;
+
+  state: string;
 
   gender: 'female' | 'male' | 'prefer-not-to-say' | '';
 
@@ -83,6 +89,7 @@ export function CreateAccountScreen({
   const [phone, setPhone] = useState('');
 
   const [country] = useState('Nigeria');
+  const [stateName, setStateName] = useState('');
 
   const [gender, setGender] =
 
@@ -158,6 +165,14 @@ export function CreateAccountScreen({
 
 
 
+    if (!stateName) {
+
+      setError('Select your state of residence.');
+
+      return;
+
+    }
+
     if (password.length < 8) {
 
       setError('Password must contain at least 8 characters.');
@@ -207,6 +222,8 @@ export function CreateAccountScreen({
         phone: phone.trim(),
 
         country,
+
+        state: stateName,
 
         gender,
 
@@ -498,6 +515,19 @@ export function CreateAccountScreen({
           </TouchableOpacity>
 
         </View>
+
+        <View style={styles.field}>
+
+          <Text style={styles.fieldLabel}>
+
+            State of residence<Text style={styles.required}> *</Text>
+
+          </Text>
+
+          <FormSelect value={stateName} onChange={setStateName} options={STATE_NAMES} placeholder="Select your state" />
+
+        </View>
+
 
 
 

@@ -307,6 +307,7 @@ export const authService = {
     identifier: string,
     code: string,
     challengeToken?: string,
+    registration?: { state?: string; lga?: string },
   ): Promise<{ success: boolean; message?: string }> {
 
     const isEmail = identifier.includes('@');
@@ -320,6 +321,9 @@ export const authService = {
         : { phoneNumber: normalized }),
       code,
       ...(challengeToken ? { challengeToken } : {}),
+      // Where the person is registering. The server uses it once, to issue their WelliID.
+      ...(registration?.state ? { state: registration.state } : {}),
+      ...(registration?.lga ? { lga: registration.lga } : {}),
     });
 
     if (res?.success === false) {
@@ -418,6 +422,8 @@ export const authService = {
       insuranceProvider?: string;
       insuranceId?: string;
       password?: string;
+      state?: string;
+      lga?: string;
     },
     options: AuthRequestOptions = {},
   ): Promise<AuthSession> {

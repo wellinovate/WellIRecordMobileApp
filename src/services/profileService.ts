@@ -25,6 +25,12 @@ export const profileService = {
     }
   },
 
+  /** Where the person lives now. The WelliID and registration region are not touched. */
+  async setResidence(state: string, lga?: string): Promise<{ residenceState: string; residenceLga: string }> {
+    const res = await apiClient.patch<{ success: boolean; residenceState: string; residenceLga: string }>('/profile/residence', { state, lga });
+    return { residenceState: res.residenceState, residenceLga: res.residenceLga || '' };
+  },
+
   /**
    * Updates patient demographic and medical profile fields
    */

@@ -221,7 +221,7 @@ export function AuthFlow({ app }: Props) {
           }}
           onVerify={async (code: string) => {
             if (isSignup) {
-              await app.actions.verifyOtpOnly(targetEmail, code);
+              await app.actions.verifyOtpOnly(targetEmail, code, undefined, { state: (accountData as any)?.state, lga: (accountData as any)?.lga });
               setStep('guided-profile');
               return;
             }
@@ -346,7 +346,7 @@ export function AuthFlow({ app }: Props) {
           }
           onVerify={async (code: string) => {
             if (isSignup) {
-              await app.actions.verifyOtpOnly(targetPhone, code);
+              await app.actions.verifyOtpOnly(targetPhone, code, undefined, { state: (accountData as any)?.state, lga: (accountData as any)?.lga });
 
               const preparedSession =
                 await app.actions.prepareSignUpWithData(
