@@ -2395,6 +2395,137 @@ app.post('/api/v1/auth/unlock/verify', unlockLimiter, async (req: Request, res: 
   return res.json({ success: true });
 });
 
+// 3f. Email and phone verification for a signed-in account. The person proves they own a new email or phone with a
+// 6-digit code, then the account is updated. The code is bound to the account, the kind and the exact value, so it
+// cannot be reused for another address. The change is written to both account stores and recorded in the account log.
+const contactLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 12,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many attempts. Try again in a few minutes.' },
+});
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const NG_MOBILE = /^\+234[789]\d{9}$/;
+
+async function contactHolder(userId: string) {
+  const [account, user]: any[] = await Promise.all([
+    Account.findById(userId).select('email phone phoneNumber isEmailVerified isPhoneVerified fullName name').lean(),
+    User.findById(userId).select('email phoneNumber isPhoneVerified fullName').lean(),
+  ]);
+  return { account, user };
+}
+
+app.get('/api/v1/auth/contact/status', async (req: Request, res: Response) => {
+  const userId = getAuthUserId(req);
+  if (!userId) return res.status(401).json({ success: false, message: 'Sign in again' });
+  if (mongoose.connection.readyState !== 1 || !mongoose.isValidObjectId(userId)) {
+    return res.status(503).json({ success: false, message: 'Not available right now. Try again shortly.' });
+  }
+  try {
+    const { account, user } = await contactHolder(userId);
+    const email = String(account?.email || user?.email || '');
+    const phone = String(account?.phoneNumber || user?.phoneNumber || account?.phone || '');
+    return res.json({
+      success: true,
+      email: email || null,
+      // An account made with an emailed code, or after this check, has a proven email. Others are unproven.
+      emailVerified: Boolean(email && account?.isEmailVerified),
+      phone: phone || null,
+      phoneVerified: Boolean(phone && (account?.isPhoneVerified || user?.isPhoneVerified)),
+    });
+  } catch (err) {
+    console.error('[500]', req.method, req.path, err);
+    return res.status(500).json({ success: false, message: 'Could not load your contact details.' });
+  }
+});
+
+app.post('/api/v1/auth/contact/send', contactLimiter, async (req: Request, res: Response) => {
+  const userId = getAuthUserId(req);
+  if (!userId) return res.status(401).json({ success: false, message: 'Sign in again' });
+  const kind = req.body?.kind === 'phone' ? 'phone' : req.body?.kind === 'email' ? 'email' : null;
+  const raw = typeof req.body?.value === 'string' ? req.body.value : '';
+  if (!kind) return res.status(400).json({ success: false, message: 'Choose email or phone' });
+  if (mongoose.connection.readyState !== 1 || !mongoose.isValidObjectId(userId)) {
+    return res.status(503).json({ success: false, message: 'Not available right now. Try again shortly.' });
+  }
+  const value = kind === 'email' ? raw.trim().toLowerCase() : normalizeNigerianPhone(raw);
+  if (kind === 'email' && (!EMAIL_SHAPE.test(value) || value.length > 254)) {
+    return res.status(400).json({ success: false, message: 'Enter a valid email address' });
+  }
+  if (kind === 'phone' && !NG_MOBILE.test(value)) {
+    return res.status(400).json({ success: false, message: 'Enter a valid Nigerian mobile number' });
+  }
+  try {
+    const me = new mongoose.Types.ObjectId(userId);
+    const taken = kind === 'email'
+      ? (await User.exists({ email: value, _id: { $ne: me } })) || (await Account.exists({ email: value, _id: { $ne: me } }))
+      : (await User.exists({ phoneNumber: value, _id: { $ne: me } })) ||
+        (await Account.exists({ $or: [{ phoneNumber: value }, { phone: value }, { phone: toLocalNigerianPhone(value) }], _id: { $ne: me } }));
+    if (taken) return res.status(409).json({ success: false, message: `This ${kind === 'email' ? 'email' : 'number'} cannot be used for this account.` });
+
+    const { account, user } = await contactHolder(userId);
+    const name = account?.fullName || account?.name || user?.fullName || 'WelliRecord Patient';
+    const code = generateOtp(`contact:${userId}:${kind}:${value}`, 'login');
+    if (kind === 'email') {
+      const sent = await sendWelliEmail({
+        to: value,
+        subject: 'Confirm your email for WelliRecord™',
+        html: renderOtpEmailHtml({ fullName: name, code, expiresInMinutes: 5 }),
+      });
+      if (!sent?.success || sent.delivered === false) {
+        return res.status(502).json({ success: false, message: 'We could not send the email. Check the address and try again.' });
+      }
+    } else {
+      try {
+        await sendWelliSms(value, `Your WelliRecord verification code is ${code}. Valid for 5 minutes. Do not share it.`);
+      } catch (err) {
+        console.error('[Contact SMS]', err);
+        return res.status(502).json({ success: false, message: 'We could not send the SMS. Check the number and try again.' });
+      }
+    }
+    return res.json({ success: true, expiresInSeconds: 300 });
+  } catch (err) {
+    console.error('[500]', req.method, req.path, err);
+    return res.status(500).json({ success: false, message: 'Could not send a code. Try again.' });
+  }
+});
+
+app.post('/api/v1/auth/contact/verify', contactLimiter, async (req: Request, res: Response) => {
+  const userId = getAuthUserId(req);
+  if (!userId) return res.status(401).json({ success: false, message: 'Sign in again' });
+  const kind = req.body?.kind === 'phone' ? 'phone' : req.body?.kind === 'email' ? 'email' : null;
+  const raw = typeof req.body?.value === 'string' ? req.body.value : '';
+  const code = typeof req.body?.code === 'string' ? req.body.code.trim() : '';
+  if (!kind || !/^\d{6}$/.test(code)) return res.status(400).json({ success: false, message: 'Enter the 6-digit code' });
+  if (mongoose.connection.readyState !== 1 || !mongoose.isValidObjectId(userId)) {
+    return res.status(503).json({ success: false, message: 'Not available right now. Try again shortly.' });
+  }
+  const value = kind === 'email' ? raw.trim().toLowerCase() : normalizeNigerianPhone(raw);
+  if (!verifyStoredOtp(`contact:${userId}:${kind}:${value}`, code)) {
+    return res.status(400).json({ success: false, message: 'That code is wrong or has expired. Ask for a new one.' });
+  }
+  try {
+    const me = new mongoose.Types.ObjectId(userId);
+    if (kind === 'email') {
+      await Promise.all([
+        User.updateOne({ _id: me }, { $set: { email: value } }),
+        Account.updateOne({ _id: me }, { $set: { email: value, isEmailVerified: true } }),
+      ]);
+    } else {
+      await Promise.all([
+        User.updateOne({ _id: me }, { $set: { phoneNumber: value, isPhoneVerified: true } }),
+        Account.updateOne({ _id: me }, { $set: { phoneNumber: value, phone: toLocalNigerianPhone(value), isPhoneVerified: true } }),
+      ]);
+    }
+    void auditAccount(req, userId, 'security', kind === 'email' ? 'email_verified' : 'phone_verified', 'You', `${kind === 'email' ? 'Email' : 'Phone number'} confirmed with a code`);
+    return res.json({ success: true, kind, value });
+  } catch (err) {
+    console.error('[500]', req.method, req.path, err);
+    return res.status(500).json({ success: false, message: 'Could not save. Try again.' });
+  }
+});
+
 // -------------------------------------------------------------
 // CHILD HEALTH PROFILE: schedule, vaccinations, growth, identity
 // -------------------------------------------------------------

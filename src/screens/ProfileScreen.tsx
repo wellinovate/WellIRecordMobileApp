@@ -365,7 +365,7 @@ export function ProfileScreen({
             icon="verify"
             title="Email & phone verification"
             subtitle="View or change your email and phone number"
-            onPress={actions.openPersonalInfo}
+            onPress={actions.openContactVerify}
           />
 
           <Divider />
