@@ -1502,6 +1502,29 @@ AccountAuditLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 60 * 60 * 24
 export const AccountAuditLog: Model<IAccountAuditLog> =
   mongoose.models.AccountAuditLog || mongoose.model<IAccountAuditLog>('AccountAuditLog', AccountAuditLogSchema);
 
+
+// What each person agreed to when they created their account: which document, which version, when.
+export interface ILegalAcceptance extends Document {
+  accountId: string;
+  documentId: string;
+  version: string;
+  acceptedAt: Date;
+  source: string;
+}
+const LegalAcceptanceSchema = new Schema<ILegalAcceptance>(
+  {
+    accountId: { type: String, required: true, index: true },
+    documentId: { type: String, required: true },
+    version: { type: String, required: true },
+    acceptedAt: { type: Date, required: true },
+    source: { type: String, default: 'signup' },
+  },
+  { timestamps: true },
+);
+LegalAcceptanceSchema.index({ accountId: 1, documentId: 1, version: 1 }, { unique: true });
+export const LegalAcceptance: Model<ILegalAcceptance> =
+  mongoose.models.LegalAcceptance || mongoose.model<ILegalAcceptance>('LegalAcceptance', LegalAcceptanceSchema, 'legalacceptances');
+
 export const ChildMilestone: Model<IChildMilestone> =
   mongoose.models.ChildMilestone || mongoose.model<IChildMilestone>('ChildMilestone', ChildMilestoneSchema);
 export const ChildScreening: Model<IChildScreening> =

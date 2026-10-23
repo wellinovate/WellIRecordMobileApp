@@ -5,6 +5,7 @@
 
 import { apiClient, setAuthToken } from './apiClient';
 import { registerForPushNotificationsAsync } from './pushNotifications';
+import { currentAcceptance } from '../utils/legalAcceptance';
 import { storage } from '../utils/secureStorage';
 import { normalizeNigerianPhone } from '../utils/phone';
 
@@ -315,7 +316,9 @@ export const authService = {
       ? identifier.trim().toLowerCase()
       : normalizeNigerianPhone(identifier);
 
+    const legal = await currentAcceptance();
     const res = await apiClient.post<any>('/auth/otp/verify', {
+      ...(legal ? { legal } : {}),
       ...(isEmail
         ? { email: normalized }
         : { phoneNumber: normalized }),
@@ -391,9 +394,13 @@ export const authService = {
     clerkToken: string;
     /** State of residence. Required by the server when the Google or Apple account is new. */
     state?: string;
+    /** What the person accepted. Falls back to the saved acceptance from the legal screen. */
+    legal?: { acceptedAt: string; documents: { id: string; version: string }[] };
   }): Promise<AuthSession & { isNewAccount?: boolean }> {
 
+    const legal = details.legal ?? (await currentAcceptance());
     const raw = await apiClient.post<any>('/auth/social/verify', {
+      ...(legal ? { legal } : {}),
       provider: details.provider,
       fullName: details.fullName,
       clerkToken: details.clerkToken,
@@ -432,7 +439,8 @@ export const authService = {
   ): Promise<AuthSession> {
 
     // Never fabricate a production session when registration fails.
-    const raw = await apiClient.post<any>('/auth/register', data);
+    const legal = await currentAcceptance();
+    const raw = await apiClient.post<any>('/auth/register', { ...data, ...(legal ? { legal } : {}) });
     const session = unwrapAuthSession(raw, {
       id: 'me',
       fullName: data.name,

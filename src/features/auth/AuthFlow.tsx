@@ -15,6 +15,8 @@ import { RecoveryEmailSentScreen } from './screens/RecoveryEmailSentScreen';
 import { SuccessfulLoginScreen } from './screens/SuccessfulLoginScreen';
 import { WelcomeBackScreen } from './screens/WelcomeBackScreen';
 import { WelcomeScreen } from './screens/WelcomeScreen';
+import { LegalScreen } from './screens/LegalScreen';
+import { currentAcceptance, saveAcceptance } from '../../utils/legalAcceptance';
 import { WelcomeTour } from '../../components/WelcomeTour';
 import { hasSeenTour, markTourSeen } from '../../utils/tourSeen';
 
@@ -24,6 +26,7 @@ type Props = {
 
 type AuthStep =
   | 'welcome'
+  | 'legal'
   | 'tour'
   | 'welcome-back'
   | 'create-account'
@@ -165,11 +168,13 @@ export function AuthFlow({ app }: Props) {
     }
   };
 
-  const startSignUp = () => {
+  // Every way into sign-up goes through here. A person who has not accepted the current legal
+  // documents sees them first; the acceptance is saved and sent with the new account.
+  const startSignUp = async () => {
     void markTourSeen();
     setIntent('signup');
     setPendingSession(null);
-    setStep('create-account');
+    setStep((await currentAcceptance()) ? 'create-account' : 'legal');
   };
   const startLogIn = () => {
     void markTourSeen();
@@ -181,6 +186,17 @@ export function AuthFlow({ app }: Props) {
   switch (step) {
     case 'welcome':
       return <WelcomeScreen onGetStarted={startSignUp} onLogIn={startLogIn} onTour={() => setStep('tour')} />;
+
+    case 'legal':
+      return (
+        <LegalScreen
+          onContinue={async () => {
+            await saveAcceptance();
+            setStep('create-account');
+          }}
+          onLogIn={startLogIn}
+        />
+      );
 
     case 'tour':
       return (
@@ -553,11 +569,7 @@ export function AuthFlow({ app }: Props) {
             setVerificationIdentifier('');
             setStep('phone-number');
           }}
-          onCreateAccount={() => {
-            setIntent('signup');
-            setPendingSession(null);
-            setStep('create-account');
-          }}
+          onCreateAccount={startSignUp}
         />
       );
     }

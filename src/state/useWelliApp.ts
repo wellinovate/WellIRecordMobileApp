@@ -1,3 +1,4 @@
+import { saveAcceptance } from '../utils/legalAcceptance';
 import { useEffect, useRef, useState } from 'react';
 import { checkDeviceIntegrity, DEVICE_WARNING } from '../utils/deviceIntegrity';
 import { Alert, AppState as RNAppState, Linking, Share } from 'react-native';
@@ -84,7 +85,7 @@ export interface AppState {
   /** Second sign-in step: set while the app waits for an authenticator code. */
   mfaPrompt: { busy: boolean; error: string | null } | null;
   /** Google or Apple sign-up that still needs a state of residence (it sets the WelliID). */
-  socialState: { details: SocialDetails; busy: boolean; error: string | null } | null;
+  socialState: { details: SocialDetails; needState: boolean; needLegal: boolean; busy: boolean; error: string | null } | null;
   showTwoStep: boolean;
   showRecordLink: boolean;
   showWebLink: boolean;
@@ -2175,8 +2176,11 @@ export function useWelliApp() {
         );
       } catch (err: any) {
         // A new Google or Apple account needs a state first. Ask for it, then try again.
-        if (err?.data?.code === 'state_required') {
-          patch({ socialState: { details, busy: false, error: stateName ? 'Select your state to continue.' : null } });
+        const code = err?.data?.code;
+        if (code === 'state_required' || code === 'legal_required') {
+          const needState = err.data.needState ?? code === 'state_required';
+          const needLegal = err.data.needLegal ?? code === 'legal_required';
+          patch({ socialState: { details, needState, needLegal, busy: false, error: stateName ? 'Complete the details to continue.' : null } });
           return;
         }
         patch({ socialState: null });
@@ -2185,12 +2189,15 @@ export function useWelliApp() {
       }
     },
 
-    submitSocialState: async (stateName: string) => {
+    submitSocialState: async (stateName: string, acceptedLegal: boolean) => {
       const pending = state.socialState;
-      if (!pending || pending.busy || !stateName) return;
+      if (!pending || pending.busy) return;
+      if ((pending.needState && !stateName) || (pending.needLegal && !acceptedLegal)) return;
       patch({ socialState: { ...pending, busy: true, error: null } });
       try {
-        await actions.signInWithClerk(pending.details, stateName);
+        // The acceptance is saved first; the sign-in call sends it from there.
+        if (pending.needLegal) await saveAcceptance();
+        await actions.signInWithClerk(pending.details, stateName || undefined);
       } catch {
         /* signInWithClerk already showed the reason */
       }
