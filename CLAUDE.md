@@ -63,6 +63,8 @@ Auth screens live in `src/features/auth/`. See "Patient sign-in security" below 
 
 **Inactivity lock.** The app never signs the person out for being idle; the session lasts until they sign out or the server token (30 days) expires. After 10 minutes with no touch, if the biometric lock is on (`state.faceIdEnabled`) `actions.idleLock` shows the lock screen (`FaceIdLockScreen`, device biometrics or passcode); if it is off, nothing happens. `src/utils/inactivityCore.ts` holds the clock (`INACTIVITY_MS`, `markActivity`); `src/hooks/useInactivityLogout.ts` checks it every 15 seconds and when the app returns to the foreground, so time in the background counts, and re-arms after an unlock. Touches are reported by the root view and by `src/components/ActivityModal.tsx`. A React Native `Modal` draws in its own window, so **always import `Modal` from `components/ActivityModal`, not from `react-native`**, or touches inside it will not count as activity. It is held off during a video visit (`state.inCall`). Typing on the keyboard alone does not count; a touch does.
 
+**Opening animation.** `src/components/AnimatedSplash.tsx` is mounted in `App()` above Clerk. It covers the blank gap while `ClerkLoaded` renders nothing, plays about 2 seconds (shield, chevrons drawn, plus, name, soft ring), then fades out once the app behind it has reported ready (`ReadySignal`). With reduce-motion on it shows the finished logo for 0.6 seconds. Background `#041E42` matches the native splash in `app.json`.
+
 **Styling.** NativeWind `className` plus inline style objects. `nativewind-env.d.ts` is
 included in `tsconfig.app.json` so `className` type-checks. Theme colors come from
 `ThemeContext` (`LIGHT_THEME` / `DARK_THEME` in `src/data/mockData.ts`).
