@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import "../global.css";
 import { View, StyleSheet, BackHandler, Platform } from "react-native";
 
@@ -57,6 +57,7 @@ import { FamilyAccessModal } from "./modals/FamilyAccessModal";
 import { ProviderShareModal } from "./modals/ProviderShareModal";
 import { ChildProfileModal } from "./modals/ChildProfileModal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { AnimatedSplash } from "./components/AnimatedSplash";
 import { installGlobalErrorHandlers } from "./utils/errorReporting";
 
 import { AddFamilyMemberModal } from "./modals/AddFamilyMemberModal";
@@ -71,6 +72,7 @@ import { LanguageModal } from "./modals/LanguageModal";
 import { FaceIdLockScreen } from "./modals/FaceIdLockScreen";
 import { MfaChallengeModal } from "./modals/MfaChallengeModal";
 import { SocialStateModal } from "./modals/SocialStateModal";
+import { TourModal } from "./modals/TourModal";
 import { TwoStepModal } from "./modals/TwoStepModal";
 import { RecordLinkModal } from "./modals/RecordLinkModal";
 import { WebLinkModal } from "./modals/WebLinkModal";
@@ -490,6 +492,8 @@ function MainWelliApp() {
 
           {Boolean(state.showVaultExport) && <VaultExportModal app={app} />}
 
+          <TourModal app={app} />
+
           <Toast message={state.toast} />
         </SafeAreaView>
       </PhoneShell>
@@ -499,16 +503,31 @@ function MainWelliApp() {
 
 installGlobalErrorHandlers();
 
+/** Tells the splash the app behind it has loaded. Renders nothing. */
+function ReadySignal({ onReady }: { onReady: () => void }) {
+  useEffect(() => {
+    onReady();
+  }, [onReady]);
+  return null;
+}
+
 export default function App() {
+  const [ready, setReady] = useState(false);
+  const [splash, setSplash] = useState(true);
+  const markReady = useCallback(() => setReady(true), []);
+  const endSplash = useCallback(() => setSplash(false), []);
+
   return (
     <SafeAreaProvider>
       <ErrorBoundary>
         <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
           <ClerkLoaded>
             <MainWelliApp />
+            <ReadySignal onReady={markReady} />
           </ClerkLoaded>
         </ClerkProvider>
       </ErrorBoundary>
+      {splash ? <AnimatedSplash ready={ready} onFinish={endSplash} /> : null}
     </SafeAreaProvider>
   );
 }

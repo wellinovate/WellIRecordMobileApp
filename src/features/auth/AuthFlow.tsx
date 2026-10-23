@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 import type { WelliApp } from '../../state/useWelliApp';
 import { authService, type AuthSession } from '../../services/authService';
@@ -14,12 +14,17 @@ import { PhoneNumberScreen } from './screens/PhoneNumberScreen';
 import { RecoveryEmailSentScreen } from './screens/RecoveryEmailSentScreen';
 import { SuccessfulLoginScreen } from './screens/SuccessfulLoginScreen';
 import { WelcomeBackScreen } from './screens/WelcomeBackScreen';
+import { WelcomeScreen } from './screens/WelcomeScreen';
+import { WelcomeTour } from '../../components/WelcomeTour';
+import { hasSeenTour, markTourSeen } from '../../utils/tourSeen';
 
 type Props = {
   app: WelliApp;
 };
 
 type AuthStep =
+  | 'welcome'
+  | 'tour'
   | 'welcome-back'
   | 'create-account'
   | 'email-verification'
@@ -50,7 +55,16 @@ function getErrorMessage(error: unknown, fallback: string): string {
 }
 
 export function AuthFlow({ app }: Props) {
-  const [step, setStep] = useState<AuthStep>('welcome-back');
+  // First install: the welcome screen. Everyone else: the login screen, as before. Null while the
+  // saved choice is read; the opening animation covers that moment.
+  const [step, setStep] = useState<AuthStep | null>(null);
+  useEffect(() => {
+    let live = true;
+    hasSeenTour().then((seen) => live && setStep((cur) => cur ?? (seen ? 'welcome-back' : 'welcome')));
+    return () => {
+      live = false;
+    };
+  }, []);
   const [intent, setIntent] = useState<AuthIntent>('password-login');
 
   const [accountData, setAccountData] = useState<LooseRecord>({});
@@ -159,7 +173,35 @@ export function AuthFlow({ app }: Props) {
       });
   };
 
+  const startSignUp = () => {
+    void markTourSeen();
+    setIntent('signup');
+    setPendingSession(null);
+    setStep('create-account');
+  };
+  const startLogIn = () => {
+    void markTourSeen();
+    resetToWelcome();
+  };
+
+  if (step === null) return null;
+
   switch (step) {
+    case 'welcome':
+      return <WelcomeScreen onGetStarted={startSignUp} onLogIn={startLogIn} onTour={() => setStep('tour')} />;
+
+    case 'tour':
+      return (
+        <WelcomeTour
+          onSkip={() => {
+            void markTourSeen();
+            setStep('welcome');
+          }}
+          onFinish={startSignUp}
+          onLogin={startLogIn}
+        />
+      );
+
     case 'create-account':
       return (
         <CreateAccountScreen
