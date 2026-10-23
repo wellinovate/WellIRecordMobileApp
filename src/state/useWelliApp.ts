@@ -46,6 +46,15 @@ import { sharingService } from '../services/sharingService';
 import { notificationService } from '../services/notificationService';
 import type { CareFacility } from '../data/types';
 
+export interface SocialDetails {
+  provider: 'google' | 'apple';
+  fullName?: string;
+  email?: string;
+  avatar?: string;
+  /** Clerk session token, checked by the server. */
+  clerkToken?: string;
+}
+
 export interface AppState {
   tab: Tab;
   tabHistory: Tab[];
@@ -74,6 +83,8 @@ export interface AppState {
   showProviderShare: boolean;
   /** Second sign-in step: set while the app waits for an authenticator code. */
   mfaPrompt: { busy: boolean; error: string | null } | null;
+  /** Google or Apple sign-up that still needs a state of residence (it sets the WelliID). */
+  socialState: { details: SocialDetails; busy: boolean; error: string | null } | null;
   showTwoStep: boolean;
   showRecordLink: boolean;
   showWebLink: boolean;
@@ -305,6 +316,7 @@ const initialState: AppState = {
   showFamilyAccess: false,
   showProviderShare: false,
   mfaPrompt: null,
+  socialState: null,
   showTwoStep: false,
   showRecordLink: false,
   showWebLink: false,
@@ -2122,14 +2134,7 @@ export function useWelliApp() {
       );
     },
 
-    signInWithClerk: async (details?: {
-      provider: 'google' | 'apple';
-      fullName?: string;
-      email?: string;
-      avatar?: string;
-      /** Clerk session token, checked by the server. */
-      clerkToken?: string;
-    }) => {
+    signInWithClerk: async (details?: SocialDetails, stateName?: string) => {
       if (!details?.email) {
         showToast(
           'Could not complete sign-in — no email returned. Please try again.',
@@ -2149,7 +2154,9 @@ export function useWelliApp() {
           email: details.email,
           fullName: details.fullName,
           clerkToken: details.clerkToken,
+          state: stateName,
         });
+        patch({ socialState: null });
         const session = await resolveMfa(first);
         if (session !== first) await authService.saveSession(session);
 
@@ -2163,10 +2170,29 @@ export function useWelliApp() {
           'login',
         );
       } catch (err: any) {
+        // A new Google or Apple account needs a state first. Ask for it, then try again.
+        if (err?.data?.code === 'state_required') {
+          patch({ socialState: { details, busy: false, error: stateName ? 'Select your state to continue.' : null } });
+          return;
+        }
+        patch({ socialState: null });
         showToast(err?.message || 'Sign-in failed. Please try again.');
         throw err;
       }
     },
+
+    submitSocialState: async (stateName: string) => {
+      const pending = state.socialState;
+      if (!pending || pending.busy || !stateName) return;
+      patch({ socialState: { ...pending, busy: true, error: null } });
+      try {
+        await actions.signInWithClerk(pending.details, stateName);
+      } catch {
+        /* signInWithClerk already showed the reason */
+      }
+    },
+
+    cancelSocialState: () => patch({ socialState: null }),
 
     // Kept for older callers. The active Figma AuthFlow performs email/phone
     // verification before calling prepareSignUpWithData + completeAuthSession.

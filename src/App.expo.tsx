@@ -70,6 +70,7 @@ import { LanguageModal } from "./modals/LanguageModal";
 
 import { FaceIdLockScreen } from "./modals/FaceIdLockScreen";
 import { MfaChallengeModal } from "./modals/MfaChallengeModal";
+import { SocialStateModal } from "./modals/SocialStateModal";
 import { TwoStepModal } from "./modals/TwoStepModal";
 import { RecordLinkModal } from "./modals/RecordLinkModal";
 import { WebLinkModal } from "./modals/WebLinkModal";
@@ -448,6 +449,7 @@ function MainWelliApp() {
 
           {Boolean(state.showLockScreen) && <FaceIdLockScreen app={app} />}
           <MfaChallengeModal app={app} />
+          <SocialStateModal app={app} />
 
           {Boolean(state.showBookAppointment) && (
             <BookAppointmentModal app={app} />
