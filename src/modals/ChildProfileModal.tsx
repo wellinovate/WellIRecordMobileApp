@@ -257,7 +257,7 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
   const counts = useMemo(() => summarize(rows), [rows]);
   const routine = rows.filter((r) => r.dose.track === 'routine');
   const programme = rows.filter((r) => r.dose.track === 'programme');
-  const overdue = rows.filter((r) => r.status === 'overdue');
+  const notRecorded = rows.filter((r) => r.status === 'notRecorded');
 
   const close = actions.closeChildProfile;
   const name = details.preferredName || profile?.fullName || member?.name || 'Child';
@@ -486,7 +486,7 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
       {[
         ['Completed', counts.completed, STATUS_COLOR.verified],
         ['Upcoming', counts.upcoming, STATUS_COLOR.due],
-        ['Overdue', counts.overdue, STATUS_COLOR.overdue],
+        ['Not recorded', counts.notRecorded, STATUS_COLOR.notRecorded],
         ['Unverified', counts.unverified, STATUS_COLOR.unverified],
       ].map(([t, n, c]) => (
         <View key={String(t)} style={[styles.tile, { backgroundColor: theme.surface, borderColor: theme.border }]}>
@@ -592,10 +592,10 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
         <View style={card}>
           <Text style={[styles.heading, { color: theme.text }]}>Vaccines</Text>
           {tiles}
-          {overdue.length > 0 && (
-            <Text style={[styles.sub, { color: STATUS_COLOR.overdue }]}>
-              Needs schedule review: {overdue.slice(0, 4).map((r) => `${r.dose.vaccine}${r.dose.doseNumber ? ` ${r.dose.doseNumber}` : ''}`).join(', ')}
-              {overdue.length > 4 ? ` and ${overdue.length - 4} more` : ''}. Ask the clinic before giving catch-up doses.
+          {notRecorded.length > 0 && (
+            <Text style={[styles.sub, { color: STATUS_COLOR.notRecorded }]}>
+              No record yet for: {notRecorded.slice(0, 4).map((r) => `${r.dose.vaccine}${r.dose.doseNumber ? ` ${r.dose.doseNumber}` : ''}`).join(', ')}
+              {notRecorded.length > 4 ? ` and ${notRecorded.length - 4} more` : ''}. This may only mean the dose was not entered. Add it from the child's card, or ask your clinic before any catch-up dose.
             </Text>
           )}
           <TouchableOpacity onPress={() => setTab('vaccines')} style={styles.link}>
@@ -731,7 +731,7 @@ export function ChildProfileModal({ app }: { app: WelliApp }) {
         {programme.length > 0 && (
           <View style={{ gap: 8 }}>
             <Text style={[styles.groupTitle, { color: theme.text }]}>Programme and regional doses</Text>
-            <Text style={[styles.sub, { color: theme.muted }]}>These depend on your state or a campaign. They are never marked overdue.</Text>
+            <Text style={[styles.sub, { color: theme.muted }]}>These depend on your state or a campaign. They are never flagged as missing.</Text>
             {programme.map(doseRow)}
           </View>
         )}
