@@ -7,6 +7,7 @@ import { clinicPage, consultationsPage, ordersPage, pharmacyPage, registrationsP
 import { createRegistry } from './registry';
 import { shouldWriteActive } from './registryCore';
 import { resolveRegion } from './data/nigeriaRegions';
+import { checkLegal, type LegalCheck } from './legalCore';
 import { createClinicVisits } from './clinicVisits';
 import { createBridgeProviders } from './bridgeProviders';
 import { deleteClerkIdentity, eraseChildData } from './accountErasure';
@@ -52,6 +53,7 @@ import {
   AppointmentRead,
   AccessGrant,
   AccountAuditLog,
+  LegalAcceptance,
 } from './models';
 import { createWellipayRouter } from './wellipayPartner';
 import { createBooking, createPaystack } from './booking';
@@ -1136,6 +1138,21 @@ app.post('/api/v1/notifications/email', async (req: Request, res: Response) => {
 });
 
 // 3. Verify OTP & Issue JWT (Supports Phone or Email verification with MongoDB user lookup)
+// Writes what a new account agreed to: one row per document and version. Never blocks sign-up.
+async function saveLegal(accountId: unknown, legal: LegalCheck): Promise<void> {
+  try {
+    for (const d of legal.documents) {
+      await LegalAcceptance.updateOne(
+        { accountId: String(accountId), documentId: d.id, version: d.version },
+        { $setOnInsert: { acceptedAt: legal.acceptedAt, source: 'signup' } },
+        { upsert: true },
+      );
+    }
+  } catch (err) {
+    console.error('[legal] could not save acceptance', accountId, err);
+  }
+}
+
 app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
   const { phoneNumber, email, code } = req.body;
 
@@ -1230,6 +1247,10 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
       if (!resolveRegion(req.body.state)) {
         return res.status(400).json({ success: false, code: 'state_required', message: 'Select your state of residence. It sets your WelliID.' });
       }
+      const legal = checkLegal(req.body.legal);
+      if (!legal.ok) {
+        return res.status(400).json({ success: false, code: 'legal_required', message: 'Accept the Privacy & Data Protection Policy and the Terms and Conditions to create your account.' });
+      }
 
       // Cross-model duplicate check — a password-based User account with
       // this email/phone already exists; don't create a separate Account.
@@ -1266,6 +1287,7 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
           registrationLga: cleanLga(req.body.lga),
         });
         await account.save();
+        await saveLegal(account._id, legal);
         user = account;
         console.log('[NEW ACCOUNT CREATED ON SIGNUP]', user._id, newName);
       } else {
@@ -1483,8 +1505,16 @@ app.post('/api/v1/auth/social/verify', async (req: Request, res: Response) => {
         });
       }
 
-      if (!resolveRegion(req.body.state)) {
-        return res.status(400).json({ success: false, code: 'state_required', message: 'Select your state of residence to create your account. It sets your WelliID.' });
+      const needState = !resolveRegion(req.body.state);
+      const legal = checkLegal(req.body.legal);
+      if (needState || !legal.ok) {
+        return res.status(400).json({
+          success: false,
+          code: needState ? 'state_required' : 'legal_required',
+          needState,
+          needLegal: !legal.ok,
+          message: 'Choose your state and accept the Privacy & Data Protection Policy and the Terms and Conditions to create your account.',
+        });
       }
 
       const resolvedName = (fullName && fullName.trim()) || cleanEmail.split('@')[0];
@@ -1498,6 +1528,7 @@ app.post('/api/v1/auth/social/verify', async (req: Request, res: Response) => {
         authProvider: `${provider}_oauth`,
       });
       await account.save();
+      await saveLegal(account._id, legal);
       isNewAccount = true;
       console.log('[NEW ACCOUNT CREATED VIA SOCIAL AUTH]', account._id, resolvedName, provider);
     }
@@ -2148,6 +2179,10 @@ app.post('/api/v1/auth/register', async (req: Request, res: Response) => {
   if (!regState) {
     return res.status(400).json({ success: false, code: 'state_required', message: 'Select your state of residence. It sets your WelliID.' });
   }
+  const legal = checkLegal(req.body.legal);
+  if (!legal.ok) {
+    return res.status(400).json({ success: false, code: 'legal_required', message: 'Accept the Privacy & Data Protection Policy and the Terms and Conditions to create your account.' });
+  }
 
   try {
     if (mongoose.connection.readyState === 1) {
@@ -2190,6 +2225,7 @@ app.post('/api/v1/auth/register', async (req: Request, res: Response) => {
     if (!user) {
       return res.status(500).json({ success: false, message: 'Database unavailable' });
     }
+    await saveLegal(user._id, legal);
 
     const userId = user._id.toString();
     const token = jwt.sign({ userId, email: user.email, role: 'patient' }, JWT_SECRET, { expiresIn: '30d' });

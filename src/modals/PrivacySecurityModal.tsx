@@ -16,6 +16,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
 
 import type { WelliApp } from "../state/useWelliApp";
+import { LegalDocViewer } from "../components/LegalDocViewer";
+import { LEGAL_DOCS } from "../data/legalDocs";
 
 type PrivacyStep =
   | "security"
@@ -169,6 +171,7 @@ export function PrivacySecurityModal({
     setDeletionAcknowledged,
   ] = useState(false);
 
+  const [readingTerms, setReadingTerms] = useState(false);
   const [pwStep, setPwStep] = useState<"idle" | "code">("idle");
   const [pwCode, setPwCode] = useState("");
   const [pwNew, setPwNew] = useState("");
@@ -708,6 +711,12 @@ export function PrivacySecurityModal({
                 }
               />
 
+              <InfoRow
+                title="Terms and Conditions"
+                subtitle="Read the terms you agreed to when you created your account."
+                onPress={() => setReadingTerms(true)}
+              />
+
               <View className="py-3">
                 <Text className="text-[10.5px] leading-[15px] text-slate-500">
                   Retention and deletion scope are subject to the published
@@ -941,6 +950,7 @@ export function PrivacySecurityModal({
           </ScrollView>
         ) : null}
       </SafeAreaView>
+      <LegalDocViewer doc={readingTerms ? LEGAL_DOCS.terms : null} onClose={() => setReadingTerms(false)} />
     </Modal>
   );
 }
