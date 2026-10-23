@@ -10,16 +10,18 @@ import Svg, { Path, G } from 'react-native-svg';
 import { useSSO, useClerk } from '@clerk/expo';
 import { hapticFeedback } from '../utils/haptics';
 
+export interface SocialDetails {
+  provider: 'google' | 'apple';
+  sessionId: string;
+  email?: string;
+  fullName?: string;
+  avatar?: string;
+  /** Clerk session token. The server checks it before it signs the person in. */
+  clerkToken?: string;
+}
+
 interface SocialAuthButtonsProps {
-  onSuccess?: (details: {
-    provider: 'google' | 'apple';
-    sessionId: string;
-    email?: string;
-    fullName?: string;
-    avatar?: string;
-    /** Clerk session token. The server checks it before it signs the person in. */
-    clerkToken?: string;
-  }) => void;
+  onSuccess?: (details: SocialDetails) => void;
   onError?: (errMessage: string) => void;
   labelPrefix?: 'Continue with' | 'Sign in with' | 'Sign up with';
   showDivider?: boolean;

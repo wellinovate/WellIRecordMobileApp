@@ -373,6 +373,8 @@ function MainWelliApp() {
             edges={["top", "left", "right", "bottom"]}
           >
             <AuthFlow app={app} />
+            <MfaChallengeModal app={app} />
+            <SocialStateModal app={app} />
             <Toast message={state.toast} />
           </SafeAreaView>
         </PhoneShell>
@@ -450,8 +452,6 @@ function MainWelliApp() {
           {Boolean(state.showLanguage) && <LanguageModal app={app} />}
 
           {Boolean(state.showLockScreen) && <FaceIdLockScreen app={app} />}
-          <MfaChallengeModal app={app} />
-          <SocialStateModal app={app} />
 
           {Boolean(state.showBookAppointment) && (
             <BookAppointmentModal app={app} />
