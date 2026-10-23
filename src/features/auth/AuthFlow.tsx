@@ -151,12 +151,22 @@ export function AuthFlow({ app }: Props) {
     }
   };
 
+  const signInWithSocial = (d: { provider: 'google' | 'apple'; fullName?: string; email?: string; avatar?: string; clerkToken?: string }) => {
+    app.actions
+      .signInWithClerk({ provider: d.provider, fullName: d.fullName, email: d.email, avatar: d.avatar, clerkToken: d.clerkToken })
+      .catch(() => {
+        /* signInWithClerk already showed the reason */
+      });
+  };
+
   switch (step) {
     case 'create-account':
       return (
         <CreateAccountScreen
           onBack={resetToWelcome}
           onSignIn={resetToWelcome}
+          onSocial={signInWithSocial}
+          onSocialError={(m) => showAuthError(new Error(m), m)}
           onContinue={async (data: any) => {
             const nextEmail = String(data?.email ?? '')
               .trim()
@@ -459,6 +469,8 @@ export function AuthFlow({ app }: Props) {
 
       return (
         <WelcomeBack
+          onSocial={signInWithSocial}
+          onSocialError={(m: string) => showAuthError(new Error(m), m)}
           onSignIn={async (
             identifier: string,
             password: string,

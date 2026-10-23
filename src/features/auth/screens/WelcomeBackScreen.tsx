@@ -15,6 +15,7 @@ import {
 import Svg, { Path } from "react-native-svg";
 
 import { LogoMark } from "../../../components/Logo";
+import { SocialAuthButtons, type SocialDetails } from "../../../components/SocialAuthButtons";
 
 type Props = {
   onSignIn: (
@@ -30,6 +31,8 @@ type Props = {
   onEmailCodeSignIn?: (email: string) => Promise<void> | void;
 
   onCreateAccount?: () => void;
+  onSocial?: (details: SocialDetails) => void;
+  onSocialError?: (message: string) => void;
 };
 
 export function WelcomeBackScreen({
@@ -42,6 +45,8 @@ export function WelcomeBackScreen({
   onEmailCodeSignIn,
 
   onCreateAccount,
+  onSocial,
+  onSocialError,
 }: Props) {
   const [email, setEmail] = useState("");
 
@@ -301,6 +306,15 @@ export function WelcomeBackScreen({
         >
           <Text style={styles.phoneButtonText}>Email me a sign-in code</Text>
         </TouchableOpacity>
+
+        {onSocial ? (
+          <SocialAuthButtons
+            labelPrefix="Sign in with"
+            dividerText="or continue with"
+            onSuccess={onSocial}
+            onError={onSocialError}
+          />
+        ) : null}
 
         <View style={styles.createAccountRow}>
           <Text style={styles.createAccountText}>Don't have an account? </Text>

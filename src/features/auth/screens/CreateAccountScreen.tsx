@@ -27,6 +27,7 @@ import Svg, { Path } from 'react-native-svg';
 import { LogoMark } from '../../../components/Logo';
 
 import { FormSelect } from '../../../components/FormSelect';
+import { SocialAuthButtons, type SocialDetails } from '../../../components/SocialAuthButtons';
 
 import { STATE_NAMES } from '../../../data/nigeriaRegions';
 
@@ -57,6 +58,9 @@ export type CreateAccountData = {
 
 
 type Props = {
+  /** Google or Apple sign-up. A new account is asked for its state next. */
+  onSocial?: (details: SocialDetails) => void;
+  onSocialError?: (message: string) => void;
 
   onBack?: () => void;
 
@@ -75,7 +79,8 @@ export function CreateAccountScreen({
   onContinue,
 
   onSignIn,
-
+  onSocial,
+  onSocialError,
 }: Props) {
 
   const [firstName, setFirstName] = useState('');
@@ -718,6 +723,15 @@ export function CreateAccountScreen({
           )}
 
         </TouchableOpacity>
+
+        {onSocial ? (
+          <SocialAuthButtons
+            labelPrefix="Sign up with"
+            dividerText="or sign up with"
+            onSuccess={onSocial}
+            onError={onSocialError}
+          />
+        ) : null}
 
 
 
