@@ -4,7 +4,7 @@ import { activity, markActivity } from '../utils/inactivityCore';
 
 const CHECK_EVERY_MS = 15_000;
 
-// Calls `onTimeout` after 10 minutes without a touch (the app locks; it does not sign out). The timer is checked against the clock, not
+// Calls `onTimeout` after 5 minutes without a touch (the app locks; it does not sign out). The timer is checked against the clock, not
 // counted down, so time spent with the app in the background counts and a paused phone cannot extend it.
 // `paused` holds it off during a video visit, where the person may not touch the screen for a while.
 export function useInactivityLogout(enabled: boolean, paused: boolean, onTimeout: () => void) {

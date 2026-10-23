@@ -1,6 +1,6 @@
 // Tracks the last time the person touched the app, so the app can lock itself after a quiet spell.
 // Kept free of React Native so it can be tested.
-export const INACTIVITY_MS = 10 * 60 * 1000;
+export const INACTIVITY_MS = 5 * 60 * 1000;
 
 export interface InactivityTracker {
   /** Call on any touch or button press. */

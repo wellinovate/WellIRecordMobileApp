@@ -133,7 +133,7 @@ function MainWelliApp() {
 
   const { state } = app;
 
-  // Lock after 10 minutes without a touch (never signs out). Held off during a video visit.
+  // Lock after 5 minutes without a touch (never signs out). The lock is always on for signed-in people. Held off during a video visit.
   useInactivityLogout(Boolean(state.isAuthenticated), Boolean(state.inCall), () => { app.actions.idleLock(); });
 
   const theme = themeFor(state.darkMode);

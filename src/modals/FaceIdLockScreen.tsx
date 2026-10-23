@@ -1,10 +1,11 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  TextInput,
 } from 'react-native';
 import { Modal } from '../components/ActivityModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -29,6 +30,12 @@ export function FaceIdLockScreen({ app }: { app: WelliApp }) {
   });
   const [authenticating, setAuthenticating] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // 'code' is the fallback: a 6-digit code sent to the email or phone on the account.
+  const [mode, setMode] = useState<'biometric' | 'code'>('biometric');
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const autoPrompted = useRef(false);
 
   useEffect(() => {
     getBiometricStatus().then(setBioStatus);
@@ -55,14 +62,47 @@ export function FaceIdLockScreen({ app }: { app: WelliApp }) {
     }
   }, [authenticating, bioStatus.label, actions]);
 
+  // Ask once each time the lock appears, not again after a cancel (that would trap the person in a loop of prompts).
   useEffect(() => {
-    if (state.showLockScreen) {
-      const timer = setTimeout(() => {
-        handleUnlock();
-      }, 400);
-      return () => clearTimeout(timer);
+    // App.expo mounts this screen only while locked, so every lock starts with fresh state.
+    if (!state.showLockScreen || autoPrompted.current || mode !== 'biometric') return;
+    const timer = setTimeout(() => {
+      autoPrompted.current = true;
+      handleUnlock();
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [state.showLockScreen, mode, handleUnlock]);
+
+  const sendCode = useCallback(async () => {
+    if (busy) return;
+    setBusy(true);
+    setErrorMessage(null);
+    try {
+      const res = await actions.sendUnlockCode();
+      setSentTo(res.sentTo);
+      setMode('code');
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : 'Could not send a code. Check your connection and try again.');
+    } finally {
+      setBusy(false);
     }
-  }, [state.showLockScreen, handleUnlock]);
+  }, [busy, actions]);
+
+  const submitCode = useCallback(async () => {
+    const digits = code.replace(/\D/g, '');
+    if (digits.length !== 6 || busy) return;
+    setBusy(true);
+    setErrorMessage(null);
+    try {
+      await actions.unlockWithCode(digits);
+    } catch (err: unknown) {
+      hapticFeedback.error();
+      setCode('');
+      setErrorMessage(err instanceof Error ? err.message : 'That code did not work. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  }, [code, busy, actions]);
 
   if (!state.showLockScreen) return null;
 
@@ -118,15 +158,64 @@ export function FaceIdLockScreen({ app }: { app: WelliApp }) {
           )}
         </TouchableOpacity>
 
-        <View style={styles.textBlock}>
-          <Text style={styles.title}>WelliRecord is locked</Text>
-          <Text style={styles.subtitle}>
-            {errorMessage ? (
-              <Text style={{ color: '#f87171' }}>{errorMessage}</Text>
-            ) : (
-              `Tap to unlock with ${bioStatus.label}`
-            )}
-          </Text>
+        {mode === 'biometric' ? (
+          <View style={styles.textBlock}>
+            <Text style={styles.title}>WelliRecord is locked</Text>
+            <Text style={styles.subtitle}>
+              {errorMessage ? (
+                <Text style={{ color: '#f87171' }}>{errorMessage}</Text>
+              ) : (
+                `Tap to unlock with ${bioStatus.label}`
+              )}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.textBlock}>
+            <Text style={styles.title}>Enter your unlock code</Text>
+            <Text style={styles.subtitle}>We sent a 6-digit code to {sentTo}.</Text>
+            <TextInput
+              value={code}
+              onChangeText={(v) => setCode(v.replace(/\D/g, '').slice(0, 6))}
+              keyboardType="number-pad"
+              maxLength={6}
+              autoFocus
+              textContentType="oneTimeCode"
+              placeholder="123456"
+              placeholderTextColor="#5b6b8c"
+              accessibilityLabel="Unlock code"
+              onSubmitEditing={submitCode}
+              style={styles.codeInput}
+            />
+            {errorMessage ? <Text style={{ color: '#f87171', marginTop: 8, textAlign: 'center' }}>{errorMessage}</Text> : null}
+            <TouchableOpacity
+              accessibilityRole="button"
+              disabled={busy || code.length !== 6}
+              onPress={submitCode}
+              style={[styles.primary, (busy || code.length !== 6) && { opacity: 0.5 }]}
+            >
+              {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Unlock</Text>}
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <View style={styles.links}>
+          {mode === 'biometric' ? (
+            <TouchableOpacity accessibilityRole="button" onPress={sendCode} disabled={busy} style={styles.link}>
+              {busy ? <ActivityIndicator color="#93a5c9" /> : <Text style={styles.linkText}>Unlock with a code instead</Text>}
+            </TouchableOpacity>
+          ) : (
+            <>
+              <TouchableOpacity accessibilityRole="button" onPress={sendCode} disabled={busy} style={styles.link}>
+                <Text style={styles.linkText}>Send a new code</Text>
+              </TouchableOpacity>
+              <TouchableOpacity accessibilityRole="button" onPress={() => { setMode('biometric'); setErrorMessage(null); }} style={styles.link}>
+                <Text style={styles.linkText}>Use {bioStatus.isAvailable ? bioStatus.label : 'my phone lock'} instead</Text>
+              </TouchableOpacity>
+            </>
+          )}
+          <TouchableOpacity accessibilityRole="button" onPress={() => { void actions.logOut(); }} style={styles.link}>
+            <Text style={[styles.linkText, { color: '#64748b' }]}>Sign out</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     </Modal>
@@ -152,7 +241,34 @@ const styles = StyleSheet.create({
   },
   textBlock: {
     alignItems: 'center',
+    alignSelf: 'stretch',
   },
+  codeInput: {
+    marginTop: 14,
+    alignSelf: 'stretch',
+    textAlign: 'center',
+    fontSize: 24,
+    letterSpacing: 6,
+    color: '#ffffff',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 12,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  primary: {
+    alignSelf: 'stretch',
+    marginTop: 14,
+    minHeight: 50,
+    borderRadius: 12,
+    backgroundColor: '#0EA5E9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primaryText: { color: '#ffffff', fontSize: 16, fontWeight: '700' },
+  links: { alignItems: 'center', marginTop: 4 },
+  link: { paddingVertical: 10, minHeight: 40, justifyContent: 'center' },
+  linkText: { color: '#93a5c9', fontSize: 14, fontWeight: '600' },
   title: {
     color: '#ffffff',
     fontSize: 16,

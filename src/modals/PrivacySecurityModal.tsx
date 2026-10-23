@@ -5,7 +5,6 @@ import {
   Linking,
   Platform,
   ScrollView,
-  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -418,28 +417,14 @@ export function PrivacySecurityModal({
             </SectionCard>
 
             <SectionCard title="Additional security">
-              <View className="flex-row items-center border-b border-slate-100 py-4">
-                <View className="flex-1 pr-4">
-                  <Text className="text-[13px] font-semibold text-[#173B68]">
-                    Biometric lock
-                  </Text>
+              <View className="border-b border-slate-100 py-4">
+                <Text className="text-[13px] font-semibold text-[#173B68]">
+                  App lock (always on)
+                </Text>
 
-                  <Text className="mt-1 text-[11.5px] leading-[17px] text-slate-500">
-                    Require device biometrics before opening protected areas.
-                  </Text>
-                </View>
-
-                <Switch
-                  value={state.faceIdEnabled}
-                  onValueChange={() =>
-                    actions.toggleFaceId()
-                  }
-                  trackColor={{
-                    false: "#D9E0E9",
-                    true: "#315B90",
-                  }}
-                  thumbColor="#FFFFFF"
-                />
+                <Text className="mt-1 text-[11.5px] leading-[17px] text-slate-500">
+                  WelliRecord locks when you reopen it and after 5 minutes without a touch. You unlock it with your phone's biometrics or passcode, or with a code sent to your own email or phone. This cannot be turned off.
+                </Text>
               </View>
 
               <InfoRow
