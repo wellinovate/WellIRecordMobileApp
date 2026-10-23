@@ -72,6 +72,7 @@ import { LanguageModal } from "./modals/LanguageModal";
 import { FaceIdLockScreen } from "./modals/FaceIdLockScreen";
 import { MfaChallengeModal } from "./modals/MfaChallengeModal";
 import { SocialStateModal } from "./modals/SocialStateModal";
+import { TourModal } from "./modals/TourModal";
 import { TwoStepModal } from "./modals/TwoStepModal";
 import { RecordLinkModal } from "./modals/RecordLinkModal";
 import { WebLinkModal } from "./modals/WebLinkModal";
@@ -490,6 +491,8 @@ function MainWelliApp() {
           {Boolean(state.showCareLocator) && <CareLocatorModal app={app} />}
 
           {Boolean(state.showVaultExport) && <VaultExportModal app={app} />}
+
+          <TourModal app={app} />
 
           <Toast message={state.toast} />
         </SafeAreaView>

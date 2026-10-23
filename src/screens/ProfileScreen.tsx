@@ -314,6 +314,15 @@ export function ProfileScreen({
 
           <Divider />
 
+          <SettingsRow
+            icon="verify"
+            title="Take the app tour"
+            subtitle="Five short slides on what WelliRecord does"
+            onPress={actions.openTour}
+          />
+
+          <Divider />
+
           <View style={styles.switchRow}>
             <View style={styles.rowIcon}>
               <NotificationIcon />

@@ -160,6 +160,7 @@ export interface AppState {
   showActivity: boolean;
   showHealthHistory: boolean;
   showLanguage: boolean;
+  showTour: boolean;
   language: string;
   notifPermission: 'granted' | 'skipped' | null;
   isAuthenticated: boolean;
@@ -388,6 +389,7 @@ const initialState: AppState = {
   showActivity: false,
   showHealthHistory: false,
   showLanguage: false,
+  showTour: false,
   language: 'English',
   notifPermission: null,
   facilitiesList: [],
@@ -1912,6 +1914,8 @@ export function useWelliApp() {
     openRecordFromHistory: (id: string) => patch({ showHealthHistory: false, recordDetailId: id }),
     openActivity: () => patch({ showActivity: true }),
     closeActivity: () => patch({ showActivity: false }),
+    openTour: () => patch({ showTour: true }),
+    closeTour: () => patch({ showTour: false }),
     openLanguage: () => patch({ showLanguage: true }),
     closeLanguage: () => patch({ showLanguage: false }),
     setLanguage: (l: string) => {
