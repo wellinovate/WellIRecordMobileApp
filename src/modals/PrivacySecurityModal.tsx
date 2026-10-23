@@ -159,8 +159,11 @@ export function PrivacySecurityModal({
 }) {
   const { state, actions } = app;
 
+  // The modal mounts fresh each time it opens. Password & sessions starts on "security";
+  // Privacy Policy & Terms starts on "privacy". Each is its own page.
+  const home: PrivacyStep = state.privacySecurityStart === "privacy" ? "privacy" : "security";
   const [step, setStep] =
-    useState<PrivacyStep>("security");
+    useState<PrivacyStep>(home);
 
   const [deletePassword, setDeletePassword] =
     useState("");
@@ -211,19 +214,19 @@ export function PrivacySecurityModal({
     "Not added";
 
   const close = () => {
-    setStep("security");
+    setStep(home);
     setDeletePassword("");
     setDeletionAcknowledged(false);
     actions.closePrivacySecurity();
   };
 
   const goBack = () => {
-    if (step !== "security") {
-      setStep("security");
+    if (step === home) {
+      close();
       return;
     }
-
-    close();
+    // Deletion belongs to the privacy page; everything else returns to where the person started.
+    setStep(step === "delete" ? "privacy" : home);
   };
 
   const openAssistant = () => {
@@ -242,11 +245,11 @@ export function PrivacySecurityModal({
   };
 
   const verifyEmail = () => {
-    actions.openPersonalInfo();
+    actions.openContactVerify();
   };
 
   const verifyPhone = () => {
-    actions.openPersonalInfo();
+    actions.openContactVerify();
   };
 
   const managePassword = async () => {
@@ -354,7 +357,7 @@ export function PrivacySecurityModal({
             <Header onBack={close} />
 
             <Text className="mt-3 text-[11px] font-semibold text-[#315B90]">
-              Account and safety · design preview
+              Account and safety
             </Text>
 
             <Text className="mt-3 text-[28px] leading-[34px] font-extrabold text-[#082F67]">
@@ -470,31 +473,15 @@ export function PrivacySecurityModal({
               </TouchableOpacity>
             </SectionCard>
 
-            <View className="mt-5 flex-row gap-3">
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() =>
-                  setStep("help")
-                }
-                className="flex-1 min-h-[46px] items-center justify-center rounded-xl bg-[#EEF3FA]"
-              >
-                <Text className="text-[12px] font-semibold text-[#315B90]">
-                  Help & support
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() =>
-                  setStep("privacy")
-                }
-                className="flex-1 min-h-[46px] items-center justify-center rounded-xl bg-[#EEF3FA]"
-              >
-                <Text className="text-[12px] font-semibold text-[#315B90]">
-                  Privacy & account
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => setStep("help")}
+              className="mt-5 min-h-[46px] items-center justify-center rounded-xl bg-[#EEF3FA]"
+            >
+              <Text className="text-[12px] font-semibold text-[#315B90]">
+                Help & support
+              </Text>
+            </TouchableOpacity>
 
             <TouchableOpacity
               activeOpacity={0.8}
@@ -530,7 +517,7 @@ export function PrivacySecurityModal({
             <Header onBack={goBack} />
 
             <Text className="mt-3 text-[11px] font-semibold text-[#315B90]">
-              Account and safety · design preview
+              Account and safety
             </Text>
 
             <Text className="mt-3 text-[28px] leading-[34px] font-extrabold text-[#082F67]">
@@ -593,14 +580,12 @@ export function PrivacySecurityModal({
             <SectionCard title="Contact support">
               <View className="py-4">
                 <Text className="text-[13px] font-semibold text-[#173B68]">
-                  Use the published support channel when available in the
-                  connected app.
+                  Email support@wellirecord.com or ask the in-app assistant.
                 </Text>
 
                 <Text className="mt-2 text-[11.5px] leading-[17px] text-slate-500">
-                  No real support email or phone number is connected in this
-                  preview. Don't include passwords or unnecessary clinical
-                  details.
+                  Do not include passwords or unnecessary clinical details in
+                  a message.
                 </Text>
               </View>
             </SectionCard>
@@ -637,9 +622,6 @@ export function PrivacySecurityModal({
               </Text>
             </TouchableOpacity>
 
-            <Text className="mt-3 text-center text-[10.5px] text-slate-400">
-              Design preview · no action is connected.
-            </Text>
           </ScrollView>
         ) : null}
 
@@ -659,33 +641,16 @@ export function PrivacySecurityModal({
             <Header onBack={goBack} />
 
             <Text className="mt-3 text-[11px] font-semibold text-[#315B90]">
-              Account and safety · design preview
+              Account and safety
             </Text>
 
             <Text className="mt-3 text-[28px] leading-[34px] font-extrabold text-[#082F67]">
-              Privacy and your account
+              Privacy policy and terms
             </Text>
 
             <Text className="mt-1 text-[13px] leading-[19px] text-slate-500">
-              Understand the boundaries of your record and sharing choices.
+              How WelliRecord handles your information, and your choices over it.
             </Text>
-
-            <SectionCard title="Your record, your choices">
-              <InfoRow
-                title="Consent"
-                subtitle="Choose the recipient, record scope and access duration in WelliBridge."
-              />
-
-              <InfoRow
-                title="Record sources"
-                subtitle="Patient uploads and OCR are not verified facility lab entries."
-              />
-
-              <InfoRow
-                title="Patient access"
-                subtitle="Facilities and HMOs pay. Emergency ID is always free."
-              />
-            </SectionCard>
 
             <SectionCard title="Policy information">
               <InfoRow
@@ -710,6 +675,23 @@ export function PrivacySecurityModal({
               </View>
             </SectionCard>
 
+            <SectionCard title="Your record, your choices">
+              <InfoRow
+                title="Consent"
+                subtitle="Choose the recipient, record scope and access duration in WelliBridge."
+              />
+
+              <InfoRow
+                title="Record sources"
+                subtitle="Patient uploads and OCR are not verified facility lab entries."
+              />
+
+              <InfoRow
+                title="Patient access"
+                subtitle="Facilities and HMOs pay. Emergency ID is always free."
+              />
+            </SectionCard>
+
             <SectionCard title="Data portability">
               <InfoRow
                 title="Export encrypted vault backup"
@@ -721,14 +703,6 @@ export function PrivacySecurityModal({
             </SectionCard>
 
             <SectionCard title="Account controls">
-              <InfoRow
-                title="Security and sessions"
-                subtitle="Password, verification and sign-out controls"
-                onPress={() =>
-                  setStep("security")
-                }
-              />
-
               <InfoRow
                 title="Deletion request"
                 subtitle="A request, not instant deletion"
@@ -783,7 +757,7 @@ export function PrivacySecurityModal({
             <Header onBack={goBack} />
 
             <Text className="mt-3 text-[11px] font-semibold text-[#315B90]">
-              Account and safety · design preview
+              Account and safety
             </Text>
 
             <Text className="mt-3 text-[28px] leading-[34px] font-extrabold text-[#082F67]">
@@ -928,10 +902,6 @@ export function PrivacySecurityModal({
               </Text>
             </TouchableOpacity>
 
-            <Text className="mt-3 text-center text-[10.5px] text-slate-400">
-              Static preview · no request is submitted until the existing
-              account action confirms it.
-            </Text>
           </ScrollView>
         ) : null}
       </SafeAreaView>

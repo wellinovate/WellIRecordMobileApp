@@ -383,7 +383,7 @@ export function ProfileScreen({
             icon="privacy"
             title="Privacy Policy & Terms"
             subtitle="Understand how your information is handled"
-            onPress={actions.openPrivacySecurity}
+            onPress={actions.openPrivacyTerms}
           />
         </SectionCard>
 

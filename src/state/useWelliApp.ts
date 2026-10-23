@@ -116,6 +116,8 @@ export interface AppState {
   personalInfoDraft: FamilyMember | null;
   showPrivacyPolicy: boolean;
   showPrivacySecurity: boolean;
+  /** Which page Password & sessions or Privacy Policy & Terms opens on. */
+  privacySecurityStart: 'security' | 'privacy';
   twoFactorEnabled: boolean;
   showLinkedAccounts: boolean;
   linkedAccounts: Record<string, boolean>;
@@ -345,6 +347,7 @@ const initialState: AppState = {
   personalInfoDraft: null,
   showPrivacyPolicy: false,
   showPrivacySecurity: false,
+  privacySecurityStart: 'security',
   twoFactorEnabled: false,
   showLinkedAccounts: false,
   linkedAccounts: {},
@@ -1484,7 +1487,8 @@ export function useWelliApp() {
     },
     openPrivacyPolicy: () => patch({ showPrivacyPolicy: true }),
     closePrivacyPolicy: () => patch({ showPrivacyPolicy: false }),
-    openPrivacySecurity: () => patch({ showPrivacySecurity: true }),
+    openPrivacySecurity: () => patch({ showPrivacySecurity: true, privacySecurityStart: 'security' }),
+    openPrivacyTerms: () => patch({ showPrivacySecurity: true, privacySecurityStart: 'privacy' }),
     closePrivacySecurity: () => patch({ showPrivacySecurity: false }),
     toggleTwoFactor: async () => {
       hapticFeedback.selection();
