@@ -38,6 +38,7 @@ import {
   ClientError,
   ChildGrowth,
   HealthRecord,
+  RecordFile,
   Prescription,
   Facility,
   ShareGrant,
@@ -57,6 +58,8 @@ import { createBooking, createPaystack } from './booking';
 import { createPharmacyOrders } from './pharmacyOrders';
 import { joinWindow } from './bookingCore';
 import { BookingSlot } from './models';
+import { createRecordFiles } from './recordFiles';
+import { RECORD_FILES_PER_RECORD } from './recordFilesCore';
 import { IMMUNIZATION_SCHEDULE, scheduleDoseByCode } from './data/immunizationSchedule';
 import { createChildDevelopmentRouter } from './childDevelopment';
 import { createChildFacilityRouter } from './childFacility';
@@ -140,12 +143,15 @@ app.use('/api/v1', (req, res, next) => (bookingWebhook ? bookingWebhook(req, res
 const bigJson = express.json({ limit: '1500kb' });
 const photoJson = express.json({ limit: '14mb' });
 const attachJson = express.json({ limit: '4mb' });
+const fileJson = express.json({ limit: '9mb' });
 const smallJson = express.json();
 app.use((req, res, next) => {
   // A scanned document photo is sent as base64, which is about a third bigger than the file.
   if (/^\/(api\/v1\/)?records\/ocr-extract\/?$/i.test(req.path)) return photoJson(req, res, next);
   if (/^\/(api\/v1\/)?(profile\/update|family\/[a-f0-9]{24}|provider-shares)\/?$/i.test(req.path)) return bigJson(req, res, next);
   if (/^\/(api\/v1\/)?pharmacy-orders\/attachments\/?$/i.test(req.path)) return attachJson(req, res, next);
+  // A record file is sent as base64, up to about 8 MB of text for a 6 MB file.
+  if (/^\/(api\/v1\/)?records\/files\/?$/i.test(req.path)) return fileJson(req, res, next);
   return smallJson(req, res, next);
 });
 
@@ -2806,14 +2812,15 @@ function recordForApp(doc: any, authUserId: string) {
     ownerId: owner === authUserId ? 'me' : owner,
     type: r.recordType,
     extractedOcr: r.ocrData || undefined,
-    attachments: [],
+    // The app downloads a file with its sign-in token from this path under the API base.
+    attachments: (Array.isArray(r.files) ? r.files : []).map((f: any) => ({ url: `/records/files/${String(f.fileId)}`, name: f.name || 'document', fileType: f.contentType || '' })),
   };
 }
 
 const USER_RECORD_TYPES = ['Lab Result', 'Prescription', 'Imaging', 'Clinical Note', 'Immunization', 'Receipt'];
 const short = (v: unknown, max: number) => String(v ?? '').trim().slice(0, max);
 
-// POST /api/v1/records — files a record the patient scanned or typed. Only the extracted text is kept; the photo is not stored.
+// POST /api/v1/records — files a record the patient scanned, typed or attached files to. Files are uploaded first (POST /records/files) and named here by fileIds.
 app.post('/api/v1/records', async (req: Request, res: Response) => {
   const authUserId = getAuthUserId(req);
   if (!authUserId) return res.status(401).json({ success: false, message: 'Authentication required' });
@@ -2831,6 +2838,16 @@ app.post('/api/v1/records', async (req: Request, res: Response) => {
     const keyValues = (Array.isArray(req.body?.extractedOcr?.keyValues) ? req.body.extractedOcr.keyValues : [])
       .slice(0, 50)
       .map((k: any) => ({ label: short(k?.label, 200), value: short(k?.value, 500) }));
+    const wanted: string[] = (Array.isArray(req.body?.fileIds) ? req.body.fileIds : []).map(String).filter((v: string) => mongoose.isValidObjectId(v));
+    if (wanted.length > RECORD_FILES_PER_RECORD) {
+      return res.status(400).json({ success: false, message: `A record can hold up to ${RECORD_FILES_PER_RECORD} files.` });
+    }
+    const uploaded: any[] = wanted.length
+      ? await RecordFile.find({ _id: { $in: wanted }, uploadedBy: new mongoose.Types.ObjectId(authUserId), ownerId: new mongoose.Types.ObjectId(ownerId), recordId: { $exists: false } }, 'name contentType bytes').lean()
+      : [];
+    if (uploaded.length !== new Set(wanted).size) {
+      return res.status(400).json({ success: false, message: 'A file was not found. Upload it again.' });
+    }
     const doc = await HealthRecord.create({
       userId: new mongoose.Types.ObjectId(authUserId),
       familyMemberId: new mongoose.Types.ObjectId(ownerId),
@@ -2840,7 +2857,12 @@ app.post('/api/v1/records', async (req: Request, res: Response) => {
       provider: short(req.body?.provider, 200) || 'Patient upload',
       summary: short(req.body?.summary, 5000),
       ocrData: keyValues.length ? { keyValues, statusBadge: 'OCR Extracted' } : undefined,
+      files: uploaded.map((f) => ({ fileId: f._id, name: f.name, contentType: f.contentType, bytes: f.bytes })),
     } as any);
+    if (uploaded.length) {
+      // The files now belong to the record, so they no longer expire.
+      await RecordFile.updateMany({ _id: { $in: uploaded.map((f) => f._id) } }, { $set: { recordId: doc._id }, $unset: { expiresAt: 1 } });
+    }
     return res.status(201).json(recordForApp(doc, authUserId));
   } catch (err) {
     console.error('[POST /records] ERROR:', err);
@@ -2859,6 +2881,7 @@ app.delete('/api/v1/records/:id', async (req: Request, res: Response) => {
     if (!(await callerCanAccessOwner(authUserId, String(rec.familyMemberId), 'addRecords'))) {
       return res.status(403).json({ success: false, message: 'You cannot remove this record' });
     }
+    await RecordFile.deleteMany({ recordId: rec._id });
     await rec.deleteOne();
     return res.json({ success: true, deleted: true });
   } catch (err) {
@@ -3632,6 +3655,23 @@ ${rawText}`,
     keyValues: [],
   };
 }
+
+const recordFileLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many uploads. Please try again later.' },
+});
+app.use(
+  '/api/v1',
+  createRecordFiles({
+    getAuthUserId,
+    canAccessOwner: (caller, owner, perm) => callerCanAccessOwner(caller, owner, (perm as PermKey) || false),
+    sealKey: process.env.RECORD_SEAL_KEY || process.env.PHARMACY_SEAL_KEY || JWT_SECRET,
+    limiter: recordFileLimiter,
+  })
+);
 
 app.post('/api/v1/records/ocr-extract', ocrLimiter, async (req: Request, res: Response) => {
   const authUserId = getAuthUserId(req);
@@ -5714,6 +5754,7 @@ app.delete('/api/v1/auth/account', async (req: Request, res: Response) => {
           await eraseChildData(candidateIds); // children's vaccines, growth, guardians, logs, clinic codes, reminders
           await FamilyMember.deleteMany({ $or: [{ accountId: { $in: candidateIds } }, { userId: { $in: candidateIds } }] });
           await HealthRecord.deleteMany({ $or: [{ userId: { $in: candidateIds } }, { familyMemberId: { $in: candidateIds } }] });
+          await RecordFile.deleteMany({ $or: [{ uploadedBy: { $in: candidateIds } }, { ownerId: { $in: candidateIds } }] });
           await Prescription.deleteMany({ $or: [{ accountId: { $in: candidateIds } }, { userId: { $in: candidateIds } }, { familyMemberId: { $in: candidateIds } }] });
           await ShareGrant.deleteMany({ $or: [{ accountId: { $in: candidateIds } }, { userId: { $in: candidateIds } }] });
           await AccessAuditLog.deleteMany({ $or: [{ accountId: { $in: candidateIds } }, { userId: { $in: candidateIds } }] });

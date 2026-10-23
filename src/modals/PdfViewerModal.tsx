@@ -8,17 +8,44 @@ import { WebView } from 'react-native-webview';
 import { getAuthToken } from '../services/apiClient';
 import Svg, { Path } from 'react-native-svg';
 
+const MIME_BY_EXT: Record<string, string> = {
+  pdf: 'application/pdf',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  heic: 'image/heic',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ppt: 'application/vnd.ms-powerpoint',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  rtf: 'application/rtf',
+  txt: 'text/plain',
+  csv: 'text/csv',
+};
+const EXT_BY_MIME: Record<string, string> = Object.fromEntries(Object.entries(MIME_BY_EXT).map(([e, m]) => [m, e]));
+
 export function PdfViewerModal({
   visible,
   url,
   title,
+  fileName,
+  fileType,
   onClose,
 }: {
   visible: boolean;
   url: string | null;
   title?: string;
+  /** Name and type of a file the patient attached. Their own files are fetched straight from our server. */
+  fileName?: string;
+  fileType?: string;
   onClose: () => void;
 }) {
+  const own = Boolean(url && url.startsWith('/records/files/'));
+  const ext = (fileName?.toLowerCase().match(/\.([a-z0-9]{1,5})$/)?.[1] ?? EXT_BY_MIME[fileType ?? ''] ?? 'pdf');
+  const mime = fileType && fileType !== 'application/octet-stream' ? fileType : MIME_BY_EXT[ext] ?? 'application/pdf';
   const [error, setError] = React.useState<string | null>(null);
   const [opening, setOpening] = React.useState(false);
 
@@ -28,7 +55,9 @@ export function PdfViewerModal({
     : {};
 
   const proxiedUrl = url
-    ? `${CONFIG.apiBaseUrl}/lab-documents/proxy?url=${encodeURIComponent(url)}`
+    ? own
+      ? `${CONFIG.apiBaseUrl}${url}`
+      : `${CONFIG.apiBaseUrl}/lab-documents/proxy?url=${encodeURIComponent(url)}`
     : null;
 
   // Android WebView cannot render PDFs, and routing the file through a third
@@ -39,7 +68,7 @@ export function PdfViewerModal({
     setOpening(true);
     setError(null);
     try {
-      const file = await File.downloadFileAsync(proxiedUrl, new File(Paths.cache, `doc_${Date.now()}.pdf`), {
+      const file = await File.downloadFileAsync(proxiedUrl, new File(Paths.cache, `doc_${Date.now()}.${ext}`), {
         idempotent: true,
         headers: authHeaders,
       });
@@ -47,13 +76,13 @@ export function PdfViewerModal({
         setError('No app is available to open this document.');
         return;
       }
-      await Sharing.shareAsync(file.uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf', dialogTitle: title || 'Document' });
+      await Sharing.shareAsync(file.uri, { mimeType: mime, UTI: ext === 'pdf' ? 'com.adobe.pdf' : undefined, dialogTitle: title || 'Document' });
     } catch {
       setError('Could not open this document. Check your connection and try again.');
     } finally {
       setOpening(false);
     }
-  }, [proxiedUrl, title]);
+  }, [proxiedUrl, title, ext, mime]);
 
   if (!url || !proxiedUrl) return null;
 
@@ -72,7 +101,7 @@ export function PdfViewerModal({
           <WebView source={{ uri: proxiedUrl, headers: authHeaders }} style={{ flex: 1 }} startInLoadingState />
         ) : (
           <View style={styles.center}>
-            <Text style={styles.message}>{error || 'Open this document in your PDF app.'}</Text>
+            <Text style={styles.message}>{error || 'Open this document in an app on your phone.'}</Text>
             <TouchableOpacity onPress={openExternally} disabled={opening} style={styles.openBtn}>
               {opening ? <ActivityIndicator color="#fff" /> : <Text style={styles.openText}>{error ? 'Try again' : 'Open document'}</Text>}
             </TouchableOpacity>

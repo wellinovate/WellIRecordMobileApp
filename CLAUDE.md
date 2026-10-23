@@ -201,6 +201,17 @@ Care tab > Book a consultation (`ConsultBookingModal`, `src/services/bookingServ
 - The terms text is `BOOKING_TERMS` in `server/booking.ts` (`draft-1`); it has not had a legal review. The web console in the other repos reads `appointmentrequests` and does not know the new statuses `awaiting_payment` and `awaiting_hmo`.
 - Tests: `server/tests/bookingCore.test.ts`, `server/tests/integration/booking.test.ts` (CI only).
 
+## Record files
+
+Records > upload (`UploadModal`). The person takes a photo or chooses any file; the file is uploaded first (`recordsService.uploadFile` -> `POST /api/v1/records/files`, `{name, dataBase64, ownerId}`), then the record is filed with `fileIds` on `POST /records`. Code: `server/recordFiles.ts` (routes), `server/recordFilesCore.ts` (types and limits, no database, `tests/recordFilesCore.test.ts`), model `RecordFile`, `files` on `HealthRecord`.
+
+- Allowed: JPEG, PNG, WebP, HEIC, PDF, Word (docx, doc), Excel (xlsx, xls), PowerPoint (pptx, ppt), RTF, TXT, CSV. The type comes from the first bytes, never the name or the type the phone sends; Office files also need the matching extension; text must look like text. Anything else is refused with 415. Limit 6 MB a file, 5 files a record (the app attaches one), 12 files waiting unattached, 60 uploads an hour per IP.
+- Stored sealed (AES-256-GCM, `RECORD_SEAL_KEY`, then `PHARMACY_SEAL_KEY`, then `JWT_SECRET`; do not change it after launch or stored files become unreadable) in our own database, never sent to a third party. An upload that never becomes part of a record expires after a day. Files are deleted with the record and with the account.
+- `GET /records/files/:id` needs the uploader or someone with `viewRecords` on the profile. It sends photos and PDF inline and everything else as a download, with `nosniff` and a locked-down CSP. The record list returns each file as an attachment with a relative `url` (`/records/files/<id>`); the app fetches it with its token (`PdfViewerModal`, `recordFile.ts`) and opens it in an app on the phone.
+- Reading text from a photo (`POST /records/ocr-extract`) is optional help. If it finds nothing or fails, the file is still saved and the person types a title and note. PDFs and other files are never sent to OCR.
+- **Open issue:** the OCR route sends the photo to Google Cloud Vision, and the text to Anthropic when `ANTHROPIC_API_KEY` is set. That conflicts with the rule that health documents are not sent to third-party services. It predates this section. Decide whether to turn it off, make it opt-in with consent, or replace it with on-device reading.
+- Not built: several files in one upload screen, previewing images or PDFs inside the app, sharing record files by encrypted link, a per-account storage quota.
+
 ## Pharmacy orders
 
 Care tab > Order medication (`PharmacyOrdersModal`, `src/services/pharmacyOrderService.ts`; also "Order here" in the pharmacy directory for WelliRecord pharmacies, and the `pharmacyOrders` notification target). Server: `server/pharmacyOrders.ts` (routes), `server/pharmacyCore.ts` (rules, no database), models `PharmacyService`, `PharmacyOrder`, `PharmacyAttachment`. Do not confuse with the older `Prescription`-based orders (`/pharmacy/orders`, `OrderMedicationModal`, `/admin/orders`), which still exist.
