@@ -44,7 +44,7 @@ export interface Vaccination {
   verificationSource: string;
 }
 
-export type DoseStatus = 'verified' | 'unverified' | 'overdue' | 'due' | 'upcoming' | 'programme';
+export type DoseStatus = 'verified' | 'unverified' | 'notRecorded' | 'due' | 'upcoming' | 'programme';
 
 export interface DoseRow {
   dose: ScheduleDose;
@@ -109,7 +109,7 @@ export function buildDoseRows(
     }
     if (dose.track === 'programme') return { dose, dueDate, status: 'programme' };
     const overdueFrom = addDaysIso(dueDate, dose.graceDays);
-    if (today > overdueFrom) return { dose, dueDate, status: 'overdue' };
+    if (today > overdueFrom) return { dose, dueDate, status: 'notRecorded' };
     if (today >= dueDate) return { dose, dueDate, status: 'due' };
     return { dose, dueDate, status: 'upcoming' };
   });
@@ -118,16 +118,16 @@ export function buildDoseRows(
 export interface ImmunizationSummary {
   completed: number;
   upcoming: number;
-  overdue: number;
+  notRecorded: number;
   unverified: number;
 }
 
 export function summarize(rows: DoseRow[]): ImmunizationSummary {
-  const out = { completed: 0, upcoming: 0, overdue: 0, unverified: 0 };
+  const out = { completed: 0, upcoming: 0, notRecorded: 0, unverified: 0 };
   for (const row of rows) {
     if (row.status === 'verified') out.completed += 1;
     else if (row.status === 'unverified') out.unverified += 1;
-    else if (row.status === 'overdue') out.overdue += 1;
+    else if (row.status === 'notRecorded') out.notRecorded += 1;
     else if (row.status === 'due' || row.status === 'upcoming') out.upcoming += 1;
   }
   return out;
@@ -136,7 +136,7 @@ export function summarize(rows: DoseRow[]): ImmunizationSummary {
 export const STATUS_LABEL: Record<DoseStatus, string> = {
   verified: 'Verified',
   unverified: 'Reported by you',
-  overdue: 'Overdue',
+  notRecorded: 'Not recorded',
   due: 'Due now',
   upcoming: 'Upcoming',
   programme: 'Programme dose',
@@ -145,7 +145,7 @@ export const STATUS_LABEL: Record<DoseStatus, string> = {
 export const STATUS_COLOR: Record<DoseStatus, string> = {
   verified: '#15803d',
   unverified: '#b45309',
-  overdue: '#b91c1c',
+  notRecorded: '#b45309',
   due: '#1d4ed8',
   upcoming: '#64748b',
   programme: '#64748b',

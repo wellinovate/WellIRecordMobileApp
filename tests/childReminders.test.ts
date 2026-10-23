@@ -49,7 +49,7 @@ test('server reminders agree with the app on which routine doses are due', () =>
     const rows = buildDoseRows(IMMUNIZATION_SCHEDULE as any, dob, [], today).filter((r) => r.dose.track === 'routine');
     const dueInApp = rows.filter((r) => r.status === 'due').length;
     assert.equal(kinds(dob, [], today).due || 0, dueInApp, `due on day ${day}`);
-    const overdueInApp = rows.filter((r) => r.status === 'overdue').length;
+    const overdueInApp = rows.filter((r) => r.status === 'notRecorded').length;
     assert.ok((kinds(dob, [], today).overdue || 0) <= overdueInApp, `overdue on day ${day}`);
   }
 });
