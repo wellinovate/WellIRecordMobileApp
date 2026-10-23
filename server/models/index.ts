@@ -1555,7 +1555,7 @@ const WebLinkSchema = new Schema<IWebLink>(
 export const WebLink: Model<IWebLink> = mongoose.models.WebLink || mongoose.model<IWebLink>('WebLink', WebLinkSchema);
 
 // Staff accounts for the provider and operations side. Patients never use these.
-export type StaffRole = 'admin' | 'clinician' | 'pharmacist' | 'records_officer';
+export type StaffRole = 'admin' | 'clinician' | 'pharmacist' | 'records_officer' | 'reviewer' | 'senior_reviewer' | 'compliance_admin';
 export interface IStaffUser extends Document {
   email: string;
   name: string;
@@ -1579,7 +1579,7 @@ const StaffUserSchema = new Schema<IStaffUser>(
   {
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     name: { type: String, required: true, trim: true },
-    role: { type: String, enum: ['admin', 'clinician', 'pharmacist', 'records_officer'], required: true },
+    role: { type: String, enum: ['admin', 'clinician', 'pharmacist', 'records_officer', 'reviewer', 'senior_reviewer', 'compliance_admin'], required: true },
     organization: { type: String, trim: true },
     passwordHash: { type: String, required: true },
     status: { type: String, enum: ['active', 'disabled'], default: 'active' },

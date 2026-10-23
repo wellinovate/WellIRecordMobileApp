@@ -9,6 +9,9 @@ import { shouldWriteActive } from './registryCore';
 import { resolveRegion } from './data/nigeriaRegions';
 import { checkLegal, type LegalCheck } from './legalCore';
 import { createClinicVisits } from './clinicVisits';
+import { createProviderVerification, startVerificationSweep, enforcementOn } from './providerVerification';
+import { createS3Storage, s3ConfigFromEnv, createClamScanner } from './providerDocStorage';
+import { auditIsRestricted } from './providerVerificationModels';
 import { createBridgeProviders } from './bridgeProviders';
 import { deleteClerkIdentity, eraseChildData } from './accountErasure';
 import { accountDeletionPage } from './publicPages';
@@ -71,7 +74,7 @@ import { anthropicCall, createAssistantRouter, geminiCall, parseGeminiSse } from
 import { providerSharePage } from './providerSharePage';
 import { notifyRequested, notifyStatus, summarise, type NotifyDeps } from './appointmentNotify';
 import { nearAbuja, nearbyCached, parseCoords, PLACE_KINDS, type PlaceKind } from './nearbyPlaces';
-import { createProviderSource, mergeWelliFirst, ORG_FIELDS, providerContext, welliPlaces } from './welliProviders';
+import { createProviderSource, isDoctorLike, mergeWelliFirst, ORG_FIELDS, providerContext, welliPlaces } from './welliProviders';
 import { childToFhirBundle } from './fhir';
 import { createWebLink, eraseWebLinks } from './webLink';
 import { createChildReminderRouter, startChildReminderSweep, type ReminderDeps } from './childReminders';
@@ -189,6 +192,21 @@ const passwordResetLimiter = rateLimit({
 
 // Staff accounts and roles (replaces the shared ADMIN_SECRET).
 const staff = createStaff({ jwtSecret: JWT_SECRET, limiter: passwordResetLimiter });
+
+// Provider verification: the eligibility gate every clinical path calls. See providerVerification.ts.
+const verification = createProviderVerification({
+  requireStaff: staff.requireStaff,
+  limiter: rateLimit({ windowMs: 15 * 60 * 1000, max: 60, standardHeaders: true, legacyHeaders: false, message: { success: false, message: 'Too many tries. Please wait a few minutes.' } }),
+  getAuthUserId: (req) => getAuthUserId(req),
+  storage: createS3Storage(s3ConfigFromEnv()),
+  scanner: createClamScanner(process.env.CLAMD_HOST, Number(process.env.CLAMD_PORT) || 3310),
+  sendEmail: async (to, subject, text) => {
+    const r = await sendWelliEmail({ to, subject, text, html: `<p>${text.replace(/\n/g, '<br>')}</p>` });
+    return Boolean(r.delivered ?? r.success);
+  },
+});
+if (!enforcementOn()) console.warn('[VERIFY] PROVIDER_VERIFICATION_ENFORCE=false: the eligibility gate is OFF');
+if (!auditIsRestricted()) console.warn('[VERIFY] AUDIT_MONGO_URI is not set: the audit log is append-only in the app but not at database level');
 app.use('/api/v1', staff.router);
 
 // Patient second sign-in step (authenticator app code). Sign-in routes below call patientAuth.gate().
@@ -2911,6 +2929,8 @@ app.use(
 app.use(
   '/api/v1',
   createChildFacilityRouter({
+    gate: (req, res, action, ctx) => verification.gateStaff(req, res, action, ctx),
+    auditAccess: (a) => verification.auditRecordAccess(a),
     getAuthUserId,
     requireStaff: staff.requireStaff,
     limiter: passwordResetLimiter,
@@ -4004,9 +4024,17 @@ const OrganizationProfile: mongoose.Model<any> =
   mongoose.model('OrganizationProfile', OrganizationProfileSchema, 'organizationprofiles');
 
 // Approved WelliRecord providers, cached for five minutes. Used by the locators and the Assistant.
-const welliProviders = createProviderSource(() =>
+const approvedProviders = createProviderSource(() =>
   OrganizationProfile.find({ verificationStatus: 'approved' }, ORG_FIELDS).limit(500).lean() as any
 );
+// Independent doctors appear only while their linked provider verification is eligible (fails closed: unlinked means hidden).
+const welliProviders = async () => {
+  const list = await approvedProviders();
+  const doctors = list.filter(isDoctorLike);
+  if (!doctors.length) return list;
+  const ok = await verification.eligibleOrgIds(doctors.map((p) => p.id));
+  return list.filter((p) => !isDoctorLike(p) || ok.has(p.id));
+};
 
 app.get(['/api/v1/care/providers', '/api/v1/providers'], async (_req: Request, res: Response) => {
   try {
@@ -4639,6 +4667,8 @@ app.post('/api/v1/telehealth/appointments/:id/summary', staff.requireStaff('clin
   if (!mongoose.isValidObjectId(id)) {
     return res.status(400).json({ success: false, message: 'Invalid appointment ID' });
   }
+  if (!(await verification.gateStaff(req, res, 'write_clinical_note'))) return;
+  if (rx && typeof rx.medicationName === 'string' && rx.medicationName.trim() && !(await verification.gateStaff(req, res, 'write_prescription'))) return;
   if (!diagnosis && !notes) {
     return res.status(400).json({ success: false, message: 'A diagnosis or notes are required' });
   }
@@ -4955,6 +4985,7 @@ let pharmacyOrders: ReturnType<typeof createPharmacyOrders> | null = null;
 
 // Consultation booking (fees, hours, slot holds, payment). See booking.ts.
 const booking = createBooking({
+  facilityEligible: (staffIds, facilityId) => verification.facilityEligible(staffIds, facilityId),
   getAuthUserId,
   limiter: appointmentLimiter,
   requireStaff: staff.requireStaff,
@@ -4982,12 +5013,15 @@ booking.startSweeps();
 // Visits console: confirm or cancel requests, join the video room, file the summary. See clinicVisits.ts.
 const clinicVisits = createClinicVisits({
   requireStaff: staff.requireStaff,
+  gate: (req, res, action) => verification.gateStaff(req, res, action),
   releaseSlot: booking.releaseSlot,
   push: async (accountId, appointmentId, title, body) => {
     await appointmentChannels(accountId, appointmentId).push({ title, body });
   },
 });
 app.use('/api/v1', clinicVisits.router);
+app.use('/api/v1', verification.router);
+startVerificationSweep(verification);
 // Providers who signed up on the website set up their own bookings and work their visits. See bridgeProviders.ts.
 app.use(
   '/api/v1',

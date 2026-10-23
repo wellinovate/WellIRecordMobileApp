@@ -20,6 +20,9 @@ export interface WelliPlace extends NearbyPlace {
 export const WELLI_RADIUS_KM = 100;
 export const ORG_FIELDS = 'wrOrgId organizationName organizationType profession officeAddress verificationStatus location';
 
+// An independent practitioner who is not a pharmacist, lab scientist or midwife is treated as a doctor for provider verification.
+export const isDoctorLike = (p: WelliProvider) => p.type === 'individaul_provider' && !['pharmacist', 'lab_scientist', 'midwife'].includes(p.profession || '');
+
 export function mapOrg(org: any): WelliProvider | null {
   if (!org || org.verificationStatus !== 'approved') return null;
   const name = String(org.organizationName || '').trim();
