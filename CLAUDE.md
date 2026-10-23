@@ -65,6 +65,8 @@ Auth screens live in `src/features/auth/`. See "Patient sign-in security" below 
 
 **Opening animation.** `src/components/AnimatedSplash.tsx` is mounted in `App()` above Clerk. It covers the blank gap while `ClerkLoaded` renders nothing, plays about 2 seconds (shield, chevrons drawn, plus, name, soft ring), then fades out once the app behind it has reported ready (`ReadySignal`). With reduce-motion on it shows the finished logo for 0.6 seconds. Background `#041E42` matches the native splash in `app.json`.
 
+**Welcome and tour.** `AuthFlow` starts on `WelcomeScreen` (Get Started, Log In, Take a tour) when `wr.tourSeen.v1` is not set in local storage (`src/utils/tourSeen.ts`), and on the login screen otherwise. `WelcomeTour` (`src/components/WelcomeTour.tsx`) is five swipeable slides with Back, Next and Skip; the last button is Get Started, which opens the existing sign-up step. Get Started, Log In, Skip and finishing all set the flag. Profile > Preferences > Take the app tour reopens it through `TourModal` (`state.showTour`). Slide copy must describe only what the app does today and show no patient data; the emergency slide must not suggest a QR code guarantees access.
+
 **Styling.** NativeWind `className` plus inline style objects. `nativewind-env.d.ts` is
 included in `tsconfig.app.json` so `className` type-checks. Theme colors come from
 `ThemeContext` (`LIGHT_THEME` / `DARK_THEME` in `src/data/mockData.ts`).
