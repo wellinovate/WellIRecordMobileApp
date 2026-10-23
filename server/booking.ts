@@ -89,6 +89,8 @@ export interface BookingDeps {
   push: (accountId: string, appointmentId: string, title: string, body: string) => Promise<void>;
   /** Facilities a provider profile can be set up for (the app's facility list and registered organisations). */
   listFacilities: () => Promise<{ id: string; name: string; address: string; registered?: boolean; type?: string; lat?: number | null; lng?: number | null }[]>;
+  /** Provider verification: true if the assigned clinicians can take bookings (or none are assigned). */
+  facilityEligible?: (staffIds: string[], facilityId: string) => Promise<boolean>;
   paystack: PaystackClient;
   /** Payment references that are not consultation bookings (pharmacy orders). Return true if handled. */
   otherReference?: (reference: string) => Promise<boolean>;
@@ -117,6 +119,7 @@ function publicProvider(svc: any, mode: Mode) {
 }
 
 export function createBooking(deps: BookingDeps) {
+  const eligibleSvc = async (svc: any) => !deps.facilityEligible || deps.facilityEligible(((svc?.staffIds as any[]) || []).map(String), String(svc?.facilityId || ''));
   const now = () => (deps.now ? deps.now() : Date.now());
   const router = Router();
   const webhook = Router();
@@ -140,7 +143,10 @@ export function createBooking(deps: BookingDeps) {
     const q: any = { active: true };
     if (facilityId) q.facilityId = facilityId;
     const rows: any[] = await ProviderService.find(q).limit(200).lean();
-    return rows.filter((s) => bookableFor(s, mode));
+    const open = rows.filter((s) => bookableFor(s, mode));
+    const keep: any[] = [];
+    for (const s of open) if (await eligibleSvc(s)) keep.push(s);
+    return keep;
   }
 
   const authed = (req: Request, res: Response): string | null => {
@@ -228,8 +234,8 @@ export function createBooking(deps: BookingDeps) {
       const svc: any = await ProviderService.findOne({ facilityId: String(req.params.facilityId), active: true }).lean();
       res.json({
         success: true,
-        inPerson: Boolean(svc && bookableFor(svc, 'in_person')),
-        virtual: Boolean(svc && bookableFor(svc, 'video')),
+        inPerson: Boolean(svc && bookableFor(svc, 'in_person') && (await eligibleSvc(svc))),
+        virtual: Boolean(svc && bookableFor(svc, 'video') && (await eligibleSvc(svc))),
       });
     } catch (err) {
       fail500(res, 'GET /booking/offers', err, 'Could not check this provider');
@@ -249,7 +255,7 @@ export function createBooking(deps: BookingDeps) {
     }
     try {
       const svc: any = await ProviderService.findOne({ facilityId, active: true }).lean();
-      if (!svc || !bookableFor(svc, mode)) return res.status(404).json({ success: false, message: 'This provider is not taking bookings for that visit type.' });
+      if (!svc || !bookableFor(svc, mode) || !(await eligibleSvc(svc))) return res.status(404).json({ success: false, message: 'This provider is not taking bookings for that visit type.' });
       // The time must be one the provider really offers. The app cannot invent one.
       const offered = slotsForDate(svc, lagosYmd(startsAt), now()).some((s) => s.getTime() === startsAt.getTime());
       if (!offered || startsAt.getTime() > now() + MAX_DAYS_AHEAD * 86_400_000) {
@@ -345,7 +351,7 @@ export function createBooking(deps: BookingDeps) {
       const svc: any = await ProviderService.findOne({ facilityId: hold.facilityId, active: true }).lean();
       const mode: Mode = hold.mode;
       const fee = svc ? feeFor(svc, mode) : null;
-      if (!svc || !bookableFor(svc, mode) || fee === null) {
+      if (!svc || !bookableFor(svc, mode) || fee === null || !(await eligibleSvc(svc))) {
         return res.status(409).json({ success: false, message: 'This provider is no longer taking those bookings.' });
       }
       const familyMemberId = b.familyMemberId && b.familyMemberId !== 'me' ? String(b.familyMemberId) : undefined;

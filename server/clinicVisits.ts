@@ -51,6 +51,8 @@ export interface ClinicVisitsDeps {
   requireStaff: (...roles: any[]) => RequestHandler;
   releaseSlot: (appt: any) => Promise<void>;
   push: (accountId: string, appointmentId: string, title: string, body: string) => Promise<void>;
+  /** Provider verification gate. Sends the 403 itself and returns false when the signed-in clinician is not eligible. */
+  gate?: (req: any, res: any, action: string) => Promise<boolean>;
   now?: () => number;
 }
 
@@ -178,6 +180,11 @@ export function createClinicVisits(deps: ClinicVisitsDeps): {
   router.post(
     '/staff/visits/:id/video-token',
     staffOnly,
+    async (req, res, next) => {
+      // Only clinicians start consultations; records officers can join to assist and are not gated here.
+      if (deps.gate && (req as any).staff?.role === 'clinician' && !(await deps.gate(req, res, 'start_consultation'))) return;
+      next();
+    },
     route(
       'POST /staff/visits/video-token',
       async (req) => {

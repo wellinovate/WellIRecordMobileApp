@@ -66,6 +66,10 @@ export interface FacilityDeps {
   limiter: RequestHandler;
   codeSecret: string;
   notify: (userId: string, title: string, body: string) => Promise<void>;
+  /** Provider verification gate for clinicians. Sends the 403 itself and returns false when not eligible. */
+  gate?: (req: Request, res: Response, action: string, ctx?: { purpose?: string; patientRef?: string }) => Promise<boolean>;
+  /** Writes the record-access audit row. Throws if it cannot, which fails the request. */
+  auditAccess?: (a: { staffUserId: string; patientRef: string; purpose: string; lawfulBasis: string; consentRef?: string }) => Promise<void>;
 }
 
 export function createChildFacilityRouter(deps: FacilityDeps) {
@@ -173,6 +177,10 @@ export function createChildFacilityRouter(deps: FacilityDeps) {
     const grant: any = await ChildFacilityGrant.findOne({ childId: member._id, codeHash: hashCode(deps.codeSecret, code) });
     if (!grant || grantState(grant) !== 'active') return bad();
     if (member.custodyLock?.active) return fail(423, 'This profile is locked. Staff must review it before a clinic can use it.');
+    if (deps.gate && req.staff?.role === 'clinician' && !(await deps.gate(req, res, 'access_patient_record', { patientRef: String(member._id) }))) return null;
+    if (deps.auditAccess) {
+      await deps.auditAccess({ staffUserId: req.staff!.id, patientRef: String(member._id), purpose: 'clinic care using parent access code', lawfulBasis: 'consent', consentRef: String(grant._id) });
+    }
     return { member, grant };
   }
 
