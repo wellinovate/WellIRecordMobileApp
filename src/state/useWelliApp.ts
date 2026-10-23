@@ -116,6 +116,8 @@ export interface AppState {
   personalInfoDraft: FamilyMember | null;
   showPrivacyPolicy: boolean;
   showPrivacySecurity: boolean;
+  /** Which page Password & sessions or Privacy Policy & Terms opens on. */
+  privacySecurityStart: 'security' | 'privacy';
   twoFactorEnabled: boolean;
   showLinkedAccounts: boolean;
   linkedAccounts: Record<string, boolean>;
@@ -160,6 +162,7 @@ export interface AppState {
   showHealthHistory: boolean;
   showLanguage: boolean;
   showTour: boolean;
+  showContactVerify: boolean;
   language: string;
   notifPermission: 'granted' | 'skipped' | null;
   isAuthenticated: boolean;
@@ -344,6 +347,7 @@ const initialState: AppState = {
   personalInfoDraft: null,
   showPrivacyPolicy: false,
   showPrivacySecurity: false,
+  privacySecurityStart: 'security',
   twoFactorEnabled: false,
   showLinkedAccounts: false,
   linkedAccounts: {},
@@ -388,6 +392,7 @@ const initialState: AppState = {
   showHealthHistory: false,
   showLanguage: false,
   showTour: false,
+  showContactVerify: false,
   language: 'English',
   notifPermission: null,
   facilitiesList: [],
@@ -1482,7 +1487,8 @@ export function useWelliApp() {
     },
     openPrivacyPolicy: () => patch({ showPrivacyPolicy: true }),
     closePrivacyPolicy: () => patch({ showPrivacyPolicy: false }),
-    openPrivacySecurity: () => patch({ showPrivacySecurity: true }),
+    openPrivacySecurity: () => patch({ showPrivacySecurity: true, privacySecurityStart: 'security' }),
+    openPrivacyTerms: () => patch({ showPrivacySecurity: true, privacySecurityStart: 'privacy' }),
     closePrivacySecurity: () => patch({ showPrivacySecurity: false }),
     toggleTwoFactor: async () => {
       hapticFeedback.selection();
@@ -1886,6 +1892,16 @@ export function useWelliApp() {
     openRecordFromHistory: (id: string) => patch({ showHealthHistory: false, recordDetailId: id }),
     openActivity: () => patch({ showActivity: true }),
     closeActivity: () => patch({ showActivity: false }),
+    openContactVerify: () => patch({ showContactVerify: true }),
+    closeContactVerify: () => patch({ showContactVerify: false }),
+    // After the server confirms a new email or phone, show it everywhere the app reads it from.
+    contactChanged: (kind: 'email' | 'phone', value: string) => {
+      patch((s) => ({
+        ...s,
+        user: s.user ? { ...s.user, ...(kind === 'email' ? { email: value } : { phoneNumber: value }) } : s.user,
+        familyMembers: s.familyMembers.map((f) => (f.id === 'me' ? { ...f, ...(kind === 'email' ? { email: value } : { phone: value }) } : f)),
+      }));
+    },
     openTour: () => patch({ showTour: true }),
     closeTour: () => patch({ showTour: false }),
     openLanguage: () => patch({ showLanguage: true }),

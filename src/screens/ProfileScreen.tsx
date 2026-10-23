@@ -365,7 +365,7 @@ export function ProfileScreen({
             icon="verify"
             title="Email & phone verification"
             subtitle="View or change your email and phone number"
-            onPress={actions.openPersonalInfo}
+            onPress={actions.openContactVerify}
           />
 
           <Divider />
@@ -383,7 +383,7 @@ export function ProfileScreen({
             icon="privacy"
             title="Privacy Policy & Terms"
             subtitle="Understand how your information is handled"
-            onPress={actions.openPrivacySecurity}
+            onPress={actions.openPrivacyTerms}
           />
         </SectionCard>
 

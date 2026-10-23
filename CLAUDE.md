@@ -73,6 +73,10 @@ Auth screens live in `src/features/auth/`. See "Patient sign-in security" below 
 included in `tsconfig.app.json` so `className` type-checks. Theme colors come from
 `ThemeContext` (`LIGHT_THEME` / `DARK_THEME` in `src/data/mockData.ts`).
 
+**Email and phone verification.** Profile > Account & privacy > Email & phone verification opens `ContactVerificationModal` (`state.showContactVerify`). It shows the email and phone on the account with a Verified or Not verified yet label, and lets the person add or change either. Routes (token): `GET /auth/contact/status`, `POST /auth/contact/send {kind, value}`, `POST /auth/contact/verify {kind, value, code}`. The code (6 digits, 5 minutes, 5 tries) is bound to the account, the kind and the exact value; the account changes only after the right code. The new value is written to both `User` and `Account` (the phone as `+234...` in `phoneNumber` and local format in `Account.phone`), a value held by another account is refused, and the change is logged (`email_verified`, `phone_verified`). Phone must be a Nigerian mobile. `emailVerified` comes from `Account.isEmailVerified`, so an email entered at sign-up without a code shows "Not verified yet" until confirmed. Needs the Resend settings (email) and `TERMII_API_KEY` (SMS). Not run against live senders. Changing the phone changes the number used for sign-in codes.
+
+**Two Profile rows, two pages (`PrivacySecurityModal`).** Profile > Account & privacy > Password & sessions opens `actions.openPrivacySecurity`: the Account security page with email and phone (opens `ContactVerificationModal`), password, authenticator app, security and access log, this device, sign out other devices, and Help & support. Privacy Policy & Terms opens `actions.openPrivacyTerms`: the Privacy policy and terms page with the Privacy Policy and Terms, record and sharing choices, vault export and the deletion request. `state.privacySecurityStart` picks the page the modal opens on, and Back closes the modal from that page. Do not point both rows at one action.
+
 ## Video visits
 
 Patients join through LiveKit. `POST /api/v1/telehealth/appointments/:id/token` issues a

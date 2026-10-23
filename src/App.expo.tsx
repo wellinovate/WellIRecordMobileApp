@@ -70,6 +70,7 @@ import { HealthHistoryModal } from "./modals/HealthHistoryModal";
 import { LanguageModal } from "./modals/LanguageModal";
 
 import { FaceIdLockScreen } from "./modals/FaceIdLockScreen";
+import { ContactVerificationModal } from "./modals/ContactVerificationModal";
 import { MfaChallengeModal } from "./modals/MfaChallengeModal";
 import { SocialStateModal } from "./modals/SocialStateModal";
 import { TourModal } from "./modals/TourModal";
@@ -493,6 +494,7 @@ function MainWelliApp() {
           {Boolean(state.showVaultExport) && <VaultExportModal app={app} />}
 
           <TourModal app={app} />
+          <ContactVerificationModal app={app} />
 
           <Toast message={state.toast} />
         </SafeAreaView>

@@ -300,6 +300,28 @@ export const authService = {
     return session;
   },
 
+  /** Email and phone on the signed-in account, and whether each has been proven with a code. */
+  async contactStatus(): Promise<{ email: string | null; emailVerified: boolean; phone: string | null; phoneVerified: boolean }> {
+    const r = await apiClient.get<any>('/auth/contact/status');
+    return { email: r.email ?? null, emailVerified: Boolean(r.emailVerified), phone: r.phone ?? null, phoneVerified: Boolean(r.phoneVerified) };
+  },
+
+  /** Sends a 6-digit code to a new email or phone so the person can prove they own it. */
+  async sendContactCode(kind: 'email' | 'phone', value: string): Promise<void> {
+    await apiClient.post<any>('/auth/contact/send', { kind, value });
+  },
+
+  /** Checks the code. On success the server saves the new email or phone; the saved session is updated to match. */
+  async verifyContactCode(kind: 'email' | 'phone', value: string, code: string): Promise<string> {
+    const r = await apiClient.post<any>('/auth/contact/verify', { kind, value, code });
+    const saved = String(r.value || value);
+    const session = await this.getSavedSession();
+    if (session?.token) {
+      await this.saveSession({ ...session, user: { ...session.user, ...(kind === 'email' ? { email: saved } : { phoneNumber: saved }) } });
+    }
+    return saved;
+  },
+
   /** Sends the app-unlock code to the email or phone already on the signed-in account. The server picks the destination. */
   async sendUnlockCode(channel?: 'email' | 'sms'): Promise<{ channel: 'email' | 'sms'; sentTo: string }> {
     const res = await apiClient.post<any>('/auth/unlock/send', channel ? { channel } : {});
