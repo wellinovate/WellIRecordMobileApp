@@ -1,3 +1,4 @@
+import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { Platform } from 'react-native';
 
@@ -98,11 +99,17 @@ export async function pickImageFromLibrary(
 }
 
 /**
- * The OCR endpoint currently accepts imageBase64, not PDFs.
- * Keep the existing pickDocument() API for UploadModal, but use
- * ImagePicker so the image bytes are captured immediately and
- * do not depend on a temporary Android DocumentPicker URI.
+ * Any file the person has on the phone: photos, PDF, Word, Excel, text. The file is copied to the
+ * app cache first, so the path stays readable. The server checks the real type and size.
  */
 export async function pickDocument(): Promise<PickedMediaResult | null> {
-  return pickImageFromLibrary(false);
+  try {
+    const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true, multiple: false });
+    if (result.canceled || !result.assets?.length) return null;
+    const asset = result.assets[0];
+    return { uri: asset.uri, name: asset.name, size: asset.size, type: asset.mimeType || undefined };
+  } catch (err) {
+    console.warn('Error choosing a file:', err);
+    return null;
+  }
 }

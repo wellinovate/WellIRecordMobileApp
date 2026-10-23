@@ -48,6 +48,8 @@ function ChevronIcon() {
 export function RecordDetailSheet({ app }: { app: WelliApp }) {
   const { state, actions, records, family } = app;
   const [pdfViewer, setPdfViewer] = useState<{
+    fileName?: string;
+    fileType?: string;
     url: string;
     title: string;
   } | null>(null);
@@ -74,6 +76,8 @@ export function RecordDetailSheet({ app }: { app: WelliApp }) {
       setPdfViewer({
         url: firstAttachment.url,
         title: firstAttachment.name || record.title,
+        fileName: firstAttachment.name,
+        fileType: firstAttachment.fileType,
       });
       return;
     }
@@ -340,6 +344,8 @@ export function RecordDetailSheet({ app }: { app: WelliApp }) {
         visible={Boolean(pdfViewer)}
         url={pdfViewer?.url || null}
         title={pdfViewer?.title}
+        fileName={pdfViewer?.fileName}
+        fileType={pdfViewer?.fileType}
         onClose={() => setPdfViewer(null)}
       />
     </>

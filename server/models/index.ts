@@ -413,6 +413,8 @@ export interface IHealthRecord extends Document {
   fileS3Key?: string;
   encryptedFileHash?: string;
   ocrData?: Record<string, unknown>;
+  /** Files the patient attached; the bytes live in RecordFile, sealed. */
+  files?: { fileId: mongoose.Types.ObjectId; name: string; contentType: string; bytes: number }[];
   labReportDetails?: {
     specimenType: string;
     collectedDate: string;
@@ -441,6 +443,15 @@ const HealthRecordSchema = new Schema<IHealthRecord>(
     fileS3Key: { type: String },
     encryptedFileHash: { type: String },
     ocrData: { type: Schema.Types.Mixed },
+    files: [
+      {
+        _id: false,
+        fileId: { type: Schema.Types.ObjectId, required: true },
+        name: { type: String },
+        contentType: { type: String },
+        bytes: { type: Number },
+      },
+    ],
     labReportDetails: {
       specimenType: { type: String },
       collectedDate: { type: String },
@@ -1336,6 +1347,33 @@ export const Account: Model<IAccount> = mongoose.models.Account || mongoose.mode
 export const Profile: Model<IProfile> = mongoose.models.Profile || mongoose.model<IProfile>('Profile', ProfileSchema, 'profiles');
 export const UserProfile: Model<IUserProfile> = mongoose.models.UserProfile || mongoose.model<IUserProfile>('UserProfile', UserProfileSchema, 'userprofiles');
 export const FamilyMember: Model<IFamilyMember> = mongoose.models.FamilyMember || mongoose.model<IFamilyMember>('FamilyMember', FamilyMemberSchema);
+// A document a patient attached to a record. Stored sealed (AES-256-GCM) in our own database, never passed to a third party.
+export interface IRecordFile extends Document {
+  uploadedBy: mongoose.Types.ObjectId;
+  ownerId: mongoose.Types.ObjectId;
+  recordId?: mongoose.Types.ObjectId;
+  name: string;
+  contentType: string;
+  bytes: number;
+  sealed: string;
+  expiresAt?: Date;
+}
+const RecordFileSchema = new Schema<IRecordFile>(
+  {
+    uploadedBy: { type: Schema.Types.ObjectId, required: true, index: true },
+    ownerId: { type: Schema.Types.ObjectId, required: true, index: true },
+    recordId: { type: Schema.Types.ObjectId, index: true },
+    name: { type: String, required: true },
+    contentType: { type: String, required: true },
+    bytes: { type: Number, required: true },
+    sealed: { type: String, required: true },
+    // An upload that never becomes part of a record is removed after a day.
+    expiresAt: { type: Date },
+  },
+  { timestamps: true }
+);
+RecordFileSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+export const RecordFile: Model<IRecordFile> = mongoose.models.RecordFile || mongoose.model<IRecordFile>('RecordFile', RecordFileSchema, 'recordfiles');
 export const HealthRecord: Model<IHealthRecord> = mongoose.models.HealthRecord || mongoose.model<IHealthRecord>('HealthRecord', HealthRecordSchema);
 export const Prescription: Model<IPrescription> = mongoose.models.Prescription || mongoose.model<IPrescription>('Prescription', PrescriptionSchema);
 export const Facility: Model<IFacility> = mongoose.models.Facility || mongoose.model<IFacility>('Facility', FacilitySchema);

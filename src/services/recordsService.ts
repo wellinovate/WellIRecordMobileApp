@@ -5,7 +5,18 @@
 
 import { apiClient } from './apiClient';
 import { offlineSyncService } from './offlineSyncService';
+import { File as ExpoFile } from 'expo-file-system';
 import type { HealthRecord, RecordType } from '../data/types';
+import type { PickedMediaResult } from '../utils/mediaPicker';
+
+export const RECORD_FILE_MAX_BYTES = 6_000_000;
+
+export interface UploadedRecordFile {
+  id: string;
+  name: string;
+  contentType: string;
+  bytes: number;
+}
 
 export interface PresignedUploadUrlResponse {
   uploadUrl: string;
@@ -87,10 +98,35 @@ export const recordsService = {
   },
 
   /**
+   * Uploads one file (photo, PDF, Word, Excel, text) to be attached to a record. The server checks the real
+   * type and size and keeps it sealed in our own database. File the record afterwards with the returned id.
+   */
+  async uploadFile(media: PickedMediaResult, ownerId: string = 'me'): Promise<UploadedRecordFile> {
+    if (media.size && media.size > RECORD_FILE_MAX_BYTES) {
+      throw new Error('That file is larger than 6 MB. Choose a smaller file or a lower-resolution photo.');
+    }
+    let dataBase64 = media.base64?.trim() || '';
+    if (!dataBase64) {
+      try {
+        dataBase64 = await new ExpoFile(media.uri).base64();
+      } catch {
+        throw new Error('The file could not be read. Choose it again.');
+      }
+    }
+    if (!dataBase64) throw new Error('The file is empty. Choose another one.');
+    const res = await apiClient.post<{ success: boolean; file: UploadedRecordFile }>(
+      '/records/files',
+      { name: media.name || 'document', dataBase64, ownerId },
+      { timeoutMs: 90000 },
+    );
+    return res.file;
+  },
+
+  /**
    * Saves a newly parsed or uploaded health record to the patient's vault.
    * If offline, enqueues the mutation and stores it in the local cache with optimistic status.
    */
-  async createRecord(record: Omit<HealthRecord, 'id'>): Promise<HealthRecord> {
+  async createRecord(record: Omit<HealthRecord, 'id'> & { fileIds?: string[] }): Promise<HealthRecord> {
     const localId = `r_${Date.now()}`;
     const localRecord: HealthRecord = {
       ...record,

@@ -13,12 +13,27 @@ const MIME: Record<string, string> = {
   png: 'image/png',
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  heic: 'image/heic',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ppt: 'application/vnd.ms-powerpoint',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  rtf: 'application/rtf',
+  txt: 'text/plain',
+  csv: 'text/csv',
 };
+const EXT_BY_MIME: Record<string, string> = Object.fromEntries(Object.entries(MIME).map(([e, m]) => [m, e]));
 
 function extensionOf(att: Attachment): string {
+  const named = (att.name || '').toLowerCase().match(/\.([a-z0-9]{1,5})$/)?.[1];
+  if (named && MIME[named]) return named;
   const source = `${att.name || ''} ${att.url || ''}`.toLowerCase();
   const match = source.match(/\.(pdf|png|jpe?g)(?:[?\s]|$)/);
   if (match) return match[1];
+  if (EXT_BY_MIME[att.fileType || '']) return EXT_BY_MIME[att.fileType || ''];
   if (/pdf/.test(att.fileType || '')) return 'pdf';
   if (/png/.test(att.fileType || '')) return 'png';
   if (/jp/.test(att.fileType || '')) return 'jpg';
@@ -28,7 +43,10 @@ function extensionOf(att: Attachment): string {
 async function downloadAttachment(att: Attachment): Promise<{ uri: string; ext: string }> {
   const ext = extensionOf(att);
   const token = getAuthToken();
-  const proxied = `${CONFIG.apiBaseUrl}/lab-documents/proxy?url=${encodeURIComponent(att.url)}`;
+  // A file the patient attached comes straight from our server; provider documents go through the proxy.
+  const proxied = att.url.startsWith('/records/files/')
+    ? `${CONFIG.apiBaseUrl}${att.url}`
+    : `${CONFIG.apiBaseUrl}/lab-documents/proxy?url=${encodeURIComponent(att.url)}`;
   const file = await File.downloadFileAsync(proxied, new File(Paths.cache, `record_${Date.now()}.${ext}`), {
     idempotent: true,
     headers: token ? { Authorization: `Bearer ${token}` } : {},

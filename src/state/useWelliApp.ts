@@ -2175,11 +2175,12 @@ export function useWelliApp() {
       return commitAuthenticatedSession(session, data as any, 'signup');
     },
 
-    addRecord: (rec: Omit<HealthRecord, 'id'>) => {
+    addRecord: (rec: Omit<HealthRecord, 'id'> & { fileIds?: string[] }) => {
       hapticFeedback.success();
+      const { fileIds: _fileIds, ...shown } = rec;
       const newRec: HealthRecord = {
         id: `r_${Date.now()}`,
-        ...rec,
+        ...shown,
       };
       patch((s) => ({
         recordsList: [newRec, ...s.recordsList],

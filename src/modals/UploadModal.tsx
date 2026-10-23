@@ -24,6 +24,7 @@ import {
 } from "../utils/mediaPicker";
 
 import { ocrService, type OcrResult } from "../services/ocrService";
+import { recordsService, type UploadedRecordFile } from "../services/recordsService";
 
 import type { RecordType } from "../data/types";
 
@@ -171,6 +172,8 @@ export function UploadModal({ app }: { app: WelliApp }) {
 
   const [editingExtractedText, setEditingExtractedText] = useState(false);
 
+  const [uploadedFile, setUploadedFile] = useState<UploadedRecordFile | null>(null);
+  const [readNote, setReadNote] = useState("");
   const [uploadFailed, setUploadFailed] = useState(false);
 
   const [failureMessage, setFailureMessage] = useState(
@@ -209,20 +212,14 @@ export function UploadModal({ app }: { app: WelliApp }) {
 
     setExtractedText("");
 
-    setEditingExtractedText(false);
-
+        setEditingExtractedText(false);
+    setUploadedFile(null);
+    setReadNote("");
     setUploadFailed(false);
-
     setFailureMessage(
-
       "We couldn't finish this upload. Check your connection and try again.",
-
     );
-
   };
-
-
-
   const close = () => {
 
     reset();
@@ -239,158 +236,86 @@ export function UploadModal({ app }: { app: WelliApp }) {
 
     setEditingExtractedText(false);
 
-    setPickedFile(null);
-
+        setPickedFile(null);
     setOcrResult(null);
-
+    setUploadedFile(null);
+    setReadNote("");
     setExtractedText("");
-
-
-
     actions.openUpload();
 
   };
 
 
 
+  // Saves the file first, so it is never lost. Reading text from a photo is only a help: if it finds nothing,
+  // or the file is a PDF or another kind of document, the person fills in the details by hand.
   const analyzeFile = async (result: PickedMediaResult) => {
-
     setUploadFailed(false);
-
     setPickedFile(result);
-
-    setDocumentTitle(result.name || "My document");
-
+    setOcrResult(null);
+    setUploadedFile(null);
+    setReadNote("");
+    setDocumentTitle(
+      (result.name || "My document").replace(/\.[^/.]+$/, "") || "My document",
+    );
     actions.setUploadStepScanning();
 
-
-
-    const mimeType = result.type?.toLowerCase() || "";
-
-
-
-    const fileName = result.name?.toLowerCase() || "";
-
-
-
-    const isPdf = mimeType === "application/pdf" || fileName.endsWith(".pdf");
-
-
+    let saved: UploadedRecordFile;
+    try {
+      saved = await recordsService.uploadFile(result, state.activeFamilyId);
+    } catch (error: any) {
+      setFailureMessage(
+        error?.message ||
+          "We couldn't finish this upload. Check your connection and try again.",
+      );
+      setUploadFailed(true);
+      return;
+    }
+    setUploadedFile(saved);
 
     const isImage =
-
-      mimeType.startsWith("image/") ||
-
-      /\.(jpg|jpeg|png|webp|heic)$/i.test(fileName);
-
-
-
-    if (isPdf) {
-
-      setFailureMessage(
-
-        "PDF processing is not available yet. Please upload a JPG or PNG image of the document.",
-
-      );
-
-      setUploadFailed(true);
-
-      return;
-
-    }
-
-
-
+      /^image\/(jpeg|png|webp)$/.test(saved.contentType) &&
+      saved.bytes < 9_000_000;
     if (!isImage) {
-
-      setFailureMessage(
-
-        "This file type is not supported. Please choose a JPG or PNG image.",
-
+      setReadNote(
+        "This file is saved. Add a title and a short note so you can find it later.",
       );
-
-      setUploadFailed(true);
-
+      actions.setUploadStepReview();
       return;
-
     }
-
-
-
-    actions.setUploadStepScanning();
-
-
 
     try {
-
       const extracted = await ocrService.extractFromImage(
         result,
         selectedPreset.type,
       );
-
-
-
-      if (!extracted.success) {
-
-        throw new Error(
-
-          extracted.message || "The document could not be processed.",
-
+      if (extracted?.success) {
+        setOcrResult(extracted);
+        setDocumentTitle(
+          extracted.title ||
+            result.name?.replace(/\.[^/.]+$/, "") ||
+            "My document",
         );
-
+        setProvider(extracted.provider || "");
+        setExtractedText(
+          extracted.summary ||
+            extracted.keyValues
+              ?.map((item) => `${item.label}: ${item.value}`)
+              .join("\n") ||
+            "",
+        );
+      } else {
+        setReadNote(
+          "The file is saved, but no text could be read from it. Add a title and a short note by hand.",
+        );
       }
-
-
-
-      setOcrResult(extracted);
-
-      setDocumentTitle(
-
-        extracted.title ||
-
-          result.name?.replace(/\.[^/.]+$/, "") ||
-
-          "My document",
-
-      );
-
-      setProvider(extracted.provider || "");
-
-      setExtractedText(
-
-        extracted.summary ||
-
-          extracted.keyValues
-
-            ?.map((item) => `${item.label}: ${item.value}`)
-
-            .join("\n") ||
-
-          "",
-
-      );
-
-
-
-      actions.setUploadStepReview();
-
     } catch (error: any) {
-
-      setFailureMessage(
-
-        error?.message ||
-
-          "We couldn't finish this upload. Check your connection and try again.",
-
+      setReadNote(
+        `The file is saved. ${error?.message || "Text could not be read from it"}. Add a title and a short note by hand.`,
       );
-
-      setUploadFailed(true);
-
     }
-
+    actions.setUploadStepReview();
   };
-
-
 
   const chooseSourceAndUpload = async () => {
 
@@ -465,14 +390,19 @@ export function UploadModal({ app }: { app: WelliApp }) {
 
         "Patient-uploaded document.",
 
-      extractedOcr: {
-
-        keyValues: ocrResult?.keyValues || [],
-
-        statusBadge: "OCR Extracted",
-
-      },
-
+            extractedOcr: ocrResult?.keyValues?.length
+        ? { keyValues: ocrResult.keyValues, statusBadge: "OCR Extracted" }
+        : undefined,
+      attachments: uploadedFile
+        ? [
+            {
+              url: `/records/files/${uploadedFile.id}`,
+              name: uploadedFile.name,
+              fileType: uploadedFile.contentType,
+            },
+          ]
+        : undefined,
+      fileIds: uploadedFile ? [uploadedFile.id] : undefined,
     });
 
 
@@ -955,9 +885,8 @@ export function UploadModal({ app }: { app: WelliApp }) {
 
               <Text className="mt-2 text-[11.5px] leading-[17px] text-[#536A84]">
 
-                OCR helps read the uploaded document. You'll review the
-
-                extracted text before saving.
+                                Your file is saved first. Text is read from photos when it
+                can be, and you review it before saving.
 
               </Text>
 
@@ -1073,11 +1002,14 @@ export function UploadModal({ app }: { app: WelliApp }) {
 
             <View className="mt-4">
 
-              <Text className="text-[12px] font-semibold text-[#173B68]">
-
-                Extracted text
-
+                            <Text className="text-[12px] font-semibold text-[#173B68]">
+                {ocrResult ? "Extracted text" : "Note"}
               </Text>
+              {readNote ? (
+                <Text className="mt-1 text-[12px] leading-[17px] text-[#536A84]">
+                  {readNote}
+                </Text>
+              ) : null}
 
 
 
@@ -1087,13 +1019,13 @@ export function UploadModal({ app }: { app: WelliApp }) {
 
                 onChangeText={setExtractedText}
 
-                editable={editingExtractedText}
+                editable={editingExtractedText || !ocrResult}
 
                 multiline
 
                 textAlignVertical="top"
 
-                placeholder="No text was extracted."
+                placeholder="Add a short note (optional)"
 
                 placeholderTextColor="#94A3B8"
 
