@@ -300,6 +300,17 @@ export const authService = {
     return session;
   },
 
+  /** Sends the app-unlock code to the email or phone already on the signed-in account. The server picks the destination. */
+  async sendUnlockCode(channel?: 'email' | 'sms'): Promise<{ channel: 'email' | 'sms'; sentTo: string }> {
+    const res = await apiClient.post<any>('/auth/unlock/send', channel ? { channel } : {});
+    return { channel: res.channel, sentTo: res.sentTo };
+  },
+
+  /** Checks the unlock code. Throws with the server's message when it is wrong or expired. */
+  async verifyUnlockCode(code: string): Promise<void> {
+    await apiClient.post<any>('/auth/unlock/verify', { code });
+  },
+
   /**
    * Validates a code without persisting or switching the app's active session.
    * Used for pre-registration email/phone verification.
@@ -525,7 +536,6 @@ export const authService = {
 
     try {
       await storage.removeItem('welli_active_shares');
-      await storage.removeItem('welli_face_id');
       await storage.removeItem('welli_2fa_enabled');
     } catch {}
 

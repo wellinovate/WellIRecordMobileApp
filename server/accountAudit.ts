@@ -59,6 +59,7 @@ export const ACTION_LABELS: Record<string, string> = {
   mfa_recovery_codes: 'New recovery codes made',
   password_reset: 'Password reset',
   sessions_revoked: 'Signed out other devices',
+  app_unlocked_code: 'App unlocked with a code',
   share_created: 'Provider link created',
   share_revoked: 'Provider link withdrawn',
   share_opened: 'Provider link opened',

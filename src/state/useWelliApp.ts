@@ -28,7 +28,6 @@ import { hapticFeedback } from '../utils/haptics';
 import { buildShareMessage } from '../utils/providerRemark';
 import { storage } from '../utils/storage';
 import { reportError } from '../utils/errorReporting';
-import { authenticateWithBiometrics, getBiometricStatus } from '../utils/biometrics';
 import { markActivity } from '../utils/inactivityCore';
 import { authService, type AuthSession } from '../services/authService';
 import { apiClient, setAuthToken } from '../services/apiClient';
@@ -156,7 +155,6 @@ export interface AppState {
   showNotifications: boolean;
   notifications: Notification[];
   darkMode: boolean;
-  faceIdEnabled: boolean;
   showLockScreen: boolean;
   showActivity: boolean;
   showHealthHistory: boolean;
@@ -385,7 +383,6 @@ const initialState: AppState = {
   showNotifications: false,
   notifications: [],
   darkMode: false,
-  faceIdEnabled: false,
   showLockScreen: false,
   showActivity: false,
   showHealthHistory: false,
@@ -454,9 +451,6 @@ export function useWelliApp() {
         const dm = await storage.getItem('welli_dark_mode');
         if (dm !== null) patch({ darkMode: dm === '1' });
 
-        const bio = await storage.getItem('welli_face_id');
-        if (bio !== null) patch({ faceIdEnabled: bio === '1' });
-
         const tfa = await storage.getItem('welli_2fa_enabled');
         if (tfa !== null) patch({ twoFactorEnabled: tfa === '1' });
         
@@ -465,7 +459,9 @@ export function useWelliApp() {
         if (savedSession?.user && savedSession?.token) {
           setAuthToken(savedSession.token);
 
+          // Reopening the app always asks to unlock first.
           patch((s) => ({
+            showLockScreen: true,
             isAuthenticated: true,
             user: savedSession.user,
             loggedOut: false,
@@ -1548,7 +1544,6 @@ export function useWelliApp() {
                 vitalsLogs: [],
                 vitalsSeries: [],
                 twoFactorEnabled: false,
-                faceIdEnabled: false,
               });
               showToast('Your account has been deleted');
             },
@@ -1574,7 +1569,6 @@ export function useWelliApp() {
         vitalsLogs: [],
         vitalsSeries: [],
         twoFactorEnabled: false,
-        faceIdEnabled: false,
       });
       showToast('Account session and cached vault data cleared');
     },
@@ -1876,29 +1870,6 @@ export function useWelliApp() {
       });
     },
 
-    toggleFaceId: async () => {
-      hapticFeedback.selection();
-      const current = state.faceIdEnabled;
-      if (!current) {
-        const status = await getBiometricStatus();
-        if (!status.isAvailable && status.biometryType === 'none') {
-          showToast(`${status.label || 'Biometric authentication'} is not available on this device`);
-          return;
-        }
-        const auth = await authenticateWithBiometrics('Enable Biometric Lock for WelliRecord');
-        if (auth.success) {
-          await storage.setItem('welli_face_id', '1');
-          patch({ faceIdEnabled: true });
-          showToast(`${status.label || 'Biometric Lock'} enabled`);
-        } else {
-          showToast('Biometric authentication cancelled');
-        }
-      } else {
-        await storage.setItem('welli_face_id', '0');
-        patch({ faceIdEnabled: false, showLockScreen: false });
-        showToast('Biometric Lock disabled');
-      }
-    },
     unlockWithFaceId: () => {
       hapticFeedback.success();
       markActivity();
@@ -2348,6 +2319,7 @@ export function useWelliApp() {
       setAuthToken(null);
       await clearChildOfflineData();
       patch({
+        showLockScreen: false,
         familyLoadError: null,
         isAuthenticated: false,
         user: null,
@@ -2363,12 +2335,18 @@ export function useWelliApp() {
       });
       showToast('Logged out of vault');
     },
-    // Called by the inactivity timer. It never signs the person out: the session lasts until they sign out
-    // or the server token expires. With the biometric lock on, the lock screen covers the app; with it off,
-    // nothing happens.
+    // Called by the inactivity timer after 5 quiet minutes. It never signs the person out: the session lasts
+    // until they sign out or the server token expires. The lock screen covers the app until they unlock it
+    // with biometrics or passcode, or with a code sent to their own email or phone. It cannot be turned off.
     idleLock: () => {
-      if (!state.faceIdEnabled) return;
-      patch({ showLockScreen: true });
+      patch((s) => (s.isAuthenticated ? { ...s, showLockScreen: true } : s));
+    },
+    sendUnlockCode: (channel?: 'email' | 'sms') => authService.sendUnlockCode(channel),
+    unlockWithCode: async (code: string) => {
+      await authService.verifyUnlockCode(code);
+      hapticFeedback.success();
+      markActivity();
+      patch({ showLockScreen: false });
     },
     logBackIn: () => {
       hapticFeedback.selection();

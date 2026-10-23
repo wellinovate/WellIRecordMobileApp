@@ -2327,6 +2327,74 @@ app.post('/api/v1/auth/password/reset', passwordResetLimiter, async (req: Reques
   }
 });
 
+// 3e. App unlock code. The app locks itself after 5 minutes idle and when it is reopened. The person can unlock with
+// the phone's biometrics or passcode, or with a 6-digit code sent to the email or phone already on their own account.
+// The destination is never taken from the request, so a stolen phone cannot send the code somewhere else.
+const unlockLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many unlock attempts. Try again in a few minutes.' },
+});
+const maskEmailAddress = (e: string) => e.replace(/^(.).*(@.*)$/, (_m, a, b) => `${a}***${b}`);
+const maskPhoneNumber = (p: string) => (p.length > 4 ? `${'*'.repeat(p.length - 4)}${p.slice(-4)}` : p);
+
+app.post('/api/v1/auth/unlock/send', unlockLimiter, async (req: Request, res: Response) => {
+  const userId = getAuthUserId(req);
+  if (!userId) return res.status(401).json({ success: false, message: 'Sign in again' });
+  if (mongoose.connection.readyState !== 1 || !mongoose.isValidObjectId(userId)) {
+    return res.status(503).json({ success: false, message: 'The code service is not available. Try again shortly.' });
+  }
+  try {
+    const [account, user]: any[] = await Promise.all([
+      Account.findById(userId).select('email phone fullName name').lean(),
+      User.findById(userId).select('email phoneNumber fullName').lean(),
+    ]);
+    const email: string = String(account?.email || user?.email || '').trim().toLowerCase();
+    const phone: string = String(account?.phone || user?.phoneNumber || '').trim();
+    const name = account?.fullName || account?.name || user?.fullName || 'WelliRecord Patient';
+    const wantsSms = req.body?.channel === 'sms';
+    const channel: 'email' | 'sms' | null = wantsSms ? (phone ? 'sms' : email ? 'email' : null) : email ? 'email' : phone ? 'sms' : null;
+    if (!channel) return res.status(409).json({ success: false, message: 'No email or phone is saved on this account.' });
+
+    const code = generateOtp(`unlock:${userId}`, 'login');
+    if (channel === 'email') {
+      const sent = await sendWelliEmail({
+        to: email,
+        subject: 'Your WelliRecord™ unlock code',
+        html: renderOtpEmailHtml({ fullName: name, code, expiresInMinutes: 5 }),
+      });
+      if (!sent?.success || sent.delivered === false) {
+        return res.status(502).json({ success: false, message: 'We could not send the email. Try again, or use your phone lock.' });
+      }
+      return res.json({ success: true, channel, sentTo: maskEmailAddress(email), expiresInSeconds: 300 });
+    }
+    try {
+      await sendWelliSms(phone, `Your WelliRecord unlock code is ${code}. Valid for 5 minutes. Do not share it.`);
+    } catch (err) {
+      console.error('[Unlock SMS]', err);
+      return res.status(502).json({ success: false, message: 'We could not send the SMS. Try again, or use your phone lock.' });
+    }
+    return res.json({ success: true, channel, sentTo: maskPhoneNumber(phone), expiresInSeconds: 300 });
+  } catch (err) {
+    console.error('[500]', req.method, req.path, err);
+    return res.status(500).json({ success: false, message: 'Could not send a code. Try again.' });
+  }
+});
+
+app.post('/api/v1/auth/unlock/verify', unlockLimiter, async (req: Request, res: Response) => {
+  const userId = getAuthUserId(req);
+  if (!userId) return res.status(401).json({ success: false, message: 'Sign in again' });
+  const code = typeof req.body?.code === 'string' ? req.body.code.trim() : '';
+  if (!/^\d{6}$/.test(code)) return res.status(400).json({ success: false, message: 'Enter the 6-digit code' });
+  if (!verifyStoredOtp(`unlock:${userId}`, code)) {
+    return res.status(400).json({ success: false, message: 'That code is wrong or has expired. Ask for a new one.' });
+  }
+  void auditAccount(req, userId, 'security', 'app_unlocked_code', 'You', 'App unlocked with an emailed or texted code');
+  return res.json({ success: true });
+});
+
 // -------------------------------------------------------------
 // CHILD HEALTH PROFILE: schedule, vaccinations, growth, identity
 // -------------------------------------------------------------

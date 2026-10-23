@@ -4,15 +4,15 @@ import { createInactivityTracker, INACTIVITY_MS } from '../src/utils/inactivityC
 
 const MIN = 60 * 1000;
 
-test('the limit is 10 minutes', () => {
-  assert.equal(INACTIVITY_MS, 10 * MIN);
+test('the limit is 5 minutes', () => {
+  assert.equal(INACTIVITY_MS, 5 * MIN);
 });
 
-test('it expires after 10 quiet minutes and not before', () => {
+test('it expires after 5 quiet minutes and not before', () => {
   let t = 1_000_000;
   const tr = createInactivityTracker(INACTIVITY_MS, () => t);
   assert.equal(tr.expired(), false);
-  t += 9 * MIN + 59_000;
+  t += 4 * MIN + 59_000;
   assert.equal(tr.expired(), false);
   assert.equal(tr.remaining(), 1000);
   t += 1000;
@@ -20,12 +20,12 @@ test('it expires after 10 quiet minutes and not before', () => {
   assert.equal(tr.remaining(), 0);
 });
 
-test('a touch restarts the 10 minutes', () => {
+test('a touch restarts the 5 minutes', () => {
   let t = 0;
   const tr = createInactivityTracker(INACTIVITY_MS, () => t);
-  t += 9 * MIN;
+  t += 4 * MIN;
   tr.touch();
-  t += 9 * MIN;
+  t += 4 * MIN;
   assert.equal(tr.expired(), false);
   t += 2 * MIN;
   assert.equal(tr.expired(), true);
