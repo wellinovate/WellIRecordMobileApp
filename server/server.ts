@@ -1227,6 +1227,10 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
         });
       }
 
+      if (!resolveRegion(req.body.state)) {
+        return res.status(400).json({ success: false, code: 'state_required', message: 'Select your state of residence. It sets your WelliID.' });
+      }
+
       // Cross-model duplicate check — a password-based User account with
       // this email/phone already exists; don't create a separate Account.
       if (mongoose.connection.readyState === 1) {
@@ -1477,6 +1481,10 @@ app.post('/api/v1/auth/social/verify', async (req: Request, res: Response) => {
           success: false,
           message: 'An account with this email already exists. Try signing in with your password instead.',
         });
+      }
+
+      if (!resolveRegion(req.body.state)) {
+        return res.status(400).json({ success: false, code: 'state_required', message: 'Select your state of residence to create your account. It sets your WelliID.' });
       }
 
       const resolvedName = (fullName && fullName.trim()) || cleanEmail.split('@')[0];
@@ -2137,8 +2145,8 @@ app.post('/api/v1/auth/register', async (req: Request, res: Response) => {
     return res.status(400).json({ success: false, message: 'Name, email or phone, and password are required' });
   }
   const regState = req.body.state ? resolveRegion(req.body.state) : null;
-  if (req.body.state && !regState) {
-    return res.status(400).json({ success: false, message: 'Choose your state from the list.' });
+  if (!regState) {
+    return res.status(400).json({ success: false, code: 'state_required', message: 'Select your state of residence. It sets your WelliID.' });
   }
 
   try {

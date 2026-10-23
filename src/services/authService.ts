@@ -389,12 +389,15 @@ export const authService = {
     fullName?: string;
     /** Clerk session token. The server checks it with Clerk; the email above is only a fallback label. */
     clerkToken: string;
+    /** State of residence. Required by the server when the Google or Apple account is new. */
+    state?: string;
   }): Promise<AuthSession & { isNewAccount?: boolean }> {
 
     const raw = await apiClient.post<any>('/auth/social/verify', {
       provider: details.provider,
       fullName: details.fullName,
       clerkToken: details.clerkToken,
+      state: details.state,
     });
 
     const session = unwrapAuthSession(raw, {
