@@ -1172,7 +1172,7 @@ export function WelcomeHomeScreen({ app }: { app: WelliApp }) {
               Our medical informatics team is available 24/7.
             </Text>
             <View style={styles.contactRow}>
-              <Text style={styles.contactTag}>📧 info@wellirecord.com</Text>
+              <Text style={styles.contactTag}>📧 support@wellirecord.com</Text>
               <Text style={styles.contactTag}>📞 +234 805 335 5504</Text>
             </View>
           </View>

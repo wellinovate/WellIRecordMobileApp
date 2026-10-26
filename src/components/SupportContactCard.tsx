@@ -1,6 +1,6 @@
 import { Linking, Text, TouchableOpacity, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import { SOCIAL_LINKS, SUPPORT_EMAIL } from '../data/contactLinks';
+import { SOCIAL_LINKS, SUPPORT_EMAIL, SUPPORT_PHONE, SUPPORT_PHONE_LABEL } from '../data/contactLinks';
 
 /** Email with Copy, then one row per public channel. Opens links in the phone's own app or browser. */
 export function SupportContactCard({ toast }: { toast: (msg: string) => void }) {
@@ -27,6 +27,15 @@ export function SupportContactCard({ toast }: { toast: (msg: string) => void }) 
           </View>
           <TouchableOpacity accessibilityRole="button" accessibilityLabel="Copy email address" activeOpacity={0.8} onPress={copy} className="rounded-full border border-[#8ED8BF] bg-[#E8F8F2] px-4 py-2">
             <Text className="text-[12.5px] font-semibold text-[#0F7A5A]">Copy</Text>
+          </TouchableOpacity>
+        </View>
+        <View className="mt-2 flex-row items-center rounded-xl bg-white px-4 py-3">
+          <View className="flex-1 pr-3">
+            <Text className="text-[11.5px] text-slate-500">Phone number</Text>
+            <Text selectable className="mt-0.5 text-[14px] font-bold text-[#173B68]">{SUPPORT_PHONE_LABEL}</Text>
+          </View>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Call WelliRecord support" activeOpacity={0.8} onPress={() => open(`tel:${SUPPORT_PHONE}`)} className="rounded-full border border-[#8ED8BF] bg-[#E8F8F2] px-4 py-2">
+            <Text className="text-[12.5px] font-semibold text-[#0F7A5A]">Call Now</Text>
           </TouchableOpacity>
         </View>
         <TouchableOpacity accessibilityRole="button" activeOpacity={0.8} onPress={() => open(`mailto:${SUPPORT_EMAIL}`)} className="mt-3 min-h-[44px] items-center justify-center rounded-xl bg-[#082F67]">
