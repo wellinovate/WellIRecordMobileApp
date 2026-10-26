@@ -9,6 +9,8 @@ import { shouldWriteActive } from './registryCore';
 import { resolveRegion } from './data/nigeriaRegions';
 import { checkLegal, type LegalCheck } from './legalCore';
 import { createClinicVisits } from './clinicVisits';
+import { createSelfReported } from './selfReported';
+import { eraseSelfReported } from './selfReportedModels';
 import { createProviderVerification, startVerificationSweep, enforcementOn } from './providerVerification';
 import { createS3Storage, s3ConfigFromEnv, createClamScanner } from './providerDocStorage';
 import { auditIsRestricted } from './providerVerificationModels';
@@ -571,6 +573,7 @@ const SENSITIVE_PATHS = [
   '/api/v1/records',
   '/api/v1/prescriptions',
   '/api/v1/pharmacy',
+  '/api/v1/health',
 ];
 
 app.use((req, res, next) => {
@@ -2919,6 +2922,14 @@ const reminderDeps: ReminderDeps = {
 app.use('/api/v1', createRegistry({ getAuthUserId, requireStaff: staff.requireStaff, actorName: staff.actorName }));
 app.use('/api/v1', createChildDevelopmentRouter(getAuthUserId));
 app.use('/api/v1', createChildReminderRouter(reminderDeps));
+app.use(
+  '/api/v1',
+  createSelfReported({
+    getAuthUserId,
+    canAccess: (authUserId, ownerId, perm) => callerCanAccessOwner(authUserId, ownerId, perm),
+    limiter: rateLimit({ windowMs: 15 * 60 * 1000, max: 120, standardHeaders: true, legacyHeaders: false, message: { success: false, message: 'Too many tries. Please wait a few minutes.' } }),
+  }).router
+);
 app.use(
   '/api/v1',
   createWebLink({
@@ -6028,6 +6039,10 @@ app.delete('/api/v1/auth/account', async (req: Request, res: Response) => {
           await Profile.deleteMany({ $or: [{ userId: { $in: candidateIds } }, { accountId: { $in: candidateIds } }] });
           await UserProfile.deleteMany({ $or: [{ accountId: { $in: candidateIds } }, { userId: { $in: candidateIds } }] });
           await eraseWebLinks(candidateIds); // the link to the website account, on both sides
+          {
+            const ownMembers: any[] = await FamilyMember.find({ $or: [{ accountId: { $in: candidateIds } }, { userId: { $in: candidateIds } }] }, { _id: 1 }).lean();
+            await eraseSelfReported(candidateIds, ownMembers.map((m) => m._id)); // measurements, medications and family history entered by hand
+          }
           await eraseChildData(candidateIds); // children's vaccines, growth, guardians, logs, clinic codes, reminders
           await FamilyMember.deleteMany({ $or: [{ accountId: { $in: candidateIds } }, { userId: { $in: candidateIds } }] });
           await HealthRecord.deleteMany({ $or: [{ userId: { $in: candidateIds } }, { familyMemberId: { $in: candidateIds } }] });

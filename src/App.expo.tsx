@@ -71,6 +71,9 @@ import { LanguageModal } from "./modals/LanguageModal";
 
 import { FaceIdLockScreen } from "./modals/FaceIdLockScreen";
 import { ContactVerificationModal } from "./modals/ContactVerificationModal";
+import { OtherInfoModal } from "./modals/OtherInfoModal";
+import { AddMedicationModal } from "./modals/AddMedicationModal";
+import { FamilyHistoryModal } from "./modals/FamilyHistoryModal";
 import { MfaChallengeModal } from "./modals/MfaChallengeModal";
 import { SocialStateModal } from "./modals/SocialStateModal";
 import { TourModal } from "./modals/TourModal";
@@ -495,6 +498,9 @@ function MainWelliApp() {
 
           <TourModal app={app} />
           <ContactVerificationModal app={app} />
+          <OtherInfoModal app={app} />
+          <AddMedicationModal app={app} />
+          <FamilyHistoryModal app={app} />
 
           <Toast message={state.toast} />
         </SafeAreaView>
