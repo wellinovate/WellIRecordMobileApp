@@ -46,6 +46,8 @@ export function checkSecrets(env: Record<string, string | undefined> = process.e
   }
   if (isTrue(env.ALLOW_LEGACY_ADMIN_SECRET)) add('warn', 'ALLOW_LEGACY_ADMIN_SECRET', 'The shared admin secret works as a staff login. Turn it off.');
   if (isTrue(env.ALLOW_THIRD_PARTY_OCR)) add('warn', 'ALLOW_THIRD_PARTY_OCR', 'Photo scanning is on: photos go to Google Cloud Vision and the text to a model provider.');
+  if (!env.TERMII_API_KEY || env.TERMII_API_KEY === 'TL_TEST_KEY') add('warn', 'TERMII_API_KEY', 'Not set. No SMS code is sent, and phone sign-in is refused with a plain message.');
+  if (isTrue(env.ALLOW_FAKE_SMS)) add('warn', 'ALLOW_FAKE_SMS', 'SMS codes are pretended, not sent. Local work only.');
   if (isTrue(env.ALLOW_LIVE_PROVIDER_SHARE)) add('warn', 'ALLOW_LIVE_PROVIDER_SHARE', 'Unencrypted provider links are allowed.');
   if (String(env.STAFF_MFA_REQUIRED ?? 'true').toLowerCase() === 'false') add('warn', 'STAFF_MFA_REQUIRED', 'Staff sign in without a second step.');
 

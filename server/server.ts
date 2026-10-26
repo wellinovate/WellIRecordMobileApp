@@ -13,6 +13,7 @@ import { createSelfReported } from './selfReported';
 import { eraseSelfReported } from './selfReportedModels';
 import { createProviderGate, enforcementOn } from './providerVerification';
 import { thirdPartyOcrOn } from './ocrPolicy';
+import { otp } from './otpStore';
 import { auditIsRestricted } from './providerVerificationModels';
 import { createBridgeProviders } from './bridgeProviders';
 import { deleteClerkIdentity, eraseChildData } from './accountErasure';
@@ -596,71 +597,9 @@ app.get('/health', (_req: Request, res: Response) => {
   });
 });
 
-// In-Memory OTP Store with 5-minute TTL and max 5 attempts to prevent brute force
-const MAX_OTP_ATTEMPTS = 5;
-
-interface OtpEntry {
-  code: string;
-  expiresAt: number;
-  mode: 'login' | 'signup';
-  attempts: number;
-  aliases: string[];
-}
-
-const otpCache = new Map<string, OtpEntry>();
-
-function deleteOtpWithAliases(identifier: string, entry?: OtpEntry) {
-  const record = entry || otpCache.get(identifier);
-  if (record?.aliases && record.aliases.length > 0) {
-    for (const alias of record.aliases) {
-      otpCache.delete(alias);
-    }
-  }
-  otpCache.delete(identifier);
-}
-
-function generateOtp(identifier: string, mode: 'login' | 'signup' = 'signup', additionalAliases: string[] = []): string {
-  const code = crypto.randomInt(100000, 1000000).toString();
-  const allAliases = Array.from(new Set([identifier, ...additionalAliases].filter(Boolean)));
-  const entry: OtpEntry = {
-    code,
-    expiresAt: Date.now() + 5 * 60 * 1000,
-    mode,
-    attempts: 0,
-    aliases: allAliases,
-  };
-  for (const id of allAliases) {
-    otpCache.set(id, entry);
-  }
-  return code;
-}
-
-function getOtpEntry(identifier: string): OtpEntry | undefined {
-  return otpCache.get(identifier);
-}
-
-function verifyStoredOtp(identifier: string, code: string): boolean {
-  const entry = otpCache.get(identifier);
-  if (!entry) return false; // No OTP was ever issued for this identifier — reject
-  if (Date.now() > entry.expiresAt) {
-    deleteOtpWithAliases(identifier, entry);
-    return false;
-  }
-  if (entry.attempts >= MAX_OTP_ATTEMPTS) {
-    deleteOtpWithAliases(identifier, entry);
-    return false;
-  }
-  const isValid = entry.code === code;
-  if (isValid) {
-    deleteOtpWithAliases(identifier, entry);
-    return true;
-  }
-  entry.attempts += 1;
-  if (entry.attempts >= MAX_OTP_ATTEMPTS) {
-    deleteOtpWithAliases(identifier, entry);
-  }
-  return false;
-}
+// One-time codes live in MongoDB (see otpStore.ts), so a restart or a second instance does not lose them.
+const generateOtp = (identifier: string, mode: 'login' | 'signup' = 'signup', aliases: string[] = []) => otp.issue(identifier, mode, aliases);
+const verifyStoredOtp = (identifier: string, code: string) => otp.verify(identifier, code);
 
 // WelliID: WR-<REGION><zone>-<suffix> (see welliId.ts). The region is where the person registered and never changes.
 async function wrIdTaken(id: string): Promise<boolean> {
@@ -765,14 +704,7 @@ app.post('/api/v1/auth/otp/send', otpLimiter, async (req: Request, res: Response
   const localPhone = toLocalNigerianPhone(targetPhone);
   const aliases = [formattedPhone, normalizedE164, localPhone].filter(Boolean);
 
-  const generatedCode = generateOtp(targetPhone, mode, aliases);
-  const otpRec = otpCache.get(targetPhone);
-  if (otpRec) {
-    for (const a of aliases) {
-      if (!otpRec.aliases.includes(a)) otpRec.aliases.push(a);
-      otpCache.set(a, otpRec);
-    }
-  }
+  const generatedCode = await generateOtp(targetPhone, mode, aliases);
 
   try {
     if (TERMII_API_KEY && TERMII_API_KEY !== 'TL_TEST_KEY') {
@@ -782,7 +714,8 @@ app.post('/api/v1/auth/otp/send', otpLimiter, async (req: Request, res: Response
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             api_key: TERMII_API_KEY,
-            to: formattedPhone,
+            // Termii wants the international form without a plus (2349070000407). A local 0907... number is refused or lost.
+            to: (normalizedE164 || formattedPhone).replace(/[^0-9]/g, ''),
             from: 'N-Alert',
             sms: `Your WelliRecord authorization code is ${generatedCode}. Valid for 5 minutes. Do not share with anyone.`,
             type: 'plain',
@@ -813,6 +746,11 @@ app.post('/api/v1/auth/otp/send', otpLimiter, async (req: Request, res: Response
       }
     }
 
+    // No Termii key: nothing was sent. Say so instead of claiming success. Local work can opt in to the pretend path.
+    if (process.env.ALLOW_FAKE_SMS !== 'true') {
+      console.error('[SMS] TERMII_API_KEY is not set: no code was sent to', formattedPhone.slice(-4).padStart(formattedPhone.length, '*'));
+      return res.status(503).json({ success: false, message: 'SMS codes are not available right now. Sign in with email instead.' });
+    }
     return res.json({
       success: true,
       message: `Verification code dispatched to ${targetPhone}.`,
@@ -820,7 +758,8 @@ app.post('/api/v1/auth/otp/send', otpLimiter, async (req: Request, res: Response
       expiresInSeconds: 300,
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: 'SMS gateway error', error });
+    console.error('[SMS gateway ERROR]', error);
+    return res.status(500).json({ success: false, message: 'SMS gateway error' });
   }
 });
 
@@ -1101,11 +1040,11 @@ app.post('/api/v1/auth/email/send', otpLimiter, async (req: Request, res: Respon
   }
 
   const cleanEmail = email.toLowerCase().trim();
-  const generatedCode = generateOtp(cleanEmail, mode === 'login' ? 'login' : 'signup');
+  const generatedCode = await generateOtp(cleanEmail, mode === 'login' ? 'login' : 'signup');
   const recipientName = fullName || name || (cleanEmail.includes('@') ? cleanEmail.split('@')[0] : 'WelliRecord Patient');
 
   try {
-    await sendWelliEmail({
+    const sentOtp = await sendWelliEmail({
       to: cleanEmail,
       subject: '🔐 Verify your WelliRecord™ account - Login Code',
       html: renderOtpEmailHtml({
@@ -1115,6 +1054,10 @@ app.post('/api/v1/auth/email/send', otpLimiter, async (req: Request, res: Respon
       }),
     });
 
+    if (!sentOtp?.success) {
+      console.error('[EMAIL OTP] not delivered to', cleanEmail, sentOtp?.error);
+      return res.status(502).json({ success: false, message: 'We could not send the email code. Try again in a minute.' });
+    }
     return res.json({
       success: true,
       message: `Verification code sent to ${cleanEmail}.`,
@@ -1203,18 +1146,14 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
       candidateKeys.some((k) => REVIEWER_ACCOUNTS.has(k.toLowerCase()))
   );
 
-  const matchedKey = candidateKeys.find((k) => otpCache.has(k));
-  const otpEntry = matchedKey ? getOtpEntry(matchedKey) : undefined;
-  const requestedMode = otpEntry?.mode || (req.body.mode === 'login' ? 'login' : 'signup');
+  const storedMode = await otp.modeFor(candidateKeys);
+  const requestedMode = storedMode || (req.body.mode === 'login' ? 'login' : 'signup');
 
-  if (!isReviewerBypass && (!matchedKey || !verifyStoredOtp(matchedKey, code))) {
+  if (!isReviewerBypass && !(await otp.verify(candidateKeys, String(code)))) {
     return res.status(400).json({ success: false, message: 'Invalid or expired authorization code' });
   }
 
-  // Clean up any remaining aliases for this verified OTP
-  for (const k of candidateKeys) {
-    otpCache.delete(k);
-  }
+  await otp.clear(candidateKeys);
 
   try {
     let account = null;
@@ -2277,7 +2216,7 @@ app.post('/api/v1/auth/password/forgot', passwordResetLimiter, async (req: Reque
       ]);
       const holder = user || account;
       if (holder) {
-        const code = generateOtp(`reset:${cleanEmail}`, 'login');
+        const code = await generateOtp(`reset:${cleanEmail}`, 'login');
         const sent = await sendWelliEmail({
           to: cleanEmail,
           subject: 'Reset your WelliRecord™ password',
@@ -2306,7 +2245,7 @@ app.post('/api/v1/auth/password/reset', passwordResetLimiter, async (req: Reques
   if (!cleanEmail || !code || newPassword.length < 8 || newPassword.length > 128) {
     return res.status(400).json({ success: false, message: 'Email, code and a password of at least 8 characters are required' });
   }
-  if (!verifyStoredOtp(`reset:${cleanEmail}`, code)) {
+  if (!(await verifyStoredOtp(`reset:${cleanEmail}`, code))) {
     return res.status(400).json({ success: false, message: 'That code is invalid or has expired' });
   }
   try {
@@ -2370,7 +2309,7 @@ app.post('/api/v1/auth/unlock/send', unlockLimiter, async (req: Request, res: Re
     const channel: 'email' | 'sms' | null = wantsSms ? (phone ? 'sms' : email ? 'email' : null) : email ? 'email' : phone ? 'sms' : null;
     if (!channel) return res.status(409).json({ success: false, message: 'No email or phone is saved on this account.' });
 
-    const code = generateOtp(`unlock:${userId}`, 'login');
+    const code = await generateOtp(`unlock:${userId}`, 'login');
     if (channel === 'email') {
       const sent = await sendWelliEmail({
         to: email,
@@ -2400,7 +2339,7 @@ app.post('/api/v1/auth/unlock/verify', unlockLimiter, async (req: Request, res: 
   if (!userId) return res.status(401).json({ success: false, message: 'Sign in again' });
   const code = typeof req.body?.code === 'string' ? req.body.code.trim() : '';
   if (!/^\d{6}$/.test(code)) return res.status(400).json({ success: false, message: 'Enter the 6-digit code' });
-  if (!verifyStoredOtp(`unlock:${userId}`, code)) {
+  if (!(await verifyStoredOtp(`unlock:${userId}`, code))) {
     return res.status(400).json({ success: false, message: 'That code is wrong or has expired. Ask for a new one.' });
   }
   void auditAccount(req, userId, 'security', 'app_unlocked_code', 'You', 'App unlocked with an emailed or texted code');
@@ -2478,7 +2417,7 @@ app.post('/api/v1/auth/contact/send', contactLimiter, async (req: Request, res: 
 
     const { account, user } = await contactHolder(userId);
     const name = account?.fullName || account?.name || user?.fullName || 'WelliRecord Patient';
-    const code = generateOtp(`contact:${userId}:${kind}:${value}`, 'login');
+    const code = await generateOtp(`contact:${userId}:${kind}:${value}`, 'login');
     if (kind === 'email') {
       const sent = await sendWelliEmail({
         to: value,
@@ -2514,7 +2453,7 @@ app.post('/api/v1/auth/contact/verify', contactLimiter, async (req: Request, res
     return res.status(503).json({ success: false, message: 'Not available right now. Try again shortly.' });
   }
   const value = kind === 'email' ? raw.trim().toLowerCase() : normalizeNigerianPhone(raw);
-  if (!verifyStoredOtp(`contact:${userId}:${kind}:${value}`, code)) {
+  if (!(await verifyStoredOtp(`contact:${userId}:${kind}:${value}`, code))) {
     return res.status(400).json({ success: false, message: 'That code is wrong or has expired. Ask for a new one.' });
   }
   try {
@@ -5727,7 +5666,7 @@ app.post('/api/v1/access/grants/code', shareCodeLimiter, async (req: Request, re
       return res.status(404).json({ success: false, message: 'No email or phone number on your account to send a code to' });
     }
 
-    const code = generateOtp(`consent:${authUserId}`);
+    const code = await generateOtp(`consent:${authUserId}`);
     const text = `Your WelliRecord code to confirm sharing your health record is ${code}. Valid for 5 minutes. Do not share it with anyone.`;
 
     if (email) {
@@ -5801,7 +5740,7 @@ app.post('/api/v1/access/grants', consentLimiter, async (req: Request, res: Resp
     return res.status(400).json({ success: false, message: 'Purpose must be 300 characters or fewer' });
   }
   // Sharing needs the one-time code sent by POST /access/grants/code.
-  if (typeof code !== 'string' || !verifyStoredOtp(`consent:${authUserId}`, code.trim())) {
+  if (typeof code !== 'string' || !(await verifyStoredOtp(`consent:${authUserId}`, code.trim()))) {
     return res.status(400).json({ success: false, message: 'Invalid or expired confirmation code' });
   }
 
@@ -6192,6 +6131,6 @@ app.listen(PORT, () => {
   console.log(`[WelliRecord API] Cloud server running with MongoDB on port ${PORT}`);
 });
 
-export { app, otpCache, verifyStoredOtp, generateOtp };
+export { app, verifyStoredOtp, generateOtp };
 export default app;
 
