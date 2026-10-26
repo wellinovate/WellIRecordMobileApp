@@ -16,6 +16,7 @@ import { ModalHeader } from '../components/ModalHeader';
 import { FormSelect } from '../components/FormSelect';
 import { Avatar } from '../components/Avatar';
 import { ResidenceCard } from './ResidenceCard';
+import { VitalField, YesNoField } from '../components/VitalFields';
 import { formatDob } from '../utils/formatDate';
 import {
   pickImageFromCamera,
@@ -47,6 +48,8 @@ type FieldDef =
       placeholder?: string;
       helper?: string;
     }
+  | { key: 'height' | 'weight'; label: string; type: 'vital'; helper?: string }
+  | { key: 'allergies' | 'conditions'; label: string; type: 'yesno'; helper?: string }
   | {
       key: 'gender' | 'bloodType' | 'genotype';
       label: string;
@@ -95,28 +98,22 @@ const EDITABLE_FIELDS: FieldDef[] = [
   {
     key: 'height',
     label: 'Height',
-    type: 'text',
-    keyboardType: 'numeric',
-    placeholder: 'e.g. 178 cm',
+    type: 'vital',
   },
   {
     key: 'weight',
     label: 'Weight',
-    type: 'text',
-    keyboardType: 'numeric',
-    placeholder: 'e.g. 75 kg',
+    type: 'vital',
   },
   {
     key: 'allergies',
     label: 'Allergies',
-    type: 'text',
-    placeholder: 'e.g. Penicillin, Peanuts, or No known allergies',
+    type: 'yesno',
   },
   {
     key: 'conditions',
     label: 'Conditions & Chronic Diagnoses',
-    type: 'text',
-    placeholder: 'e.g. Hypertension, Asthma, None',
+    type: 'yesno',
   },
   {
     key: 'contact',
@@ -436,7 +433,11 @@ export function PersonalInfoModal({ app }: { app: WelliApp }) {
                       ) : null}
                     </View>
 
-                    {f.type === 'select' ? (
+                    {f.type === 'vital' ? (
+                      <VitalField kind={f.key as 'height' | 'weight'} value={rawVal} onChange={(v) => actions.updatePersonalInfoDraft(f.key, v)} />
+                    ) : f.type === 'yesno' ? (
+                      <YesNoField kind={f.key as 'allergies' | 'conditions'} value={rawVal} onChange={(v) => actions.updatePersonalInfoDraft(f.key, v)} />
+                    ) : f.type === 'select' ? (
                       <FormSelect
                         value={rawVal}
                         placeholder={f.placeholder || `Select ${f.label}`}
