@@ -438,6 +438,56 @@ export const medicationReminderService = {
     await this.saveSchedules(schedules);
     return newSchedule;
   },
+
+  /**
+   * Local daily reminders for a medicine the person added themselves. One schedule per dose time.
+   * Reads and writes the whole stored list so other people's schedules are kept.
+   */
+  async addSelfReportedReminders(opts: {
+    medicationId: string; ownerId: string; name: string; dose: string; times: string[]; notes?: string;
+  }): Promise<number> {
+    const raw = await storage.getItem(SCHEDULES_STORAGE_KEY);
+    let all: MedicationDoseSchedule[] = [];
+    try { const parsed = raw ? JSON.parse(raw) : []; all = Array.isArray(parsed) ? parsed : []; } catch { all = []; }
+    let added = 0;
+    for (const time of opts.times) {
+      const hour = parseInt(time.split(":")[0], 10);
+      const schedule: MedicationDoseSchedule = {
+        id: `dose_${opts.medicationId}_${time.replace(":", "")}`,
+        prescriptionId: opts.medicationId,
+        ownerId: opts.ownerId,
+        medicationName: opts.name,
+        dosage: opts.dose,
+        instruction: opts.notes || "Take as you noted",
+        time,
+        period: hour < 12 ? "morning" : hour < 17 ? "afternoon" : hour < 21 ? "evening" : "bedtime",
+        notificationEnabled: true,
+      };
+      const notifId = await this.scheduleRecurringNotification(schedule);
+      if (notifId) schedule.notificationId = notifId;
+      all = all.filter((s) => s.id !== schedule.id);
+      all.push(schedule);
+      added += 1;
+    }
+    await this.saveSchedules(all);
+    return added;
+  },
+
+  /** Removes the reminders made for one added medicine and cancels their alerts. */
+  async removeRemindersFor(medicationId: string): Promise<void> {
+    const raw = await storage.getItem(SCHEDULES_STORAGE_KEY);
+    let all: MedicationDoseSchedule[] = [];
+    try { const parsed = raw ? JSON.parse(raw) : []; all = Array.isArray(parsed) ? parsed : []; } catch { all = []; }
+    const gone = all.filter((s) => s.prescriptionId === medicationId);
+    if (!gone.length) return;
+    const N = await getNotificationsModule();
+    if (N) {
+      for (const s of gone) {
+        if (s.notificationId) { try { await N.cancelScheduledNotificationAsync(s.notificationId); } catch {} }
+      }
+    }
+    await this.saveSchedules(all.filter((s) => s.prescriptionId !== medicationId));
+  },
 };
 
 export default medicationReminderService;

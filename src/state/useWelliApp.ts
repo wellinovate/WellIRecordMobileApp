@@ -163,6 +163,7 @@ export interface AppState {
   showLanguage: boolean;
   showTour: boolean;
   showContactVerify: boolean;
+  healthEntry: 'measurements' | 'medication' | 'family' | null;
   language: string;
   notifPermission: 'granted' | 'skipped' | null;
   isAuthenticated: boolean;
@@ -393,6 +394,7 @@ const initialState: AppState = {
   showLanguage: false,
   showTour: false,
   showContactVerify: false,
+  healthEntry: null,
   language: 'English',
   notifPermission: null,
   facilitiesList: [],
@@ -1894,6 +1896,8 @@ export function useWelliApp() {
     closeActivity: () => patch({ showActivity: false }),
     openContactVerify: () => patch({ showContactVerify: true }),
     closeContactVerify: () => patch({ showContactVerify: false }),
+    openHealthEntry: (kind: 'measurements' | 'medication' | 'family') => patch({ healthEntry: kind }),
+    closeHealthEntry: () => patch({ healthEntry: null }),
     // After the server confirms a new email or phone, show it everywhere the app reads it from.
     contactChanged: (kind: 'email' | 'phone', value: string) => {
       patch((s) => ({

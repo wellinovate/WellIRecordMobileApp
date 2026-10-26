@@ -38,6 +38,8 @@ type RowIcon =
   | 'contact'
   | 'emergency'
   | 'health'
+  | 'pill'
+  | 'family'
   | 'membership'
   | 'language'
   | 'verify'
@@ -293,6 +295,36 @@ export function ProfileScreen({
             title="HMO and coverage"
             subtitle="Policies, pre-authorisation and family funding"
             onPress={actions.openCoverage}
+          />
+        </SectionCard>
+
+        {/* =========================
+            HEALTH INFORMATION
+        ========================== */}
+        <SectionCard title="Health information">
+          <SettingsRow
+            icon="health"
+            title="Other info"
+            subtitle="Blood sugar, cholesterol, waist, uric acid, thyroid"
+            onPress={() => actions.openHealthEntry('measurements')}
+          />
+
+          <Divider />
+
+          <SettingsRow
+            icon="pill"
+            title="Add medication"
+            subtitle="Medicines you take, with phone reminders"
+            onPress={() => actions.openHealthEntry('medication')}
+          />
+
+          <Divider />
+
+          <SettingsRow
+            icon="family"
+            title="Family history"
+            subtitle="Conditions your blood relatives have had"
+            onPress={() => actions.openHealthEntry('family')}
           />
         </SectionCard>
 
@@ -562,6 +594,24 @@ function RowIconView({
           strokeWidth={1.5}
           strokeLinejoin="round"
         />
+      </Svg>
+    );
+  }
+
+  if (type === 'pill') {
+    return (
+      <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+        <Path d="M10.5 20.5a4.95 4.95 0 0 1-7-7l10-10a4.95 4.95 0 0 1 7 7l-10 10Z" stroke={stroke} strokeWidth={1.5} strokeLinejoin="round" />
+        <Path d="M8.5 8.5l7 7" stroke={stroke} strokeWidth={1.5} strokeLinecap="round" />
+      </Svg>
+    );
+  }
+
+  if (type === 'family') {
+    return (
+      <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+        <Path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM17 12a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" stroke={stroke} strokeWidth={1.5} />
+        <Path d="M3.5 19c0-2.8 2.5-5 5.5-5s5.5 2.2 5.5 5M15.5 14.3c.5-.2 1-.3 1.5-.3 2.2 0 4 1.6 4 4" stroke={stroke} strokeWidth={1.5} strokeLinecap="round" />
       </Svg>
     );
   }
