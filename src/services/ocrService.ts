@@ -38,7 +38,21 @@ async function resolveImageBase64(
   );
 }
 
+let availableCache: boolean | null = null;
+
 export const ocrService = {
+  /** True only when the server says photo scanning is on. Any error counts as off, so a photo is never sent by mistake. */
+  async available(): Promise<boolean> {
+    if (availableCache !== null) return availableCache;
+    try {
+      const r = await apiClient.get<{ available?: boolean }>('/records/ocr-status');
+      availableCache = r?.available === true;
+    } catch {
+      return false;
+    }
+    return availableCache;
+  },
+
   async extractFromImage(
     media: PickedMediaResult,
     recordType: string,

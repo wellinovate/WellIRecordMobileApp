@@ -284,6 +284,15 @@ export function UploadModal({ app }: { app: WelliApp }) {
       return;
     }
 
+    // Photo scanning sends the photo to outside services, so it only runs when the server says it is on (it is off by default).
+    if (!(await ocrService.available())) {
+      setReadNote(
+        "This file is saved. Add a title and a short note so you can find it later.",
+      );
+      actions.setUploadStepReview();
+      return;
+    }
+
     try {
       const extracted = await ocrService.extractFromImage(
         result,
