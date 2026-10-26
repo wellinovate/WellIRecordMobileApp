@@ -2,7 +2,6 @@ import React, { useMemo, useState } from "react";
 import { authService } from "../services/authService";
 import {
   Alert,
-  Linking,
   Platform,
   ScrollView,
   Text,
@@ -17,6 +16,7 @@ import Svg, { Path } from "react-native-svg";
 import type { WelliApp } from "../state/useWelliApp";
 import { LegalDocViewer } from "../components/LegalDocViewer";
 import { LEGAL_DOCS } from "../data/legalDocs";
+import { SupportContactCard } from "../components/SupportContactCard";
 
 type PrivacyStep =
   | "security"
@@ -73,8 +73,10 @@ function WarningIcon() {
 
 function Header({
   onBack,
+  right,
 }: {
   onBack: () => void;
+  right?: React.ReactNode;
 }) {
   return (
     <View className="min-h-[44px] flex-row items-center justify-between">
@@ -90,7 +92,7 @@ function Header({
         WelliRecord<Text className="text-[7px]">™</Text>
       </Text>
 
-      <View className="h-9 w-9" />
+      {right ?? <View className="h-9 w-9" />}
     </View>
   );
 }
@@ -232,16 +234,6 @@ export function PrivacySecurityModal({
   const openAssistant = () => {
     close();
     actions.setTab("chat");
-  };
-
-  const openSupportEmail = () => {
-    Linking.openURL(
-      "mailto:support@wellirecord.com",
-    ).catch(() => {
-      actions.showToast(
-        "Unable to open your email app",
-      );
-    });
   };
 
   const verifyEmail = () => {
@@ -514,7 +506,22 @@ export function PrivacySecurityModal({
             }}
             showsVerticalScrollIndicator={false}
           >
-            <Header onBack={goBack} />
+            <Header
+              onBack={goBack}
+              right={
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    close();
+                    actions.openTour();
+                  }}
+                  className="rounded-full border border-[#8ED8BF] bg-[#E8F8F2] px-3 py-2"
+                >
+                  <Text className="text-[12px] font-semibold text-[#0F7A5A]">Restart tour</Text>
+                </TouchableOpacity>
+              }
+            />
 
             <Text className="mt-3 text-[11px] font-semibold text-[#315B90]">
               Account and safety
@@ -577,18 +584,8 @@ export function PrivacySecurityModal({
               />
             </SectionCard>
 
-            <SectionCard title="Contact support">
-              <View className="py-4">
-                <Text className="text-[13px] font-semibold text-[#173B68]">
-                  Email support@wellirecord.com or ask the in-app assistant.
-                </Text>
-
-                <Text className="mt-2 text-[11.5px] leading-[17px] text-slate-500">
-                  Do not include passwords or unnecessary clinical details in
-                  a message.
-                </Text>
-              </View>
-            </SectionCard>
+            <Text className="mt-5 text-[16px] font-extrabold text-[#082F67]">Contact support</Text>
+            <SupportContactCard toast={actions.showToast} />
 
             <TouchableOpacity
               activeOpacity={0.86}
@@ -612,15 +609,7 @@ export function PrivacySecurityModal({
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              activeOpacity={0.75}
-              onPress={openSupportEmail}
-              className="mt-2 min-h-[44px] items-center justify-center"
-            >
-              <Text className="text-[12px] font-semibold text-slate-500">
-                Email support
-              </Text>
-            </TouchableOpacity>
+
 
           </ScrollView>
         ) : null}
