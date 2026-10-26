@@ -45,6 +45,7 @@ export function checkSecrets(env: Record<string, string | undefined> = process.e
     else add('warn', 'REVIEWER_OTP', 'The store-reviewer sign-in bypass is on. Remove it after review.');
   }
   if (isTrue(env.ALLOW_LEGACY_ADMIN_SECRET)) add('warn', 'ALLOW_LEGACY_ADMIN_SECRET', 'The shared admin secret works as a staff login. Turn it off.');
+  if (isTrue(env.ALLOW_THIRD_PARTY_OCR)) add('warn', 'ALLOW_THIRD_PARTY_OCR', 'Photo scanning is on: photos go to Google Cloud Vision and the text to a model provider.');
   if (isTrue(env.ALLOW_LIVE_PROVIDER_SHARE)) add('warn', 'ALLOW_LIVE_PROVIDER_SHARE', 'Unencrypted provider links are allowed.');
   if (String(env.STAFF_MFA_REQUIRED ?? 'true').toLowerCase() === 'false') add('warn', 'STAFF_MFA_REQUIRED', 'Staff sign in without a second step.');
 

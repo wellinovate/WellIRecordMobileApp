@@ -12,6 +12,7 @@ import { createClinicVisits } from './clinicVisits';
 import { createSelfReported } from './selfReported';
 import { eraseSelfReported } from './selfReportedModels';
 import { createProviderGate, enforcementOn } from './providerVerification';
+import { thirdPartyOcrOn } from './ocrPolicy';
 import { auditIsRestricted } from './providerVerificationModels';
 import { createBridgeProviders } from './bridgeProviders';
 import { deleteClerkIdentity, eraseChildData } from './accountErasure';
@@ -3937,10 +3938,20 @@ app.use(
   })
 );
 
+// Whether photo scanning is on. The app asks before it sends any photo and does not send one when this says no.
+app.get('/api/v1/records/ocr-status', (req: Request, res: Response) => {
+  if (!getAuthUserId(req)) return res.status(401).json({ success: false, message: 'Authentication required' });
+  return res.json({ success: true, available: thirdPartyOcrOn() });
+});
+
 app.post('/api/v1/records/ocr-extract', ocrLimiter, async (req: Request, res: Response) => {
   const authUserId = getAuthUserId(req);
   if (!authUserId) {
     return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+  // Off by default: the photo would go to Google Cloud Vision and the text to a model provider (see ocrPolicy.ts).
+  if (!thirdPartyOcrOn()) {
+    return res.status(503).json({ success: false, code: 'ocr_off', message: 'Photo scanning is turned off to keep your documents private. Enter the details by hand.' });
   }
 
   const { imageBase64, recordType } = req.body;
