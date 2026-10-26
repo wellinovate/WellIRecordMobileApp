@@ -11,8 +11,7 @@ import { checkLegal, type LegalCheck } from './legalCore';
 import { createClinicVisits } from './clinicVisits';
 import { createSelfReported } from './selfReported';
 import { eraseSelfReported } from './selfReportedModels';
-import { createProviderVerification, startVerificationSweep, enforcementOn } from './providerVerification';
-import { createS3Storage, s3ConfigFromEnv, createClamScanner } from './providerDocStorage';
+import { createProviderGate, enforcementOn } from './providerVerification';
 import { auditIsRestricted } from './providerVerificationModels';
 import { createBridgeProviders } from './bridgeProviders';
 import { deleteClerkIdentity, eraseChildData } from './accountErasure';
@@ -195,18 +194,9 @@ const passwordResetLimiter = rateLimit({
 // Staff accounts and roles (replaces the shared ADMIN_SECRET).
 const staff = createStaff({ jwtSecret: JWT_SECRET, limiter: passwordResetLimiter });
 
-// Provider verification: the eligibility gate every clinical path calls. See providerVerification.ts.
-const verification = createProviderVerification({
-  requireStaff: staff.requireStaff,
-  limiter: rateLimit({ windowMs: 15 * 60 * 1000, max: 60, standardHeaders: true, legacyHeaders: false, message: { success: false, message: 'Too many tries. Please wait a few minutes.' } }),
-  getAuthUserId: (req) => getAuthUserId(req),
-  storage: createS3Storage(s3ConfigFromEnv()),
-  scanner: createClamScanner(process.env.CLAMD_HOST, Number(process.env.CLAMD_PORT) || 3310),
-  sendEmail: async (to, subject, text) => {
-    const r = await sendWelliEmail({ to, subject, text, html: `<p>${text.replace(/\n/g, '<br>')}</p>` });
-    return Boolean(r.delivered ?? r.success);
-  },
-});
+// Provider verification (read-only side): the eligibility gate every clinical path calls. Applications and review live in the
+// website backend. See providerVerification.ts.
+const verification = createProviderGate();
 if (!enforcementOn()) console.warn('[VERIFY] PROVIDER_VERIFICATION_ENFORCE=false: the eligibility gate is OFF');
 if (!auditIsRestricted()) console.warn('[VERIFY] AUDIT_MONGO_URI is not set: the audit log is append-only in the app but not at database level');
 app.use('/api/v1', staff.router);
@@ -5031,8 +5021,6 @@ const clinicVisits = createClinicVisits({
   },
 });
 app.use('/api/v1', clinicVisits.router);
-app.use('/api/v1', verification.router);
-startVerificationSweep(verification);
 // Providers who signed up on the website set up their own bookings and work their visits. See bridgeProviders.ts.
 app.use(
   '/api/v1',

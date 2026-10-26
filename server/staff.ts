@@ -15,7 +15,7 @@ import jwt from 'jsonwebtoken';
 import { StaffActionLog, StaffRole, StaffUser } from './models';
 import { hashRecovery, newRecoveryCodes, newSecret, openSecret, otpauthUrl, sealSecret, verifyTotp } from './totp';
 
-export const STAFF_ROLES: StaffRole[] = ['admin', 'clinician', 'pharmacist', 'records_officer', 'reviewer', 'senior_reviewer', 'compliance_admin'];
+export const STAFF_ROLES: StaffRole[] = ['admin', 'clinician', 'pharmacist', 'records_officer'];
 
 /** What each role is for. Admin can do everything below. */
 export const ROLE_DESCRIPTION: Record<StaffRole, string> = {
@@ -23,9 +23,6 @@ export const ROLE_DESCRIPTION: Record<StaffRole, string> = {
   clinician: 'Confirms vaccinations and posts visit summaries',
   pharmacist: 'Reviews and approves medication orders',
   records_officer: 'Confirms vaccinations, checks guardian identity, applies custody locks',
-  reviewer: 'Checks provider credentials, requests evidence, proposes restrictions',
-  senior_reviewer: 'Approves or rejects provider verification, approves restrictions, handles impersonation reports',
-  compliance_admin: 'Everything a senior reviewer does, plus verification metrics and emergency override review',
 };
 
 export interface StaffContext {

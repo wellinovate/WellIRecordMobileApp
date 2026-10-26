@@ -211,7 +211,7 @@ const CLINIC_HTML = String.raw`
         <div class="row">
           <div><label for="an">Name</label><input id="an"></div>
           <div><label for="ae">Email</label><input id="ae" type="email"></div>
-          <div><label for="ar">Role</label><select id="ar"><option>clinician</option><option>records_officer</option><option>pharmacist</option><option>reviewer</option><option>senior_reviewer</option><option>compliance_admin</option><option>admin</option></select></div>
+          <div><label for="ar">Role</label><select id="ar"><option>clinician</option><option>records_officer</option><option>pharmacist</option><option>admin</option></select></div>
           <div><label for="ao">Organisation</label><input id="ao"></div>
         </div>
         <button id="b-add">Create account</button><div class="err" id="e-add"></div>

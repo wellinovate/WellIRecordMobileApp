@@ -16,6 +16,8 @@ export interface IPvProvider extends Document {
   staffUserId: string;
   /** The website organisation profile of an independent practitioner, when there is one. Used to gate search results. */
   organizationId?: string;
+  /** Ids of people in this server's clinic console who are this provider. Set on the website backend. */
+  linkedStaffIds: string[];
   displayName: string;
   category: string;
   specialtyTier: string;
@@ -34,6 +36,8 @@ const PvProviderSchema = new Schema<IPvProvider>(
   {
     staffUserId: { type: String, required: true, unique: true, index: true },
     organizationId: { type: String, index: true },
+  // Ids of people in this server's clinic console who are this provider. Set by a senior reviewer on the website backend.
+  linkedStaffIds: { type: [String], default: [], index: true },
     displayName: { type: String, required: true, trim: true },
     category: { type: String, required: true },
     specialtyTier: { type: String, default: 'none' },
