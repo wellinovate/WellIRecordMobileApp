@@ -39,15 +39,18 @@ import {
   timelineStep,
 } from './pharmacyCore';
 
-export const PHARMACY_TERMS_VERSION = 'draft-1';
+export const PHARMACY_TERMS_VERSION = 'draft-2';
 export const PHARMACY_TERMS = [
-  'The pharmacist checks your prescription and stock, then sends you a price. You are not charged until you accept it and choose how to pay.',
-  'Prices and delivery fees are set by the pharmacy. The delivery fee depends on your address and is shown before you pay.',
+  'The pharmacist checks your prescription and stock, then sends you a price. You are not charged until you accept it. A quote lasts 24 hours.',
+  'Prices and delivery fees are set by the pharmacy. The delivery fee depends on your address and is shown before you pay. Beyond the pharmacy\'s last distance band it does not deliver.',
   'Pay online: the order goes ahead only after the payment succeeds. Pay on delivery or at pickup: you pay when you receive the medication.',
-  'HMO: the order waits while the pharmacy confirms your cover. If cover is declined you can choose another way to pay.',
-  'Your prescription photo is seen only by the pharmacy you chose. It is kept for 30 days after the order ends, then deleted.',
+  'HMO: the order waits while the pharmacy confirms your cover and sets the amount covered. You pay the balance. If cover is declined you can choose another way to pay.',
+  'The pharmacist decides whether your prescription is valid and whether a medicine can be supplied. This app is not for controlled, narcotic or psychotropic medicines.',
+  'Your prescription files are seen only by the pharmacy you chose and are stored encrypted. They are deleted 30 days after the order ends. Adding the supplied medicines to your record is a separate, optional choice.',
+  'The pharmacy delivers with its own rider. WelliRecord does not deliver and does not show a live map.',
   'Give the six digit code to the rider or pharmacist only when you have your medication in hand.',
-  'Whether a paid order is refunded is decided by the pharmacy.',
+  'If a paid order is cancelled or cannot be supplied, it is marked refund due. A person pays the refund. It is not automatic.',
+  'In an emergency, call 112.',
 ];
 
 export interface PharmacyDeps {

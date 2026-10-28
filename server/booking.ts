@@ -32,15 +32,16 @@ import {
   ONLINE_HOLD_MS,
 } from './bookingCore';
 
-export const BOOKING_TERMS_VERSION = 'draft-1';
+export const BOOKING_TERMS_VERSION = 'draft-2';
 export const BOOKING_TERMS = [
-  'The fee shown is set by the provider for the type of visit you chose.',
-  'Your chosen time is held for a few minutes while you check out. If you do not finish, it is released.',
-  'Pay online: your booking is confirmed only after the payment succeeds.',
+  'The fee shown is set by the provider for the type of visit you chose. The app never sets a price itself.',
+  'Your chosen time is held for 10 minutes while you check out, or 15 minutes once an online payment starts. If you do not finish, it is released.',
+  'Pay online: your booking is confirmed only after the payment succeeds. An unpaid online booking is cancelled after about 17 minutes.',
   'Pay in person: your booking is confirmed and you pay at the visit.',
-  'HMO: your booking shows as awaiting HMO confirmation until the provider confirms your cover. If cover is declined, the booking is cancelled and you can book again with another payment method.',
-  'You can cancel from Upcoming visits. Whether a paid fee is refunded is decided by the provider.',
-  'Virtual visits open from your Upcoming visits screen shortly before the start time. Do not share the join button with anyone.',
+  'HMO: the provider decides whether to approve your cover, and an approval shown in the app is not final. If cover is declined, the booking is cancelled and you can book again with another payment method.',
+  'You can cancel from Upcoming visits. If a paid booking is cancelled, it is marked refund due. A person pays the refund. It is not automatic.',
+  'Video visits open from your Upcoming visits screen from 10 minutes before the start until one hour after the end. Do not share the join button with anyone. WelliRecord does not record the visit.',
+  'WelliRecord is not an emergency service. In an emergency, call 112.',
 ];
 
 export interface PaystackClient {

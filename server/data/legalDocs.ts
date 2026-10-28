@@ -5,8 +5,8 @@
 // The Terms and Conditions are a plain-language draft that has not had a legal review.
 
 export const LEGAL_DOCS = {
-  privacy: { title: 'Privacy & Data Protection Policy', version: 'privacy-2026-08', required: true },
-  terms: { title: 'Terms and Conditions', version: 'terms-draft-1', required: true },
+  privacy: { title: 'Privacy & Data Protection Policy', version: 'privacy-2026-10', required: true },
+  terms: { title: 'Terms and Conditions', version: 'terms-draft-2', required: true },
 } as const;
 
 export type LegalDocId = keyof typeof LEGAL_DOCS;
