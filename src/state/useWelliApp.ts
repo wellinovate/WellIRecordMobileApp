@@ -30,7 +30,7 @@ import { storage } from '../utils/storage';
 import { reportError } from '../utils/errorReporting';
 import { markActivity } from '../utils/inactivityCore';
 import { authService, type AuthSession } from '../services/authService';
-import { apiClient, setAuthToken } from '../services/apiClient';
+import { apiClient, ApiError, setAuthToken } from '../services/apiClient';
 import { recordsService } from '../services/recordsService';
 import { pharmacyService } from '../services/pharmacyService';
 import { profileService } from '../services/profileService';
@@ -1516,7 +1516,7 @@ export function useWelliApp() {
       patch({ showVaultExport: true });
     },
     closeVaultExport: () => patch({ showVaultExport: false }),
-    requestAccountDeletion: () => {
+    requestAccountDeletion: (password?: string) => {
       hapticFeedback.warning();
       Alert.alert(
         'Delete your account?',
@@ -1536,9 +1536,11 @@ export function useWelliApp() {
             style: 'destructive',
             onPress: async () => {
               try {
-                await authService.deleteAccount();
-              } catch {
-                showToast('Could not delete your account. Check your connection and try again.');
+                await authService.deleteAccount(password);
+              } catch (e) {
+                // 403 means the password was missing or wrong: the server's message says which.
+                const wrongPassword = e instanceof ApiError && e.statusCode === 403;
+                showToast(wrongPassword ? e.message : 'Could not delete your account. Check your connection and try again.');
                 return;
               }
               await clearChildOfflineData();
@@ -1559,28 +1561,6 @@ export function useWelliApp() {
         ]
       );
     },
-    deleteAccount: async () => {
-      try {
-        await authService.deleteAccount();
-      } catch {
-        showToast('Could not delete your account. Check your connection and try again.');
-        return;
-      }
-      await clearChildOfflineData();
-      patch({
-        isAuthenticated: false,
-        user: null,
-        loggedOut: false,
-        showPrivacySecurity: false,
-        familyMembers: [DEFAULT_PRIMARY_USER],
-        recordsList: [],
-        vitalsLogs: [],
-        vitalsSeries: [],
-        twoFactorEnabled: false,
-      });
-      showToast('Account session and cached vault data cleared');
-    },
-
     openLinkedAccounts: () => patch({ showLinkedAccounts: true }),
     closeLinkedAccounts: () => patch({ showLinkedAccounts: false }),
     connectAccount: (id: string, label: string) => {

@@ -26,7 +26,7 @@ import jwt from 'jsonwebtoken';
 import { AccessToken } from 'livekit-server-sdk';
 import bcrypt from 'bcryptjs';
 import { createStaff } from './staff';
-import { decideAccountDelete } from './accountDeleteCore';
+import { decideAccountDelete, checkDeletePassword } from './accountDeleteCore';
 import { createPatientAuth } from './patientAuth';
 import { verifyClerkSession } from './clerkVerify';
 import { auditAccount, ACTION_LABELS } from './accountAudit';
@@ -255,6 +255,15 @@ const loginIpLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: 'Too many sign-in attempts. Please try again in 15 minutes.' },
+});
+
+// Password guesses on the account-deletion screen. The route also needs a valid sign-in token.
+const deleteAccountLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 6,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many attempts. Please try again in 15 minutes.' },
 });
 
 const appointmentLimiter = rateLimit({
@@ -5889,7 +5898,7 @@ app.post('/api/v1/access/grants/:id/revoke', consentLimiter, async (req: Request
 });
 
 // Account Deletion Endpoint (NDPR Right to Erasure)
-app.delete('/api/v1/auth/account', async (req: Request, res: Response) => {
+app.delete('/api/v1/auth/account', deleteAccountLimiter, async (req: Request, res: Response) => {
   // Only the signed-in person can erase their own account. The id comes from the verified token, never from the body.
   const decision = decideAccountDelete(getAuthUserId(req));
   if (!decision.ok) return res.status(decision.status).json({ success: false, message: decision.message });
@@ -5903,6 +5912,10 @@ app.delete('/api/v1/auth/account', async (req: Request, res: Response) => {
       // The token's id is the _id of the User and of the Account (both models share it).
       const targetUser: any = await User.findById(userId);
       const targetAccount: any = await Account.findById(userId);
+
+      // A person who has a password must give it. Someone who signs in with a code, Google or Apple has none.
+      const pwCheck = await checkDeletePassword(targetUser?.password || targetAccount?.password, req.body?.password, bcrypt.compare);
+      if (!pwCheck.ok) return res.status(pwCheck.status).json({ success: false, message: pwCheck.message });
 
       erasedEmail = targetUser?.email || targetAccount?.email;
       const candidateIds: any[] = [new mongoose.Types.ObjectId(userId)];

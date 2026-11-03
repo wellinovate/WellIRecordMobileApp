@@ -304,13 +304,6 @@ export function PrivacySecurityModal({
   };
 
   const requestDeletion = () => {
-    if (!deletePassword.trim()) {
-      actions.showToast(
-        "Enter your password to continue",
-      );
-      return;
-    }
-
     if (!deletionAcknowledged) {
       actions.showToast(
         "Confirm that you understand your account will be deleted now",
@@ -318,11 +311,8 @@ export function PrivacySecurityModal({
       return;
     }
 
-    /*
-     * Preserve the application's existing account-deletion route.
-     * That action owns the final confirmation/destructive behavior.
-     */
-    actions.requestAccountDeletion();
+    // The server checks the password. An account that signs in with a code, Google or Apple has none.
+    actions.requestAccountDeletion(deletePassword);
   };
 
   return (
@@ -804,7 +794,7 @@ export function PrivacySecurityModal({
               </Text>
 
               <Text className="mt-4 text-[12px] font-semibold text-[#173B68]">
-                Current password
+                Current password (leave blank if you sign in with a code, Google or Apple)
               </Text>
 
               <TextInput
@@ -813,7 +803,7 @@ export function PrivacySecurityModal({
                   setDeletePassword
                 }
                 secureTextEntry
-                placeholder="Enter your password"
+                placeholder="Your password"
                 placeholderTextColor="#94A3B8"
                 autoComplete="current-password"
                 textContentType="password"
@@ -855,13 +845,9 @@ export function PrivacySecurityModal({
 
             <TouchableOpacity
               activeOpacity={0.86}
-              disabled={
-                !deletePassword.trim() ||
-                !deletionAcknowledged
-              }
+              disabled={!deletionAcknowledged}
               onPress={requestDeletion}
               className={`mt-6 min-h-[48px] items-center justify-center rounded-xl ${
-                deletePassword.trim() &&
                 deletionAcknowledged
                   ? "bg-[#082F67]"
                   : "bg-slate-200"
@@ -869,7 +855,6 @@ export function PrivacySecurityModal({
             >
               <Text
                 className={`text-[14px] font-semibold ${
-                  deletePassword.trim() &&
                   deletionAcknowledged
                     ? "text-white"
                     : "text-slate-400"

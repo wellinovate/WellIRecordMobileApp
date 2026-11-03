@@ -291,6 +291,8 @@ export function EmergencyModal({
     family[0] ??
     null;
 
+  const memberId = emergencyMember?.id;
+
   const initialContact = useMemo<ContactDraft>(() => {
     const first =
       emergencyMember?.emergencyContacts?.[0];
@@ -301,10 +303,7 @@ export function EmergencyModal({
         first?.relationship || "",
       phone: first?.phone || "",
     };
-  }, [
-    emergencyMember?.id,
-    emergencyMember?.emergencyContacts,
-  ]);
+  }, [emergencyMember?.emergencyContacts]);
 
   const [step, setStep] =
     useState<EmergencyStep>("setup");
@@ -338,7 +337,7 @@ export function EmergencyModal({
   useEffect(() => {
     if (
       !state.showEmergency ||
-      !emergencyMember
+      !memberId
     ) {
       return;
     }
@@ -354,7 +353,7 @@ export function EmergencyModal({
         try {
           const link =
             await sharingService.createEmergencyShareLink(
-              emergencyMember.id,
+              memberId,
             );
 
           if (cancelled) {
@@ -366,34 +365,6 @@ export function EmergencyModal({
             url: link.shareUrl,
             offline: false,
           });
-
-          await offlineSyncService.cacheEmergencyProfile(
-            {
-              id: emergencyMember.id,
-              name: emergencyMember.name,
-              wrId: emergencyMember.wrId,
-              dob: emergencyMember.dob,
-              bloodType:
-                emergencyMember.bloodType,
-              genotype:
-                emergencyMember.genotype,
-              allergies:
-                emergencyMember.allergies,
-              conditions:
-                emergencyMember.conditions,
-              contact:
-                emergencyMember.contact,
-              emergencyContacts:
-                emergencyMember.emergencyContacts,
-              hmoProvider: (
-                emergencyMember as any
-              ).hmoProvider,
-              hmoPolicyNumber: (
-                emergencyMember as any
-              ).hmoPolicyNumber,
-              qrPayload: link.shareUrl,
-            },
-          );
 
           return;
         } catch (error) {
@@ -413,7 +384,7 @@ export function EmergencyModal({
 
       if (
         cached &&
-        cached.id === emergencyMember.id &&
+        cached.id === memberId &&
         cached.qrPayload
       ) {
         setQr({
@@ -431,10 +402,40 @@ export function EmergencyModal({
     return () => {
       cancelled = true;
     };
-  }, [
-    state.showEmergency,
-    emergencyMember?.id,
-  ]);
+  }, [state.showEmergency, memberId]);
+
+  // Keep the offline copy of the emergency card current. This runs again when the profile changes while the
+  // screen is open (a new contact, an allergy), without asking the server for a new link.
+  useEffect(() => {
+    if (
+      !emergencyMember ||
+      qr.status !== "ready" ||
+      qr.offline
+    ) {
+      return;
+    }
+
+    void offlineSyncService
+      .cacheEmergencyProfile({
+        id: emergencyMember.id,
+        name: emergencyMember.name,
+        wrId: emergencyMember.wrId,
+        dob: emergencyMember.dob,
+        bloodType: emergencyMember.bloodType,
+        genotype: emergencyMember.genotype,
+        allergies: emergencyMember.allergies,
+        conditions: emergencyMember.conditions,
+        contact: emergencyMember.contact,
+        emergencyContacts:
+          emergencyMember.emergencyContacts,
+        hmoProvider: (emergencyMember as any)
+          .hmoProvider,
+        hmoPolicyNumber: (emergencyMember as any)
+          .hmoPolicyNumber,
+        qrPayload: qr.url,
+      })
+      .catch(() => {});
+  }, [emergencyMember, qr]);
 
   if (
     !state.showEmergency ||
