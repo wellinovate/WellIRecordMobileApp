@@ -49,7 +49,7 @@ export function ShareScreen({ app }: { app: WelliApp }) {
 
   return (
     <View className="flex-1 bg-white">
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" />
 
       <ScrollView
         className="flex-1"
