@@ -79,6 +79,11 @@
       [
         "expo-build-properties",
         {
+          "android": {
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "extraProguardRules": "-keep class org.webrtc.** { *; }\n-keep class livekit.org.webrtc.** { *; }\n-dontwarn org.webrtc.**\n-dontwarn livekit.org.webrtc.**"
+          },
           "ios": {
             "deploymentTarget": "17.0"
           }
