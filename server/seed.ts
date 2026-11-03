@@ -66,8 +66,29 @@ const FACILITIES_DATA = [
   },
 ];
 
+// The seed deletes every user, family member, record and prescription. It only
+// runs against a local database unless ALLOW_SEED=yes is set on purpose.
+function assertSafeTarget(uri: string) {
+  let isLocal = false;
+  try {
+    isLocal = ['127.0.0.1', 'localhost', '[::1]'].includes(new URL(uri).hostname);
+  } catch {
+    isLocal = false; // multi-host or malformed strings count as remote
+  }
+  if (!isLocal && process.env.ALLOW_SEED !== 'yes') {
+    throw new Error(
+      'Refusing to seed: MONGODB_URI is not a local database. This script deletes all users and records. Set ALLOW_SEED=yes only for a throwaway database.'
+    );
+  }
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_SEED !== 'yes') {
+    throw new Error('Refusing to seed with NODE_ENV=production.');
+  }
+}
+
 async function seedDatabase() {
-  console.log(`[Seed] Connecting to MongoDB: ${MONGODB_URI}`);
+  assertSafeTarget(MONGODB_URI);
+  // Never print the connection string: it holds the database password.
+  console.log('[Seed] Connecting to MongoDB...');
   await mongoose.connect(MONGODB_URI);
 
   console.log('[Seed] Clearing previous collections...');
