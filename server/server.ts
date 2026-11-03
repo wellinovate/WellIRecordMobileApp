@@ -26,6 +26,7 @@ import jwt from 'jsonwebtoken';
 import { AccessToken } from 'livekit-server-sdk';
 import bcrypt from 'bcryptjs';
 import { createStaff } from './staff';
+import { decideAccountDelete } from './accountDeleteCore';
 import { createPatientAuth } from './patientAuth';
 import { verifyClerkSession } from './clerkVerify';
 import { auditAccount, ACTION_LABELS } from './accountAudit';
@@ -5889,68 +5890,22 @@ app.post('/api/v1/access/grants/:id/revoke', consentLimiter, async (req: Request
 
 // Account Deletion Endpoint (NDPR Right to Erasure)
 app.delete('/api/v1/auth/account', async (req: Request, res: Response) => {
-  const token = req.headers.authorization?.replace('Bearer ', '');
+  // Only the signed-in person can erase their own account. The id comes from the verified token, never from the body.
+  const decision = decideAccountDelete(getAuthUserId(req));
+  if (!decision.ok) return res.status(decision.status).json({ success: false, message: decision.message });
+  const userId = decision.userId;
 
   try {
-    let decoded: any = null;
-    if (token) {
-      try {
-        decoded = jwt.verify(token, JWT_SECRET);
-      } catch {}
-    }
-
-    const userId = decoded?.userId || decoded?.id;
-    const email = decoded?.email || req.body?.email;
-    const phoneNumber = decoded?.phoneNumber || req.body?.phoneNumber || req.body?.phone;
-
     let deletedSomething = false;
-    let erasedEmail: string | undefined = typeof email === 'string' ? email : undefined;
+    let erasedEmail: string | undefined;
 
     if (mongoose.connection.readyState === 1) {
-      let targetUser: any = null;
-      let targetAccount: any = null;
+      // The token's id is the _id of the User and of the Account (both models share it).
+      const targetUser: any = await User.findById(userId);
+      const targetAccount: any = await Account.findById(userId);
 
-      // 1. Resolve by userId / accountId (supports both User model and Account model where _id === userId)
-      if (userId && mongoose.Types.ObjectId.isValid(userId)) {
-        targetUser = await User.findById(userId);
-        targetAccount = await Account.findById(userId);
-      }
-
-      // 2. Fallback lookup by email
-      if (!targetUser && !targetAccount && email) {
-        const cleanEmail = email.toLowerCase().trim();
-        targetUser = await User.findOne({ email: cleanEmail });
-        targetAccount = await Account.findOne({ email: cleanEmail });
-      }
-
-      // 3. Fallback lookup by phone number
-      if (!targetUser && !targetAccount && phoneNumber) {
-        const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
-        const normalizedE164 = normalizeNigerianPhone(phoneNumber);
-        const normalizedLocal = toLocalNigerianPhone(phoneNumber);
-        targetAccount = await Account.findOne({
-          $or: [
-            ...(normalizedLocal ? [{ phone: normalizedLocal }, { phoneNumber: normalizedLocal }] : []),
-            ...(normalizedE164 ? [{ phone: normalizedE164 }, { phoneNumber: normalizedE164 }] : []),
-            ...(phoneNumber ? [{ phone: phoneNumber }, { phoneNumber: phoneNumber }] : []),
-            ...(cleanPhone ? [{ phone: cleanPhone }, { phoneNumber: cleanPhone }] : []),
-          ],
-        });
-        if (!targetAccount) {
-          targetUser = await User.findOne({
-            $or: [
-              ...(normalizedE164 ? [{ phoneNumber: normalizedE164 }] : []),
-              ...(normalizedLocal ? [{ phoneNumber: normalizedLocal }] : []),
-              ...(cleanPhone ? [{ phoneNumber: cleanPhone }] : []),
-            ],
-          });
-        }
-      }
-
-      // Collect all candidate ObjectIds associated with this identity
-      erasedEmail = targetUser?.email || targetAccount?.email || erasedEmail;
-      const candidateIds: any[] = [];
-      if (userId && mongoose.Types.ObjectId.isValid(userId)) candidateIds.push(new mongoose.Types.ObjectId(userId));
+      erasedEmail = targetUser?.email || targetAccount?.email;
+      const candidateIds: any[] = [new mongoose.Types.ObjectId(userId)];
       if (targetUser?._id) candidateIds.push(targetUser._id);
       if (targetAccount?._id) candidateIds.push(targetAccount._id);
 
@@ -5993,7 +5948,7 @@ app.delete('/api/v1/auth/account', async (req: Request, res: Response) => {
     }
 
     if (!deletedSomething) {
-      console.error('[DELETE /auth/account] No account found to delete. userId:', userId, 'email:', email, 'phoneNumber:', phoneNumber);
+      console.error('[DELETE /auth/account] No account found to delete. userId:', userId);
       return res.status(404).json({
         success: false,
         message: 'No account found to delete.',
