@@ -304,6 +304,6 @@ Profile > Health information has three screens: Other info (`OtherInfoModal`), A
 - Health documents must not be sent to third-party services. Open them in-app or hand the
   file to the user's own app (see `PdfViewerModal`).
 - Account deletion must surface server errors and only sign the user out on success.
-- `DELETE /auth/account` takes the account only from the verified token (`server/accountDeleteCore.ts`); never pick an account to erase from an email or phone in the request body. Test: `server/tests/accountDeleteCore.test.ts`.
+- `DELETE /auth/account` takes the account only from the verified token (`server/accountDeleteCore.ts`); never pick an account to erase from an email or phone in the request body. An account that has a password must send it in the body (`checkDeletePassword`, 403 if missing or wrong, 6 tries per 15 minutes per IP); an account with none (code, Google or Apple sign-in) is deleted on the token alone. Test: `server/tests/accountDeleteCore.test.ts`.
 - Do not commit API keys, keystores or `.env` files.
 - Use one lockfile: `package-lock.json`.

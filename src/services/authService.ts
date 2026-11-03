@@ -549,10 +549,10 @@ export const authService = {
     }
   },
 
-  async deleteAccount(): Promise<boolean> {
+  async deleteAccount(password?: string): Promise<boolean> {
     // Let API failures propagate: the caller must not report a deletion
     // (or sign the user out) when the server did not delete the account.
-    await apiClient.delete<{ success: boolean }>('/auth/account');
+    await apiClient.deleteWithBody<{ success: boolean }>('/auth/account', password ? { password } : {});
 
     await this.logout();
 
