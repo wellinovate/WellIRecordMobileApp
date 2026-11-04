@@ -82,7 +82,7 @@
           "android": {
             "enableMinifyInReleaseBuilds": true,
             "enableShrinkResourcesInReleaseBuilds": true,
-            "extraProguardRules": "-keep class org.webrtc.** { *; }\n-keep class livekit.org.webrtc.** { *; }\n-dontwarn org.webrtc.**\n-dontwarn livekit.org.webrtc.**"
+            "extraProguardRules": "-keep class org.webrtc.** { *; }\n-keep class livekit.org.webrtc.** { *; }\n-keep class org.jni_zero.** { *; }\n-keep class livekit.org.jni_zero.** { *; }\n-keep class com.oney.WebRTCModule.** { *; }\n-keep class com.livekit.** { *; }\n-keep class io.livekit.** { *; }\n-keepclasseswithmembernames class * { native <methods>; }\n-keepattributes *Annotation*,InnerClasses,EnclosingMethod,Signature\n-dontwarn org.webrtc.**\n-dontwarn livekit.org.webrtc.**\n-dontwarn org.jni_zero.**\n-dontwarn livekit.org.jni_zero.**"
           },
           "ios": {
             "deploymentTarget": "17.0"
