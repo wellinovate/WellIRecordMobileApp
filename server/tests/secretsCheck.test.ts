@@ -21,6 +21,14 @@ describe('secrets check', () => {
     assert.ok(names(prod).includes('MONGODB_URI') && names(prod).includes('TERMII_API_KEY'));
     assert.equal(names(checkSecrets({ ...good, MONGODB_URI: undefined, TERMII_API_KEY: undefined, RESEND_API_KEY: undefined }, false)).includes('MONGODB_URI'), false);
   });
+  it('warns about a Clerk test key in production without printing it', () => {
+    const f = checkSecrets({ ...good, CLERK_SECRET_KEY: 'sk_test_topsecretvalue' }, true);
+    const hit = f.find((x) => x.name === 'CLERK_SECRET_KEY');
+    assert.ok(hit);
+    assert.equal(hit!.message.includes('topsecretvalue'), false);
+    assert.equal(names(checkSecrets({ ...good, CLERK_SECRET_KEY: 'sk_live_abc' }, true)).includes('CLERK_SECRET_KEY'), false);
+    assert.equal(names(checkSecrets({ ...good, CLERK_SECRET_KEY: 'sk_test_abc' }, false)).includes('CLERK_SECRET_KEY'), false);
+  });
   it('warns about risky switches', () => {
     const f = names(checkSecrets({ ...good, REVIEWER_OTP: '12345678', ALLOW_LEGACY_ADMIN_SECRET: 'true', ALLOW_LIVE_PROVIDER_SHARE: 'true', STAFF_MFA_REQUIRED: 'false' }, true));
     for (const n of ['REVIEWER_OTP', 'ALLOW_LEGACY_ADMIN_SECRET', 'ALLOW_LIVE_PROVIDER_SHARE', 'STAFF_MFA_REQUIRED']) assert.ok(f.includes(n), n);
