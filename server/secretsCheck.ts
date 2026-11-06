@@ -39,6 +39,7 @@ export function checkSecrets(env: Record<string, string | undefined> = process.e
   if (!env.MFA_SECRET_KEY) add('warn', 'MFA_SECRET_KEY', 'Not set. Patient authenticator secrets are sealed with JWT_SECRET, so rotating JWT_SECRET would lock MFA users out. Set it before anyone turns MFA on.');
   else if (env.MFA_SECRET_KEY.length < 32) add('warn', 'MFA_SECRET_KEY', 'Shorter than 32 characters.');
   if (!env.CLERK_SECRET_KEY) add('warn', 'CLERK_SECRET_KEY', 'Not set. Google and Apple sign-in are refused until it is.');
+  else if (production && env.CLERK_SECRET_KEY.startsWith('sk_test_')) add('warn', 'CLERK_SECRET_KEY', 'A Clerk test key (sk_test_) in production. A phone built with the live key will be refused. Use the production instance\'s sk_live_ key.');
 
   if (env.REVIEWER_OTP) {
     if (env.REVIEWER_OTP.length < 8) add('warn', 'REVIEWER_OTP', 'Shorter than 8 characters, so the reviewer bypass stays off.');
