@@ -79,7 +79,11 @@ export type JsonFetch = (req: PlacesRequest, ms: number) => Promise<any>;
 export async function searchNearby(kind: PlaceKind, p: { lat: number; lng: number }, key: string, getJson: JsonFetch) {
   for (const radius of RADII_M) {
     const data = await getJson(nearbyRequest(kind, p, radius, key), 6000);
-    if (data?.error) throw new Error(`Places ${data.error.status || data.error.code}: ${data.error.message || ''}`.trim());
+    if (data?.error) {
+      // Temporary diagnostics: Google's reason plus key tail/length (never the full key).
+      const reason = JSON.stringify(data.error.details ?? []).slice(0, 600);
+      throw new Error(`Places ${data.error.status || data.error.code}: ${data.error.message || ''} reason=${reason} key=...${key.slice(-4)} len=${key.length}`.trim());
+    }
     const list: any[] = Array.isArray(data?.places) ? data.places : [];
     const seen = new Set<string>();
     const places = list
