@@ -7,3 +7,4 @@ export * from './pharmacyService';
 export * from './careService';
 export * from './offlineSyncService';
 export * from './medicationReminderService';
+export * from './ninService';

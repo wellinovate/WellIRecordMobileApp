@@ -10,6 +10,8 @@ import { resolveRegion } from './data/nigeriaRegions';
 import { checkLegal, type LegalCheck } from './legalCore';
 import { createClinicVisits } from './clinicVisits';
 import { createSelfReported } from './selfReported';
+import { createNin } from './nin';
+import { eraseNinAttempts } from './ninModels';
 import { eraseSelfReported } from './selfReportedModels';
 import { createProviderGate, enforcementOn } from './providerVerification';
 import { thirdPartyOcrOn } from './ocrPolicy';
@@ -576,6 +578,7 @@ const SENSITIVE_PATHS = [
   '/api/v1/prescriptions',
   '/api/v1/pharmacy',
   '/api/v1/health',
+  '/api/v1/identity',
 ];
 
 app.use((req, res, next) => {
@@ -2868,6 +2871,14 @@ app.use(
     getAuthUserId,
     canAccess: (authUserId, ownerId, perm) => callerCanAccessOwner(authUserId, ownerId, perm),
     limiter: rateLimit({ windowMs: 15 * 60 * 1000, max: 120, standardHeaders: true, legacyHeaders: false, message: { success: false, message: 'Too many tries. Please wait a few minutes.' } }),
+  }).router
+);
+app.use(
+  '/api/v1',
+  createNin({
+    getAuthUserId,
+    limiter: rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, message: { success: false, message: 'Too many tries. Please wait an hour.' } }),
+    audit: (req, accountId, action, detail) => auditAccount(req, accountId, 'security', action, 'You', detail),
   }).router
 );
 app.use(
@@ -5944,6 +5955,7 @@ app.delete('/api/v1/auth/account', deleteAccountLimiter, async (req: Request, re
         if (candidateIds.length > 0) {
           await Profile.deleteMany({ $or: [{ userId: { $in: candidateIds } }, { accountId: { $in: candidateIds } }] });
           await UserProfile.deleteMany({ $or: [{ accountId: { $in: candidateIds } }, { userId: { $in: candidateIds } }] });
+          await eraseNinAttempts(candidateIds); // NIN check outcomes (the NIN itself is never stored)
           await eraseWebLinks(candidateIds); // the link to the website account, on both sides
           {
             const ownMembers: any[] = await FamilyMember.find({ $or: [{ accountId: { $in: candidateIds } }, { userId: { $in: candidateIds } }] }, { _id: 1 }).lean();

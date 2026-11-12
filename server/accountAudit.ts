@@ -60,6 +60,7 @@ export const ACTION_LABELS: Record<string, string> = {
   password_reset: 'Password reset',
   sessions_revoked: 'Signed out other devices',
   app_unlocked_code: 'App unlocked with a code',
+  identity_verified: 'Identity confirmed with NIN',
   email_verified: 'Email confirmed',
   phone_verified: 'Phone number confirmed',
   share_created: 'Provider link created',

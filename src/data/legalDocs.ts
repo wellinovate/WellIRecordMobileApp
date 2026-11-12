@@ -40,7 +40,7 @@ const PRIVACY_SECTIONS: LegalSection[] = [
   },
   {
     heading: 'Who else receives it',
-    body: 'We use service providers for specific jobs. Each receives only what its job needs.\n\n• Clerk: sign-in.\n• Termii: SMS and WhatsApp messages.\n• Resend: email.\n• Paystack: online payments.\n• LiveKit: video visits.\n• Google: nearby places on the map, and the Assistant.\n• Render and MongoDB Atlas: hosting and our database.\n• Cloudflare: storage of provider documents.\n\nRecord files and prescription files are not sent to any outside service to be processed. Some of the providers above process data outside Nigeria.',
+    body: 'We use service providers for specific jobs. Each receives only what its job needs.\n\n• Clerk: sign-in.\n• Termii: SMS and WhatsApp messages.\n• Resend: email.\n• Paystack: online payments.\n• LiveKit: video visits.\n• Google: nearby places on the map, and the Assistant.\n• Render and MongoDB Atlas: hosting and our database.\n• Cloudflare: storage of provider documents.\n• 2AM Connect: the optional identity check. If you choose it, your NIN is sent to 2AM Connect, which checks it with the National Identity Management Commission. We read only your name and date of birth to compare them with your profile. We keep the result and the date, not the NIN.\n\nRecord files and prescription files are not sent to any outside service to be processed. Some of the providers above process data outside Nigeria.',
   },
   {
     heading: 'Your location',
@@ -147,7 +147,7 @@ export const LEGAL_DOCS: Record<LegalDocId, LegalDoc> = {
   privacy: {
     id: 'privacy',
     title: 'Privacy & Data Protection Policy',
-    version: 'privacy-2026-10',
+    version: 'privacy-2026-11',
     required: true,
     agreeLabel: 'I have read and agree to the Privacy & Data Protection Policy.',
     sections: PRIVACY_SECTIONS,

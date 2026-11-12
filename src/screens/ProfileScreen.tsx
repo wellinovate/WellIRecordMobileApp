@@ -265,6 +265,15 @@ export function ProfileScreen({
 
           <SettingsRow
             icon="verify"
+            title="Identity check (NIN)"
+            subtitle="Confirm your name and date of birth against your NIN record"
+            onPress={actions.openNinVerify}
+          />
+
+          <Divider />
+
+          <SettingsRow
+            icon="verify"
             title="Website account"
             subtitle="Link your WelliRecord website account to see website video visits here"
             onPress={actions.openWebLink}
