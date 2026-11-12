@@ -80,6 +80,7 @@ import { TourModal } from "./modals/TourModal";
 import { TwoStepModal } from "./modals/TwoStepModal";
 import { RecordLinkModal } from "./modals/RecordLinkModal";
 import { WebLinkModal } from "./modals/WebLinkModal";
+import { NinVerifyModal } from "./modals/NinVerifyModal";
 import { AccountLogModal } from "./modals/AccountLogModal";
 import { ConsultBookingModal } from "./modals/ConsultBookingModal";
 import { PharmacyOrdersModal } from "./modals/PharmacyOrdersModal";
@@ -436,6 +437,7 @@ function MainWelliApp() {
           <TwoStepModal app={app} />
           <RecordLinkModal app={app} />
           <WebLinkModal app={app} />
+          <NinVerifyModal app={app} />
           <AccountLogModal app={app} />
           <ConsultBookingModal app={app} />
           <PharmacyOrdersModal app={app} />

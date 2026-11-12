@@ -88,6 +88,7 @@ export interface AppState {
   showTwoStep: boolean;
   showRecordLink: boolean;
   showWebLink: boolean;
+  showNinVerify: boolean;
   deviceCompromised: boolean;
   showAccountLog: boolean;
   showConsultBooking: boolean;
@@ -324,6 +325,7 @@ const initialState: AppState = {
   showTwoStep: false,
   showRecordLink: false,
   showWebLink: false,
+  showNinVerify: false,
   deviceCompromised: false,
   showAccountLog: false,
   showConsultBooking: false,
@@ -1145,6 +1147,8 @@ export function useWelliApp() {
     closeRecordLink: () => patch({ showRecordLink: false }),
     openWebLink: () => patch({ showWebLink: true }),
     closeWebLink: () => patch({ showWebLink: false }),
+    openNinVerify: () => patch({ showNinVerify: true }),
+    closeNinVerify: () => patch({ showNinVerify: false }),
     openConsultBooking: (facilityId?: string) =>
       patch({
         showConsultBooking: true,
