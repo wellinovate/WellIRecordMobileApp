@@ -17,6 +17,9 @@ import {
   type BiometricStatus,
 } from '../utils/biometrics';
 import { hapticFeedback } from '../utils/haptics';
+import { appPin } from '../utils/appPin';
+import { PIN_LENGTH } from '../utils/pinCore';
+import { PinPad } from '../components/PinPad';
 import type { WelliApp } from '../state/useWelliApp';
 
 export function FaceIdLockScreen({ app }: { app: WelliApp }) {
@@ -30,15 +33,30 @@ export function FaceIdLockScreen({ app }: { app: WelliApp }) {
   });
   const [authenticating, setAuthenticating] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  // 'code' is the fallback: a 6-digit code sent to the email or phone on the account.
-  const [mode, setMode] = useState<'biometric' | 'code'>('biometric');
+  // 'pin' shows when the person has set an app PIN. 'code' is the fallback: a 6-digit code sent to the email or phone on the account.
+  const [mode, setMode] = useState<'biometric' | 'pin' | 'code'>('biometric');
+  const [pinLoaded, setPinLoaded] = useState(false);
+  const [bioLoaded, setBioLoaded] = useState(false);
+  const [hasPin, setHasPin] = useState(false);
+  const [pinBlocked, setPinBlocked] = useState(false);
+  const [pin, setPin] = useState('');
+  const [resetPin, setResetPin] = useState(false); // the code is for a forgotten PIN, so a good code removes it
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const autoPrompted = useRef(false);
 
   useEffect(() => {
-    getBiometricStatus().then(setBioStatus);
+    getBiometricStatus()
+      .then(setBioStatus)
+      .finally(() => setBioLoaded(true));
+    Promise.all([appPin.isSet(), appPin.isBlocked()])
+      .then(([set, blocked]) => {
+        setHasPin(set);
+        setPinBlocked(set && blocked);
+        if (set) setMode('pin');
+      })
+      .finally(() => setPinLoaded(true));
   }, []);
 
   const handleUnlock = useCallback(async () => {
@@ -65,16 +83,43 @@ export function FaceIdLockScreen({ app }: { app: WelliApp }) {
   // Ask once each time the lock appears, not again after a cancel (that would trap the person in a loop of prompts).
   useEffect(() => {
     // App.expo mounts this screen only while locked, so every lock starts with fresh state.
-    if (!state.showLockScreen || autoPrompted.current || mode !== 'biometric') return;
+    if (!state.showLockScreen || autoPrompted.current || mode === 'code' || !bioLoaded || !pinLoaded) return;
+    // With a PIN set the pad is already on screen, so only ask for the fingerprint or face when the phone has one.
+    if (mode === 'pin' && !bioStatus.isAvailable) return;
     const timer = setTimeout(() => {
       autoPrompted.current = true;
       handleUnlock();
     }, 400);
     return () => clearTimeout(timer);
-  }, [state.showLockScreen, mode, handleUnlock]);
+  }, [state.showLockScreen, mode, handleUnlock, bioLoaded, pinLoaded, bioStatus.isAvailable]);
 
-  const sendCode = useCallback(async () => {
+  const onPinChange = useCallback(
+    async (next: string) => {
+      setPin(next);
+      setErrorMessage(null);
+      if (next.length !== PIN_LENGTH || busy) return;
+      setBusy(true);
+      try {
+        const r = await actions.unlockWithPin(next);
+        if (!r.ok) {
+          setPin('');
+          setPinBlocked(r.blocked);
+          setErrorMessage(
+            r.blocked
+              ? 'Too many wrong PINs. Unlock another way.'
+              : `Wrong PIN. ${r.left} ${r.left === 1 ? 'try' : 'tries'} left.`,
+          );
+        }
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, actions],
+  );
+
+  const sendCode = useCallback(async (forgotPin = false) => {
     if (busy) return;
+    setResetPin(forgotPin);
     setBusy(true);
     setErrorMessage(null);
     try {
@@ -94,7 +139,7 @@ export function FaceIdLockScreen({ app }: { app: WelliApp }) {
     setBusy(true);
     setErrorMessage(null);
     try {
-      await actions.unlockWithCode(digits);
+      await actions.unlockWithCode(digits, { resetPin });
     } catch (err: unknown) {
       hapticFeedback.error();
       setCode('');
@@ -102,7 +147,7 @@ export function FaceIdLockScreen({ app }: { app: WelliApp }) {
     } finally {
       setBusy(false);
     }
-  }, [code, busy, actions]);
+  }, [code, busy, actions, resetPin]);
 
   if (!state.showLockScreen) return null;
 
@@ -116,10 +161,11 @@ export function FaceIdLockScreen({ app }: { app: WelliApp }) {
       <SafeAreaView style={styles.container}>
         <Logo height={30} color="#ffffff" />
 
+        {mode === 'pin' && !bioStatus.isAvailable ? null : (
         <TouchableOpacity
           activeOpacity={0.8}
           onPress={handleUnlock}
-          style={styles.faceIdCircle}
+          style={[styles.faceIdCircle, mode === 'pin' && { width: 64, height: 64, borderRadius: 32 }]}
         >
           {authenticating ? (
             <ActivityIndicator color="#0EA5E9" size="large" />
@@ -157,6 +203,7 @@ export function FaceIdLockScreen({ app }: { app: WelliApp }) {
             </Svg>
           )}
         </TouchableOpacity>
+        )}
 
         {mode === 'biometric' ? (
           <View style={styles.textBlock}>
@@ -169,10 +216,26 @@ export function FaceIdLockScreen({ app }: { app: WelliApp }) {
               )}
             </Text>
           </View>
+        ) : mode === 'pin' ? (
+          <View style={styles.textBlock}>
+            <Text style={styles.title}>Enter your PIN</Text>
+            <Text style={styles.subtitle}>
+              {errorMessage ? (
+                <Text style={{ color: '#f87171' }}>{errorMessage}</Text>
+              ) : pinBlocked ? (
+                'Too many wrong PINs. Unlock another way.'
+              ) : (
+                `Enter your ${PIN_LENGTH}-digit PIN${bioStatus.isAvailable ? ` or use ${bioStatus.label}` : ''}`
+              )}
+            </Text>
+            <PinPad value={pin} onChange={onPinChange} disabled={busy || pinBlocked} />
+          </View>
         ) : (
           <View style={styles.textBlock}>
             <Text style={styles.title}>Enter your unlock code</Text>
-            <Text style={styles.subtitle}>We sent a 6-digit code to {sentTo}.</Text>
+            <Text style={styles.subtitle}>
+              We sent a 6-digit code to {sentTo}.{resetPin ? ' Your PIN will be removed. Set a new one in Account security.' : ''}
+            </Text>
             <TextInput
               value={code}
               onChangeText={(v) => setCode(v.replace(/\D/g, '').slice(0, 6))}
@@ -200,16 +263,37 @@ export function FaceIdLockScreen({ app }: { app: WelliApp }) {
 
         <View style={styles.links}>
           {mode === 'biometric' ? (
-            <TouchableOpacity accessibilityRole="button" onPress={sendCode} disabled={busy} style={styles.link}>
+            <TouchableOpacity accessibilityRole="button" onPress={() => sendCode(false)} disabled={busy} style={styles.link}>
               {busy ? <ActivityIndicator color="#93a5c9" /> : <Text style={styles.linkText}>Unlock with a code instead</Text>}
             </TouchableOpacity>
+          ) : mode === 'pin' ? (
+            <>
+              {bioStatus.isAvailable ? (
+                <TouchableOpacity accessibilityRole="button" onPress={handleUnlock} disabled={authenticating} style={styles.link}>
+                  <Text style={styles.linkText}>Use {bioStatus.label}</Text>
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity accessibilityRole="button" onPress={() => sendCode(true)} disabled={busy} style={styles.link}>
+                <Text style={styles.linkText}>Forgot PIN? Unlock with a code</Text>
+              </TouchableOpacity>
+            </>
           ) : (
             <>
-              <TouchableOpacity accessibilityRole="button" onPress={sendCode} disabled={busy} style={styles.link}>
+              <TouchableOpacity accessibilityRole="button" onPress={() => sendCode(resetPin)} disabled={busy} style={styles.link}>
                 <Text style={styles.linkText}>Send a new code</Text>
               </TouchableOpacity>
-              <TouchableOpacity accessibilityRole="button" onPress={() => { setMode('biometric'); setErrorMessage(null); }} style={styles.link}>
-                <Text style={styles.linkText}>Use {bioStatus.isAvailable ? bioStatus.label : 'my phone lock'} instead</Text>
+              <TouchableOpacity
+                accessibilityRole="button"
+                onPress={() => {
+                  setMode(hasPin ? 'pin' : 'biometric');
+                  setResetPin(false);
+                  setErrorMessage(null);
+                }}
+                style={styles.link}
+              >
+                <Text style={styles.linkText}>
+                  {hasPin ? 'Use my PIN instead' : `Use ${bioStatus.isAvailable ? bioStatus.label : 'my phone lock'} instead`}
+                </Text>
               </TouchableOpacity>
             </>
           )}
@@ -228,7 +312,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#050d1a',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 24,
+    gap: 16,
     paddingHorizontal: 30,
   },
   faceIdCircle: {

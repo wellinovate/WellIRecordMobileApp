@@ -408,10 +408,15 @@ export function PrivacySecurityModal({
                 </Text>
 
                 <Text className="mt-1 text-[11.5px] leading-[17px] text-slate-500">
-                  WelliRecord locks when you reopen it and after 5 minutes without a touch. You unlock it with your phone's biometrics or passcode, or with a code sent to your own email or phone. This cannot be turned off.
+                  WelliRecord locks when you reopen it and after 5 minutes without a touch. You unlock it with your phone's biometrics or passcode, a PIN you set below, or a code sent to your own email or phone. The lock cannot be turned off.
                 </Text>
               </View>
 
+              <InfoRow
+                title="App PIN"
+                subtitle="Unlock with a 6-digit PIN as well as your fingerprint or face. It stays on this phone."
+                onPress={actions.openPinSetup}
+              />
               <InfoRow
                 title="Authenticator app"
                 subtitle="Ask for a 6-digit code from an authenticator app after your password or login code."

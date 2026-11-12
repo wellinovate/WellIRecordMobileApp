@@ -68,7 +68,7 @@ const PRIVACY_SECTIONS: LegalSection[] = [
   },
   {
     heading: 'Security',
-    body: 'Connections to our servers use HTTPS. Record files are encrypted before they are stored. The app locks after five minutes without a touch and when you reopen it. You unlock with your phone\'s biometrics or passcode, or with a code sent to your account\'s email or phone. You can turn on a second sign-in step with an authenticator app in Privacy & Security. The account log shows sign-ins, shares and emergency scans. No system is completely secure. Protect your phone and passwords, and tell us quickly if someone else may have used your account.',
+    body: 'Connections to our servers use HTTPS. Record files are encrypted before they are stored. The app locks after five minutes without a touch and when you reopen it. You unlock with your phone\'s biometrics or passcode, a 6-digit PIN you can set (kept on your phone only, as a salted hash), or a code sent to your account\'s email or phone. You can turn on a second sign-in step with an authenticator app in Privacy & Security. The account log shows sign-ins, shares and emergency scans. No system is completely secure. Protect your phone and passwords, and tell us quickly if someone else may have used your account.',
   },
   {
     heading: 'How long we keep it',
@@ -147,7 +147,7 @@ export const LEGAL_DOCS: Record<LegalDocId, LegalDoc> = {
   privacy: {
     id: 'privacy',
     title: 'Privacy & Data Protection Policy',
-    version: 'privacy-2026-11',
+    version: 'privacy-2026-12',
     required: true,
     agreeLabel: 'I have read and agree to the Privacy & Data Protection Policy.',
     sections: PRIVACY_SECTIONS,

@@ -29,6 +29,7 @@ import { buildShareMessage } from '../utils/providerRemark';
 import { storage } from '../utils/storage';
 import { reportError } from '../utils/errorReporting';
 import { markActivity } from '../utils/inactivityCore';
+import { appPin, type PinCheck } from '../utils/appPin';
 import { authService, type AuthSession } from '../services/authService';
 import { apiClient, ApiError, setAuthToken } from '../services/apiClient';
 import { recordsService } from '../services/recordsService';
@@ -86,6 +87,7 @@ export interface AppState {
   /** Google or Apple sign-up that still needs a state of residence (it sets the WelliID). */
   socialState: { details: SocialDetails; needState: boolean; needLegal: boolean; busy: boolean; error: string | null } | null;
   showTwoStep: boolean;
+  showPinSetup: boolean;
   showRecordLink: boolean;
   showWebLink: boolean;
   showNinVerify: boolean;
@@ -323,6 +325,7 @@ const initialState: AppState = {
   mfaPrompt: null,
   socialState: null,
   showTwoStep: false,
+  showPinSetup: false,
   showRecordLink: false,
   showWebLink: false,
   showNinVerify: false,
@@ -1143,6 +1146,8 @@ export function useWelliApp() {
     closeProviderShare: () => patch({ showProviderShare: false, providerShareDraft: null }),
     openTwoStep: () => patch({ showTwoStep: true }),
     closeTwoStep: () => patch({ showTwoStep: false }),
+    openPinSetup: () => patch({ showPinSetup: true }),
+    closePinSetup: () => patch({ showPinSetup: false }),
     openRecordLink: () => patch({ showRecordLink: true }),
     closeRecordLink: () => patch({ showRecordLink: false }),
     openWebLink: () => patch({ showWebLink: true }),
@@ -1548,6 +1553,7 @@ export function useWelliApp() {
                 return;
               }
               await clearChildOfflineData();
+              await appPin.remove();
               patch({
                 isAuthenticated: false,
                 user: null,
@@ -1865,7 +1871,20 @@ export function useWelliApp() {
     unlockWithFaceId: () => {
       hapticFeedback.success();
       markActivity();
+      void appPin.resetAttempts(); // a good fingerprint or face check clears wrong PIN tries
       patch({ showLockScreen: false });
+    },
+    /** Unlock with the app PIN. Wrong tries are counted on the phone; after 5 the PIN is refused until another unlock works. */
+    unlockWithPin: async (pin: string): Promise<PinCheck> => {
+      const r = await appPin.verify(pin);
+      if (r.ok) {
+        hapticFeedback.success();
+        markActivity();
+        patch({ showLockScreen: false });
+      } else {
+        hapticFeedback.error();
+      }
+      return r;
     },
 
     openHealthHistory: () => patch({ showHealthHistory: true }),
@@ -2322,6 +2341,7 @@ export function useWelliApp() {
       await authService.logout();
       setAuthToken(null);
       await clearChildOfflineData();
+      await appPin.remove(); // the PIN belongs to the person who set it, not to the phone
       patch({
         showLockScreen: false,
         familyLoadError: null,
@@ -2346,8 +2366,11 @@ export function useWelliApp() {
       patch((s) => (s.isAuthenticated ? { ...s, showLockScreen: true } : s));
     },
     sendUnlockCode: (channel?: 'email' | 'sms') => authService.sendUnlockCode(channel),
-    unlockWithCode: async (code: string) => {
+    // resetPin: the person said they forgot the PIN. The emailed or texted code proves it is them, so the PIN is removed.
+    unlockWithCode: async (code: string, opts?: { resetPin?: boolean }) => {
       await authService.verifyUnlockCode(code);
+      if (opts?.resetPin) await appPin.remove();
+      else await appPin.resetAttempts();
       hapticFeedback.success();
       markActivity();
       patch({ showLockScreen: false });

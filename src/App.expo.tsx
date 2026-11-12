@@ -78,6 +78,7 @@ import { MfaChallengeModal } from "./modals/MfaChallengeModal";
 import { SocialStateModal } from "./modals/SocialStateModal";
 import { TourModal } from "./modals/TourModal";
 import { TwoStepModal } from "./modals/TwoStepModal";
+import { PinSetupModal } from "./modals/PinSetupModal";
 import { RecordLinkModal } from "./modals/RecordLinkModal";
 import { WebLinkModal } from "./modals/WebLinkModal";
 import { NinVerifyModal } from "./modals/NinVerifyModal";
@@ -435,6 +436,7 @@ function MainWelliApp() {
           {Boolean(state.showFamilyAccess) && <FamilyAccessModal app={app} />}
           <ProviderShareModal app={app} />
           <TwoStepModal app={app} />
+          <PinSetupModal app={app} />
           <RecordLinkModal app={app} />
           <WebLinkModal app={app} />
           <NinVerifyModal app={app} />
