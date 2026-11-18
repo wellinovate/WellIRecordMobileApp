@@ -46,6 +46,7 @@ import { bookingService } from '../services/bookingService';
 import { sharingService } from '../services/sharingService';
 import { notificationService } from '../services/notificationService';
 import type { CareFacility } from '../data/types';
+import { labSummary } from '../utils/labSummary';
 
 export interface SocialDetails {
   provider: 'google' | 'apple';
@@ -607,10 +608,8 @@ export function useWelliApp() {
               title: lab.testName || 'Lab Result',
               provider: lab.providerName || lab.organizationName || 'Laboratory Services',
               date: formatDate(lab.resultedAt || lab.createdAt),
-              summary:
-                lab.resultValue && lab.unit
-                  ? `${lab.testName}: ${lab.resultValue} ${lab.unit} (${lab.interpretation || 'result'})`
-                  : lab.interpretation || '',
+              summary: labSummary(lab),
+              labNote: typeof lab.labNote === 'string' && lab.labNote.trim() ? lab.labNote.trim() : undefined,
               attachments: lab.attachments || [],
             }));
 

@@ -35,6 +35,8 @@ export interface HealthRecord {
   type: RecordType;
   provider: string;
   summary: string;
+  /** Plain-words note the laboratory wrote for the patient. */
+  labNote?: string;
   source?: 'facility';
   extractedOcr?: {
     keyValues: Array<{ label: string; value: string }>;

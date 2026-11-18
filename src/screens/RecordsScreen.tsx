@@ -515,7 +515,7 @@ export function RecordsScreen({ app }: { app: WelliApp }) {
                             className="mt-1 text-[11.5px] text-slate-500"
                           >
                             {record.provider} · {record.date}
-                            {record.summary ? ` · ${record.summary}` : ""}
+                            {record.summary ? ` · ${record.summary}` : ""}{record.labNote ? " · Has a note from the lab" : ""}
                           </Text>
                         </View>
 
