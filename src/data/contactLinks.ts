@@ -15,7 +15,8 @@ export interface SocialLink {
 
 export const SOCIAL_LINKS: SocialLink[] = [
   { id: 'whatsapp', label: 'WhatsApp', url: WHATSAPP_URL, badge: 'WA', color: '#25D366' },
-  { id: 'instagram', label: 'Instagram', url: 'https://www.instagram.com/careidhq', badge: 'IG', color: '#C13584' },
+  { id: 'instagram', label: 'Instagram', url: 'https://www.instagram.com/mywellirecord', badge: 'IG', color: '#C13584' },
+  { id: 'facebook', label: 'Facebook', url: 'https://www.facebook.com/profile.php?id=61596458829642', badge: 'f', color: '#1877F2' },
   { id: 'x', label: 'X', url: 'https://x.com/wellinovate', badge: 'X', color: '#111111' },
   { id: 'tiktok', label: 'TikTok', url: 'https://www.tiktok.com/@wellirecord', badge: 'TT', color: '#111111' },
   { id: 'youtube', label: 'YouTube', url: 'https://www.youtube.com/@wellirecord', badge: 'YT', color: '#E02424' },
