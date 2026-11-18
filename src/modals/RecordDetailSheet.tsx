@@ -237,6 +237,17 @@ export function RecordDetailSheet({ app }: { app: WelliApp }) {
               </Text>
             </View>
 
+            {record.labNote ? (
+              <View className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <Text className="text-[11px] font-semibold uppercase tracking-wide text-amber-800">
+                  Note from the laboratory
+                </Text>
+                <Text className="mt-2 text-[13px] leading-[20px] text-[#173B68]">
+                  {record.labNote}
+                </Text>
+              </View>
+            ) : null}
+
             {record.extractedOcr?.keyValues?.length ? (
               <View className="mt-4 rounded-2xl border border-slate-200 p-4">
                 <Text className="text-[13px] font-extrabold text-[#082F67]">
