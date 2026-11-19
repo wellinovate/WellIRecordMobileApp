@@ -277,6 +277,13 @@ export function AuthFlow({ app }: Props) {
               isSignup ? 'signup' : 'login',
             );
           }}
+          onCheckActivation={
+            isSignup ? () => app.actions.checkEmailActivation(targetEmail) : undefined
+          }
+          onActivated={async () => {
+            await app.actions.finishEmailActivation(targetEmail, { state: (accountData as any)?.state, lga: (accountData as any)?.lga });
+            setStep('guided-profile');
+          }}
           onVerify={async (code: string) => {
             if (isSignup) {
               await app.actions.verifyOtpOnly(targetEmail, code, undefined, { state: (accountData as any)?.state, lga: (accountData as any)?.lga });

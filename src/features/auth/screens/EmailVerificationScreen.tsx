@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -20,6 +20,10 @@ type Props = {
   onVerify: (code: string) => Promise<void> | void;
   onResend: () => Promise<void> | void;
   onUseDifferentEmail?: () => void;
+  /** Sign-up only: asks whether the activation link in the email was tapped. */
+  onCheckActivation?: () => Promise<boolean>;
+  /** Called once when the link was tapped. */
+  onActivated?: () => Promise<void> | void;
 };
 
 export function EmailVerificationScreen({
@@ -29,6 +33,8 @@ export function EmailVerificationScreen({
   onVerify,
   onResend,
   onUseDifferentEmail,
+  onCheckActivation,
+  onActivated,
 }: Props) {
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +51,43 @@ export function EmailVerificationScreen({
 
     return () => clearInterval(timer);
   }, [resendSeconds]);
+
+  // While this screen is open, check every 3 seconds whether the activation link was tapped.
+  // The callbacks are kept in refs so a re-render of the parent does not restart the timer.
+  const checkRef = useRef(onCheckActivation);
+  const activatedRef = useRef(onActivated);
+  checkRef.current = onCheckActivation;
+  activatedRef.current = onActivated;
+  const watching = Boolean(onCheckActivation && onActivated);
+
+  useEffect(() => {
+    if (!watching) return;
+    let stopped = false;
+    let busy = false;
+    const timer = setInterval(async () => {
+      if (stopped || busy) return;
+      busy = true;
+      try {
+        if (await checkRef.current?.()) {
+          stopped = true;
+          clearInterval(timer);
+          setVerifying(true);
+          try {
+            await activatedRef.current?.();
+          } catch (err: any) {
+            setError(err?.message || 'Could not finish. Enter the 6-digit code from the email.');
+            setVerifying(false);
+          }
+        }
+      } finally {
+        busy = false;
+      }
+    }, 3000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [watching]);
 
   const handleVerify = async () => {
     const cleanCode = code.trim();
@@ -132,7 +175,7 @@ export function EmailVerificationScreen({
         <Text style={styles.subtitle}>
           {purpose === 'login'
             ? 'Enter the code sent to your email to finish signing in.'
-            : 'Verify your email before continuing to your profile.'}
+            : 'Tap the activation link in the email we sent, or enter the code, to continue to your profile.'}
         </Text>
 
         <View style={styles.heroCard}>
@@ -165,10 +208,14 @@ export function EmailVerificationScreen({
         </View>
 
         <View style={styles.verificationCard}>
-          <Text style={styles.cardTitle}>Enter your email code</Text>
+          <Text style={styles.cardTitle}>
+            {onCheckActivation ? 'Check your email' : 'Enter your email code'}
+          </Text>
 
           <Text style={styles.cardDescription}>
-            A 6-digit verification code was sent to this email address.
+            {onCheckActivation
+              ? 'We sent an activation link and a 6-digit code to this address. Tap the link, then come back here. This screen continues by itself. Or enter the code below.'
+              : 'A 6-digit verification code was sent to this email address.'}
           </Text>
 
           {!!email && (

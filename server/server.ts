@@ -20,6 +20,7 @@ import { auditIsRestricted } from './providerVerificationModels';
 import { createBridgeProviders } from './bridgeProviders';
 import { deleteClerkIdentity, eraseChildData } from './accountErasure';
 import { accountDeletionPage } from './publicPages';
+import { activation, activationConfirmPage, activationConfirmSubmit } from './emailActivation';
 import crypto from 'crypto';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
@@ -853,7 +854,7 @@ async function sendWelliEmail({ to, subject, html, text, from }: SendEmailOption
   return { success: true, delivered: false, messageId: `msg_${Date.now()}` };
 }
 
-function renderOtpEmailHtml({ fullName, code, expiresInMinutes }: { fullName?: string; code: string; expiresInMinutes?: number }): string {
+function renderOtpEmailHtml({ fullName, code, expiresInMinutes, activationUrl }: { fullName?: string; code: string; expiresInMinutes?: number; activationUrl?: string }): string {
   const formattedCode = code.split('').join(' ');
   return `<!DOCTYPE html>
 <html lang="en">
@@ -886,9 +887,20 @@ function renderOtpEmailHtml({ fullName, code, expiresInMinutes }: { fullName?: s
                 🔐 Verify your WelliRecord™ account
               </h2>
               
-              <p style="margin: 0 0 24px 0; font-size: 15px; color: #475569;">
-                Use the verification code below to continue with your WelliRecord™ account securely.
+              ${
+                activationUrl
+                  ? `<p style="margin: 0 0 16px 0; font-size: 15px; color: #475569;">
+                Tap the button to activate your account, then go back to the WelliRecord app.
               </p>
+              <div style="margin: 0 0 12px 0; text-align: center;">
+                <a href="${activationUrl}" style="display: inline-block; background-color: #041E42; color: #FFFFFF; font-size: 16px; font-weight: 700; padding: 14px 32px; border-radius: 8px; text-decoration: none;">Activate my account</a>
+              </div>
+              <p style="margin: 0 0 24px 0; font-size: 13px; color: #64748B; text-align: center;">The link works for 30 minutes. If the button does not open, copy this address into your browser:<br><span style="word-break: break-all;">${activationUrl}</span></p>
+              <p style="margin: 0 0 16px 0; font-size: 15px; color: #475569;">Or enter this code in the app:</p>`
+                  : `<p style="margin: 0 0 24px 0; font-size: 15px; color: #475569;">
+                Use the verification code below to continue with your WelliRecord™ account securely.
+              </p>`
+              }
 
               <!-- Verification Code Box -->
               <div style="background-color: #F0FDF4; border: 1px solid #86EFAC; border-radius: 12px; padding: 24px; text-align: center; margin: 0 0 24px 0;">
@@ -899,7 +911,7 @@ function renderOtpEmailHtml({ fullName, code, expiresInMinutes }: { fullName?: s
                   ${formattedCode}
                 </div>
                 <div style="font-size: 13px; font-weight: 600; color: #16A34A;">
-                  ⏱ Expires in ${expiresInMinutes || 10} minutes
+                  ⏱ Expires in ${expiresInMinutes || 5} minutes
                 </div>
               </div>
 
@@ -1046,24 +1058,31 @@ function renderSignInNotificationEmailHtml({ fullName, signedInAt, method, devic
 
 // 2c. Email OTP Dispatch
 app.post('/api/v1/auth/email/send', otpLimiter, async (req: Request, res: Response) => {
-  const { email, fullName, name, mode } = req.body;
+  const { email, fullName, name, mode, attemptId } = req.body;
 
   if (!email) {
     return res.status(400).json({ success: false, message: 'Email address is required' });
   }
 
   const cleanEmail = email.toLowerCase().trim();
-  const generatedCode = await generateOtp(cleanEmail, mode === 'login' ? 'login' : 'signup');
+  const isSignup = mode !== 'login';
+  const generatedCode = await generateOtp(cleanEmail, isSignup ? 'signup' : 'login');
+  // Sign-up emails also carry an activation link. Older app builds send no attempt id and get the code only.
+  const activationToken = isSignup ? await activation.issue(cleanEmail, attemptId) : null;
+  const activationUrl = activationToken
+    ? `${process.env.PUBLIC_API_BASE_URL || `${req.protocol}://${req.get('host')}`}/activate-email?t=${activationToken}`
+    : undefined;
   const recipientName = fullName || name || (cleanEmail.includes('@') ? cleanEmail.split('@')[0] : 'WelliRecord Patient');
 
   try {
     const sentOtp = await sendWelliEmail({
       to: cleanEmail,
-      subject: '🔐 Verify your WelliRecord™ account - Login Code',
+      subject: activationUrl ? 'Activate your WelliRecord™ account' : '🔐 Verify your WelliRecord™ account - Login Code',
       html: renderOtpEmailHtml({
         fullName: recipientName,
         code: generatedCode,
-        expiresInMinutes: 10,
+        expiresInMinutes: 5,
+        activationUrl,
       }),
     });
 
@@ -1073,15 +1092,28 @@ app.post('/api/v1/auth/email/send', otpLimiter, async (req: Request, res: Respon
     }
     return res.json({
       success: true,
-      message: `Verification code sent to ${cleanEmail}.`,
+      message: activationUrl ? `Activation link and code sent to ${cleanEmail}.` : `Verification code sent to ${cleanEmail}.`,
       otpId: `otp_${Date.now()}`,
-      expiresInSeconds: 600,
+      activationLink: Boolean(activationUrl),
+      expiresInSeconds: 300,
     });
   } catch (err: any) {
     console.error('[EMAIL SEND ERROR]', err);
     console.error('[500]', req.method, req.path, err);
     return res.status(500).json({ success: false, message: 'Failed to send verification email' });
   }
+});
+
+// 2c-2. Activation link: the page the email opens, and the app's check that it was tapped.
+const activationLimiter = rateLimit({ windowMs: 60 * 1000, max: 40, standardHeaders: true, legacyHeaders: false, message: { success: false, message: 'Too many requests. Wait a moment.' } });
+app.get('/activate-email', activationLimiter, activationConfirmPage);
+app.post('/activate-email', activationLimiter, express.urlencoded({ extended: false, limit: '2kb' }), (req, res, next) => {
+  activationConfirmSubmit(req, res).catch(next);
+});
+app.post('/api/v1/auth/email/activation-status', activationLimiter, async (req: Request, res: Response) => {
+  const email = String(req.body?.email || '').toLowerCase().trim();
+  if (!email) return res.status(400).json({ success: false, message: 'Email address is required' });
+  return res.json({ success: true, activated: await activation.isActivated(email, req.body?.attemptId) });
 });
 
 // 2d. Generic Transactional Email Notification
@@ -1122,9 +1154,9 @@ async function saveLegal(accountId: unknown, legal: LegalCheck): Promise<void> {
 }
 
 app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
-  const { phoneNumber, email, code } = req.body;
+  const { phoneNumber, email, code, attemptId } = req.body;
 
-  if ((!phoneNumber && !email) || !code) {
+  if ((!phoneNumber && !email) || (!code && !(email && attemptId))) {
     return res.status(400).json({ success: false, message: 'Phone number or email, and verification code required' });
   }
 
@@ -1162,8 +1194,10 @@ app.post('/api/v1/auth/otp/verify', async (req: Request, res: Response) => {
   const storedMode = await otp.modeFor(candidateKeys);
   const requestedMode = storedMode || (req.body.mode === 'login' ? 'login' : 'signup');
 
-  if (!isReviewerBypass && !(await otp.verify(candidateKeys, String(code)))) {
-    return res.status(400).json({ success: false, message: 'Invalid or expired authorization code' });
+  // A sign-up by email can finish with the activation link the person tapped instead of the code.
+  const activatedByLink = !isReviewerBypass && !code && Boolean(cleanEmail) && requestedMode === 'signup' && (await activation.consume(cleanEmail as string, attemptId));
+  if (!isReviewerBypass && !activatedByLink && !(code && (await otp.verify(candidateKeys, String(code))))) {
+    return res.status(400).json({ success: false, message: activatedByLink === false && !code ? 'The activation link has not been tapped yet, or it has expired.' : 'Invalid or expired authorization code' });
   }
 
   await otp.clear(candidateKeys);
