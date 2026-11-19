@@ -112,6 +112,18 @@ export function AuthFlow({ app }: Props) {
     return '';
   }, [accountData, fullName, pendingSession]);
 
+  // Sign-up ends once the email is activated, by link or by code: create the
+  // account and go straight to the success screen. The phone number typed on the
+  // create-account form is saved as given; it can be confirmed later in
+  // Profile > Account & privacy > Email & phone verification.
+  const createAccountAfterActivation = async () => {
+    const preparedSession = await app.actions.prepareSignUpWithData(
+      registrationData() as any,
+    );
+    setPendingSession(preparedSession);
+    setStep('successful-login');
+  };
+
   const showAuthError = (error: unknown, fallback: string) => {
     app.actions.showToast(getErrorMessage(error, fallback));
   };
@@ -282,12 +294,12 @@ export function AuthFlow({ app }: Props) {
           }
           onActivated={async () => {
             await app.actions.finishEmailActivation(targetEmail, { state: (accountData as any)?.state, lga: (accountData as any)?.lga });
-            setStep('guided-profile');
+            await createAccountAfterActivation();
           }}
           onVerify={async (code: string) => {
             if (isSignup) {
               await app.actions.verifyOtpOnly(targetEmail, code, undefined, { state: (accountData as any)?.state, lga: (accountData as any)?.lga });
-              setStep('guided-profile');
+              await createAccountAfterActivation();
               return;
             }
 
