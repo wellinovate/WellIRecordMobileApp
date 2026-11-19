@@ -1961,6 +1961,13 @@ export function useWelliApp() {
       return res;
     },
 
+    checkEmailActivation: (email: string) => authService.checkEmailActivation(email),
+
+    finishEmailActivation: async (email: string, registration?: { state?: string; lga?: string }) => {
+      hapticFeedback.success();
+      return authService.finishEmailActivation(email, registration);
+    },
+
     verifyOtpOnly: async (
       identifier: string,
       code: string,

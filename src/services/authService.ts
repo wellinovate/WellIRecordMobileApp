@@ -8,6 +8,10 @@ import { registerForPushNotificationsAsync } from './pushNotifications';
 import { currentAcceptance } from '../utils/legalAcceptance';
 import { storage } from '../utils/secureStorage';
 import { normalizeNigerianPhone } from '../utils/phone';
+import * as Crypto from 'expo-crypto';
+
+// A secret the phone makes for each sign-up email. It ties the activation link in the email to this phone only.
+const activationAttempts = new Map<string, string>();
 
 export interface AuthSession {
   token: string;
@@ -207,11 +211,53 @@ export const authService = {
   ): Promise<SendOtpResponse> {
     const cleanEmail = email.trim().toLowerCase();
 
+    // Sign-up emails carry an activation link as well as the code. Resending keeps the same attempt id.
+    let attemptId: string | undefined;
+    if (mode === 'signup') {
+      attemptId = activationAttempts.get(cleanEmail) || Crypto.randomUUID();
+      activationAttempts.set(cleanEmail, attemptId);
+    }
+
     return await apiClient.post<SendOtpResponse>('/auth/email/send', {
       email: cleanEmail,
       fullName,
       mode,
+      ...(attemptId ? { attemptId } : {}),
     });
+  },
+
+  /** True once the person has tapped the activation link in the email. Any error counts as not yet. */
+  async checkEmailActivation(email: string): Promise<boolean> {
+    const cleanEmail = email.trim().toLowerCase();
+    const attemptId = activationAttempts.get(cleanEmail);
+    if (!attemptId) return false;
+    try {
+      const res = await apiClient.post<any>('/auth/email/activation-status', { email: cleanEmail, attemptId });
+      return res?.activated === true;
+    } catch {
+      return false;
+    }
+  },
+
+  /** Finishes sign-up with the tapped link in place of the code. */
+  async finishEmailActivation(
+    email: string,
+    registration?: { state?: string; lga?: string },
+  ): Promise<{ success: boolean; message?: string }> {
+    const cleanEmail = email.trim().toLowerCase();
+    const attemptId = activationAttempts.get(cleanEmail);
+    if (!attemptId) throw new Error('Enter the 6-digit code from the email.');
+    const legal = await currentAcceptance();
+    const res = await apiClient.post<any>('/auth/otp/verify', {
+      ...(legal ? { legal } : {}),
+      email: cleanEmail,
+      attemptId,
+      ...(registration?.state ? { state: registration.state } : {}),
+      ...(registration?.lga ? { lga: registration.lga } : {}),
+    });
+    if (res?.success === false) throw new Error(res?.message || 'The activation link could not be used. Enter the code from the email.');
+    activationAttempts.delete(cleanEmail);
+    return { success: true, message: res?.message };
   },
 
   async verifyEmailOtp(
