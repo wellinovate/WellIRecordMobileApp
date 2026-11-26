@@ -119,6 +119,7 @@ async function seedDatabase() {
   console.log('[Seed] Creating family members...');
   const selfMember = await FamilyMember.create({
     userId: user._id,
+    fullName: 'Amara Nwosu',
     name: 'Amara Nwosu',
     initials: 'AN',
     relationship: 'Self',
@@ -132,6 +133,7 @@ async function seedDatabase() {
 
   const childMember = await FamilyMember.create({
     userId: user._id,
+    fullName: 'Kwame Nwosu',
     name: 'Kwame Nwosu',
     initials: 'KN',
     relationship: 'Child',
