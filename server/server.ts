@@ -3186,11 +3186,17 @@ async function organizationNames(ids: unknown[]): Promise<Map<string, string>> {
   );
   const names = new Map<string, string>();
   if (unique.length === 0) return names;
+  const objectIds = unique.map((id) => new mongoose.Types.ObjectId(id));
+  // Provider-written records store either the OrganizationProfile id or the
+  // owning account id as organizationId, so match both.
   const orgs: any[] = await OrganizationProfile.find(
-    { _id: { $in: unique.map((id) => new mongoose.Types.ObjectId(id)) } },
-    'organizationName'
+    { $or: [{ _id: { $in: objectIds } }, { accountId: { $in: objectIds } }] },
+    'organizationName accountId'
   ).lean();
-  for (const org of orgs) names.set(String(org._id), org.organizationName);
+  for (const org of orgs) {
+    names.set(String(org._id), org.organizationName);
+    if (org.accountId) names.set(String(org.accountId), org.organizationName);
+  }
   return names;
 }
 
